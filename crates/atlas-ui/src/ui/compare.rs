@@ -180,10 +180,17 @@ impl ComparePanel {
         self.close(window, cx);
     }
 
-    pub(crate) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Stop a comparison still running.
+    pub(crate) fn cancel(&mut self) {
         if let Some(cancel) = self.running.take() {
             cancel.store(true, Ordering::Release);
         }
+    }
+
+    /// Close from the panel's own buttons. Escape is handled by the App, which
+    /// is already being updated while it dispatches the key.
+    pub(crate) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.cancel();
         let _ = self.parent.update(cx, |app, cx| {
             app.compare_panel = None;
             window.focus(&app.focus_handle, cx);
@@ -198,8 +205,8 @@ impl ComparePanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        let _ = window;
         match event.keystroke.key.as_str() {
-            "escape" => self.close(window, cx),
             "f5" => self.run(cx),
             "up" | "down" | "pageup" | "pagedown" | "home" | "end" | "enter" | "tab" => {}
             _ => return false,

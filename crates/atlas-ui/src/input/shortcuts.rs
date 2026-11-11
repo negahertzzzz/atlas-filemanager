@@ -115,6 +115,15 @@ impl App {
             }
         }
         if let Some(panel) = self.compare_panel.clone() {
+            if ev.keystroke.key == "escape" {
+                // Closed here: the panel cannot update the App from inside
+                // the App's own key handler.
+                panel.update(cx, |p, _| p.cancel());
+                self.compare_panel = None;
+                window.focus(&self.focus_handle, cx);
+                cx.notify();
+                return true;
+            }
             if panel.update(cx, |p, cx| p.handle_key(ev, window, cx)) {
                 cx.notify();
             }
