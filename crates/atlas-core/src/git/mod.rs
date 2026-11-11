@@ -308,7 +308,24 @@ pub fn history(root: &Path, limit: usize, all: bool) -> Result<History> {
     if all {
         args.push("--all");
     }
-    let output = match read(root, &args) {
+    log(root, &args, limit, true)
+}
+
+/// Newest `limit` commits that touched `path`, following renames of a file.
+/// Parents are not rewritten to the filtered list, so there is no graph.
+pub fn file_history(root: &Path, path: &str, limit: usize) -> Result<History> {
+    let count = format!("--max-count={}", limit + 1);
+    let mut args = vec!["log", "--decorate=full", parse::LOG_FORMAT, &count];
+    // `--follow` takes a single file; a folder is listed without it.
+    if !path.ends_with('/') {
+        args.push("--follow");
+    }
+    args.extend(["--", path]);
+    log(root, &args, limit, false)
+}
+
+fn log(root: &Path, args: &[&str], limit: usize, with_graph: bool) -> Result<History> {
+    let output = match read(root, args) {
         Ok(output) => output,
         // A new repository has no commits yet.
         Err(GitError::Failed(message))
@@ -322,7 +339,11 @@ pub fn history(root: &Path, limit: usize, all: bool) -> Result<History> {
     let mut commits = parse::commits(&output);
     let truncated = commits.len() > limit;
     commits.truncate(limit);
-    let graph = graph::layout(&commits);
+    let graph = if with_graph {
+        graph::layout(&commits)
+    } else {
+        Vec::new()
+    };
     Ok(History {
         commits,
         graph,
@@ -452,6 +473,8 @@ pub fn action_args(action: &GitAction) -> Vec<Vec<String>> {
         // Without `HEAD`, so it also works before the first commit.
         GitAction::Unstage(paths) => one(with_paths(owned(&["reset", "-q"]), paths)),
         GitAction::UnstageAll => one(owned(&["reset", "-q"])),
+        // Written to `.gitignore` by `run`, no git command.
+        GitAction::Ignore(_) => Vec::new(),
         GitAction::Discard { tracked, .. } if tracked.is_empty() => Vec::new(),
         // Back to the staged version: staged changes are kept.
         GitAction::Discard { tracked, .. } => {
@@ -618,6 +641,9 @@ pub fn run(root: &Path, action: &GitAction, cancel: &AtomicBool) -> Result<Strin
             crate::cleanup::move_to_trash(&full).map_err(GitError::Io)?;
         }
     }
+    if let GitAction::Ignore(paths) = action {
+        append_ignore(root, paths)?;
+    }
     let input = match action {
         GitAction::Commit { message, .. } => Some(message.as_str()),
         _ => None,
@@ -628,6 +654,61 @@ pub fn run(root: &Path, action: &GitAction, cancel: &AtomicBool) -> Result<Strin
         log.push_str(output.trim_end());
     }
     Ok(log)
+}
+
+/// A `.gitignore` line matching exactly `path` (relative, `/`-separated) from
+/// the repository root: anchored with a leading `/`, with the characters git
+/// reads as patterns escaped. Directories keep their trailing `/`.
+pub fn ignore_pattern(path: &str) -> String {
+    let mut line = String::with_capacity(path.len() + 2);
+    line.push('/');
+    for ch in path.trim_start_matches('/').chars() {
+        if matches!(ch, '*' | '?' | '[' | ']' | '\\' | '!' | '#') {
+            line.push('\\');
+        }
+        line.push(ch);
+    }
+    // Trailing spaces are dropped by git unless escaped.
+    let trimmed = line.trim_end_matches(' ').len();
+    let spaces = line.len() - trimmed;
+    line.truncate(trimmed);
+    for _ in 0..spaces {
+        line.push_str("\\ ");
+    }
+    line
+}
+
+/// Append `paths` to the root `.gitignore`, skipping lines already there.
+fn append_ignore(root: &Path, paths: &[String]) -> Result<()> {
+    let file = root.join(".gitignore");
+    let existing = match std::fs::read_to_string(&file) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(GitError::Io(error)),
+    };
+    let known: std::collections::HashSet<&str> = existing.lines().map(str::trim_end).collect();
+    let mut added = String::new();
+    for path in paths {
+        let line = ignore_pattern(path);
+        if !known.contains(line.as_str()) && !added.lines().any(|l| l == line) {
+            added.push_str(&line);
+            added.push('\n');
+        }
+    }
+    if added.is_empty() {
+        return Ok(());
+    }
+    // Keep the file's line endings when it already uses CRLF.
+    let crlf = existing.contains("\r\n");
+    let mut text = existing;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push_str(if crlf { "\r\n" } else { "\n" });
+    }
+    if crlf {
+        added = added.replace('\n', "\r\n");
+    }
+    text.push_str(&added);
+    std::fs::write(&file, text).map_err(GitError::Io)
 }
 
 /// Check that a branch or tag name is one git accepts.
@@ -708,8 +789,8 @@ mod tests {
             run_with(&root, &["config", key, value], false, None, &[], None).unwrap();
         }
         std::fs::write(root.join("a.txt"), "one\n").unwrap();
-        let status = status(&root).unwrap();
-        assert!(status.changes[0].untracked());
+        let fresh = status(&root).unwrap();
+        assert!(fresh.changes[0].untracked());
         run(&root, &GitAction::StageAll, &never).unwrap();
         run(
             &root,
@@ -757,7 +838,40 @@ mod tests {
         )
         .unwrap();
         assert_eq!(overview_stashes(&root), 1);
+        std::fs::write(root.join("b.txt"), "b\n").unwrap();
+        run(&root, &GitAction::StageAll, &never).unwrap();
+        run(
+            &root,
+            &GitAction::Commit {
+                message: "second".into(),
+                amend: false,
+            },
+            &never,
+        )
+        .unwrap();
+        let file = file_history(&root, "a.txt", 10).unwrap();
+        assert_eq!(file.commits.len(), 1);
+        assert_eq!(file.commits[0].subject, "first line");
+        assert!(file.graph.is_empty());
+        assert_eq!(file_history(&root, "b.txt", 10).unwrap().commits.len(), 1);
+        std::fs::write(root.join("junk.log"), "x").unwrap();
+        run(&root, &GitAction::Ignore(vec!["junk.log".into()]), &never).unwrap();
+        run(&root, &GitAction::Ignore(vec!["junk.log".into()]), &never).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join(".gitignore")).unwrap(),
+            "/junk.log\n"
+        );
+        let after = status(&root).unwrap();
+        assert!(after.changes.iter().all(|c| c.path != "junk.log"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ignore_patterns_match_only_the_given_path() {
+        assert_eq!(ignore_pattern("build/"), "/build/");
+        assert_eq!(ignore_pattern("a b/c.txt"), "/a b/c.txt");
+        assert_eq!(ignore_pattern("#notes[1]*.md"), "/\\#notes\\[1\\]\\*.md");
+        assert_eq!(ignore_pattern("odd "), "/odd\\ ");
     }
 
     fn overview_stashes(root: &Path) -> usize {

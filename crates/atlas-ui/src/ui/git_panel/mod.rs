@@ -19,11 +19,14 @@ use gpui_component::{
     menu::{DropdownMenu as _, PopupMenuItem},
     v_flex, ActiveTheme, Disableable, Icon, Sizable,
 };
+use rows::TreeRow;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 mod render;
+mod rows;
 
 const HISTORY_PAGE: usize = 1500;
 const ROW_H: f32 = 28.;
@@ -174,11 +177,70 @@ fn short(id: &str) -> &str {
     }
 }
 
+/// The three groups of the Changes list.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Section {
+    Conflicts,
+    Staged,
+    Unstaged,
+}
+
+impl Section {
+    /// Collapse-state prefix of the section's folder tree.
+    const fn prefix(self) -> &'static str {
+        match self {
+            Self::Conflicts => "C:",
+            Self::Staged => "S:",
+            Self::Unstaged => "U:",
+        }
+    }
+}
+
 /// Rows of the Changes list.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum ChangeRow {
     Header(&'static str, usize),
-    File { staged: bool, index: usize },
+    Folder {
+        section: Section,
+        key: String,
+        label: String,
+        depth: u16,
+        /// Indexes of every change below the folder.
+        items: Arc<Vec<usize>>,
+        collapsed: bool,
+    },
+    /// `depth` is set in the tree view, which shows only the file name.
+    File {
+        staged: bool,
+        index: usize,
+        depth: Option<u16>,
+    },
+}
+
+/// Rows of the Branches list.
+#[derive(Clone)]
+enum BranchRow {
+    Header(String),
+    Folder {
+        key: String,
+        label: String,
+        depth: u16,
+        count: usize,
+        collapsed: bool,
+    },
+    /// `label` is set in the tree view: the last segment of the name.
+    Branch {
+        index: usize,
+        label: Option<String>,
+        depth: u16,
+    },
+}
+
+/// How the panel lays out its lists; kept in the settings.
+#[derive(Clone, Copy)]
+pub(crate) struct GitView {
+    pub(crate) branch_tree: bool,
+    pub(crate) change_tree: bool,
 }
 
 fn diff_lines(text: &str) -> Vec<(LineKind, SharedString)> {
@@ -227,6 +289,9 @@ fn diff_lines(text: &str) -> Vec<(LineKind, SharedString)> {
 
 /// `git …` as the user would type it, for the status line.
 fn action_label(action: &GitAction) -> String {
+    if let GitAction::Ignore(paths) = action {
+        return rust_i18n::t!("git_ignored", count = paths.len()).into_owned();
+    }
     let args = git::action_args(action);
     match args.first() {
         Some(first) => format!("git {}", first.join(" ")),
@@ -261,7 +326,20 @@ pub(crate) struct GitPanel {
     prompt_extra: Entity<InputState>,
     amend: bool,
     clear_commit: bool,
+    /// Push once the running commit succeeds.
+    push_after_commit: bool,
     stash_untracked: bool,
+    view: GitView,
+    /// Collapsed tree folders, keyed by tree prefix and folder path.
+    collapsed: HashSet<String>,
+    branch_filter: Entity<InputState>,
+    branch_terms: Vec<String>,
+    history_filter: Entity<InputState>,
+    history_terms: Vec<String>,
+    /// Commits shown by the History list: all of them, or the filter's matches.
+    history_rows: Arc<Vec<usize>>,
+    /// History of one path (`git log --follow`) instead of the branches.
+    history_path: Option<String>,
     list_scroll: UniformListScrollHandle,
     diff_scroll: UniformListScrollHandle,
     _subscriptions: Vec<Subscription>,
@@ -271,6 +349,7 @@ impl GitPanel {
     pub(crate) fn new(
         dir: PathBuf,
         parent: WeakEntity<AtlasApp>,
+        view: GitView,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -282,6 +361,10 @@ impl GitPanel {
         });
         let prompt_input = cx.new(|cx| InputState::new(window, cx));
         let prompt_extra = cx.new(|cx| InputState::new(window, cx));
+        let branch_filter =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr("git_filter_branches")));
+        let history_filter =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr("git_filter_commits")));
         let submit = |panel: &mut Self,
                       _: &Entity<InputState>,
                       event: &InputEvent,
@@ -294,6 +377,29 @@ impl GitPanel {
         let subscriptions = vec![
             cx.subscribe_in(&prompt_input, window, submit),
             cx.subscribe_in(&prompt_extra, window, submit),
+            cx.subscribe_in(
+                &branch_filter,
+                window,
+                |panel, input, event: &InputEvent, _, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        panel.branch_terms = rows::terms(&input.read(cx).value());
+                        panel.list_scroll = UniformListScrollHandle::new();
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe_in(
+                &history_filter,
+                window,
+                |panel, input, event: &InputEvent, _, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        panel.history_terms = rows::terms(&input.read(cx).value());
+                        panel.refilter_history();
+                        panel.list_scroll = UniformListScrollHandle::new();
+                        cx.notify();
+                    }
+                },
+            ),
             cx.subscribe_in(
                 &commit_input,
                 window,
@@ -334,7 +440,16 @@ impl GitPanel {
             prompt_extra,
             amend: false,
             clear_commit: false,
+            push_after_commit: false,
             stash_untracked: true,
+            view,
+            collapsed: HashSet::new(),
+            branch_filter,
+            branch_terms: Vec::new(),
+            history_filter,
+            history_terms: Vec::new(),
+            history_rows: Arc::default(),
+            history_path: None,
             list_scroll: UniformListScrollHandle::new(),
             diff_scroll: UniformListScrollHandle::new(),
             _subscriptions: subscriptions,
@@ -432,9 +547,13 @@ impl GitPanel {
         let generation = self.history_loads;
         self.history_loading = true;
         let (limit, all) = (self.history_limit, self.history_all);
+        let path = self.history_path.clone();
         Self::spawn_work(
             cx,
-            move || git::history(&root, limit, all),
+            move || match path {
+                Some(path) => git::file_history(&root, &path, limit),
+                None => git::history(&root, limit, all),
+            },
             move |panel, result, _| {
                 if panel.history_loads != generation {
                     return;
@@ -450,6 +569,7 @@ impl GitPanel {
                             .unwrap_or(1)
                             .max(1);
                         panel.history = Arc::new(history);
+                        panel.refilter_history();
                     }
                     Err(error) => panel.message = Some((true, error.to_string())),
                 }
@@ -640,6 +760,7 @@ impl GitPanel {
                     Err(error) => (true, error.to_string()),
                 });
                 let failed = panel.message.as_ref().is_some_and(|(failed, _)| *failed);
+                let push = committed && std::mem::take(&mut panel.push_after_commit) && !failed;
                 if committed && !failed {
                     panel.amend = false;
                     // Cleared on the next frame, which has the window it needs.
@@ -649,6 +770,9 @@ impl GitPanel {
                     panel.repo = Repo::Loading;
                 }
                 panel.after_change(cx);
+                if let Some(action) = push.then(|| panel.push_action(false)).flatten() {
+                    panel.execute(action, cx);
+                }
             },
         );
         cx.notify();
@@ -666,6 +790,11 @@ impl GitPanel {
     }
 
     fn commit(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_then(false, cx);
+    }
+
+    /// Commit the staged changes, and push them afterwards when `push` is set.
+    fn commit_then(&mut self, push: bool, cx: &mut Context<Self>) {
         if self.running.is_some() || self.root().is_none() {
             return;
         }
@@ -686,6 +815,8 @@ impl GitPanel {
             cx.notify();
             return;
         }
+        // An amended commit that was already pushed would need a forced push.
+        self.push_after_commit = push && !self.amend;
         self.execute(
             GitAction::Commit {
                 message,
@@ -881,23 +1012,188 @@ impl GitPanel {
             .filter(|&i| changes[i].unstaged.is_some() && !changes[i].conflicted())
             .collect();
         if !conflicts.is_empty() {
-            rows.push(ChangeRow::Header("git_conflicts", conflicts.len()));
-            rows.extend(conflicts.into_iter().map(|index| ChangeRow::File {
-                staged: false,
-                index,
-            }));
+            self.push_changes(&mut rows, "git_conflicts", Section::Conflicts, &conflicts);
         }
-        rows.push(ChangeRow::Header("git_staged", staged.len()));
-        rows.extend(staged.into_iter().map(|index| ChangeRow::File {
-            staged: true,
-            index,
-        }));
-        rows.push(ChangeRow::Header("git_unstaged", unstaged.len()));
-        rows.extend(unstaged.into_iter().map(|index| ChangeRow::File {
-            staged: false,
-            index,
-        }));
+        self.push_changes(&mut rows, "git_staged", Section::Staged, &staged);
+        self.push_changes(&mut rows, "git_unstaged", Section::Unstaged, &unstaged);
         rows
+    }
+
+    fn push_changes(
+        &self,
+        rows: &mut Vec<ChangeRow>,
+        key: &'static str,
+        section: Section,
+        list: &[usize],
+    ) {
+        rows.push(ChangeRow::Header(key, list.len()));
+        let staged = section == Section::Staged;
+        if !self.view.change_tree {
+            rows.extend(list.iter().map(|&index| ChangeRow::File {
+                staged,
+                index,
+                depth: None,
+            }));
+            return;
+        }
+        let changes = &self.overview.status.changes;
+        let items: Vec<(usize, &str)> = list
+            .iter()
+            .map(|&i| (i, changes[i].path.as_str()))
+            .collect();
+        for row in rows::tree(section.prefix(), &items, &self.collapsed, false, true) {
+            rows.push(match row {
+                TreeRow::Folder {
+                    key,
+                    label,
+                    depth,
+                    items,
+                    collapsed,
+                } => ChangeRow::Folder {
+                    section,
+                    key,
+                    label,
+                    depth,
+                    items: Arc::new(items),
+                    collapsed,
+                },
+                TreeRow::Leaf { index, depth, .. } => ChangeRow::File {
+                    staged,
+                    index,
+                    depth: Some(depth),
+                },
+            });
+        }
+    }
+
+    fn branch_rows(&self) -> Vec<BranchRow> {
+        let branches = &self.overview.branches;
+        let terms = &self.branch_terms;
+        let pick = |remote: bool| -> Vec<(usize, &str)> {
+            branches
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| {
+                    b.remote == remote && rows::matches_all(&b.name.to_lowercase(), terms)
+                })
+                .map(|(i, b)| (i, b.name.as_str()))
+                .collect()
+        };
+        let (local, remote) = (pick(false), pick(true));
+        let mut out = vec![BranchRow::Header(format!(
+            "{} · {}",
+            tr("git_local_branches"),
+            local.len()
+        ))];
+        self.push_branches(&mut out, "L:", &local);
+        if !remote.is_empty() {
+            out.push(BranchRow::Header(format!(
+                "{} · {}",
+                tr("git_remote_branches"),
+                remote.len()
+            )));
+            self.push_branches(&mut out, "R:", &remote);
+        }
+        out
+    }
+
+    fn push_branches(&self, out: &mut Vec<BranchRow>, prefix: &str, items: &[(usize, &str)]) {
+        if !self.view.branch_tree {
+            out.extend(items.iter().map(|&(index, _)| BranchRow::Branch {
+                index,
+                label: None,
+                depth: 0,
+            }));
+            return;
+        }
+        // While filtering, every folder with a match is open.
+        let filtering = !self.branch_terms.is_empty();
+        for row in rows::tree(prefix, items, &self.collapsed, filtering, false) {
+            out.push(match row {
+                TreeRow::Folder {
+                    key,
+                    label,
+                    depth,
+                    items,
+                    collapsed,
+                } => BranchRow::Folder {
+                    key,
+                    label,
+                    depth,
+                    count: items.len(),
+                    collapsed,
+                },
+                TreeRow::Leaf {
+                    index,
+                    label,
+                    depth,
+                } => BranchRow::Branch {
+                    index,
+                    label: Some(label),
+                    depth,
+                },
+            });
+        }
+    }
+
+    fn toggle_folder(&mut self, key: &str, cx: &mut Context<Self>) {
+        if !self.collapsed.remove(key) {
+            self.collapsed.insert(key.to_owned());
+        }
+        cx.notify();
+    }
+
+    /// Switch a list between tree and flat view and remember the choice.
+    fn set_view(&mut self, view: GitView, cx: &mut Context<Self>) {
+        self.view = view;
+        self.list_scroll = UniformListScrollHandle::new();
+        let _ = self.parent.update(cx, |app, _| {
+            let settings = &mut app.state.settings;
+            if (settings.git_branch_tree, settings.git_change_tree)
+                != (view.branch_tree, view.change_tree)
+            {
+                settings.git_branch_tree = view.branch_tree;
+                settings.git_change_tree = view.change_tree;
+                atlas_core::util::config::save_settings(settings);
+            }
+        });
+        cx.notify();
+    }
+
+    fn refilter_history(&mut self) {
+        let commits = &self.history.commits;
+        self.history_rows = Arc::new(
+            (0..commits.len())
+                .filter(|&i| rows::commit_matches(&commits[i], &self.history_terms))
+                .collect(),
+        );
+    }
+
+    /// The graph only makes sense over the whole, unfiltered history.
+    fn history_graph(&self) -> bool {
+        self.history_path.is_none() && self.history_terms.is_empty()
+    }
+
+    /// Show the commits that touched `path` in the History tab.
+    fn show_file_history(&mut self, path: String, cx: &mut Context<Self>) {
+        self.history_path = Some(path);
+        self.open_history(cx);
+    }
+
+    fn clear_file_history(&mut self, cx: &mut Context<Self>) {
+        self.history_path = None;
+        self.open_history(cx);
+    }
+
+    fn open_history(&mut self, cx: &mut Context<Self>) {
+        self.tab = Tab::History;
+        self.history_limit = HISTORY_PAGE;
+        self.history = Arc::default();
+        self.history_rows = Arc::default();
+        self.list_scroll = UniformListScrollHandle::new();
+        self.select(Selection::None, cx);
+        self.load_history(cx);
+        cx.notify();
     }
 
     fn reveal(&mut self, path: &str, cx: &mut Context<Self>) {

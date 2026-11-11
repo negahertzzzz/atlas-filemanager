@@ -72,6 +72,53 @@ fn section_header(text: String, c: &Colors) -> AnyElement {
         .into_any_element()
 }
 
+/// Left padding of a tree row at `depth`.
+fn indent(depth: u16) -> f32 {
+    8. + 16. * f32::from(depth)
+}
+
+/// Disclosure caret and folder icon of a tree folder row.
+fn folder_icons(collapsed: bool, c: &Colors) -> Div {
+    let (caret, folder) = if collapsed {
+        (AtlasIcon::CaretRight, AtlasIcon::Folder)
+    } else {
+        (AtlasIcon::CaretDown, AtlasIcon::FolderOpen)
+    };
+    h_flex()
+        .flex_none()
+        .gap_1()
+        .items_center()
+        .child(
+            Icon::empty()
+                .path(caret.path())
+                .size(rem_px(12.))
+                .text_color(c.muted),
+        )
+        .child(
+            Icon::empty()
+                .path(folder.path())
+                .size(rem_px(14.))
+                .text_color(c.muted),
+        )
+}
+
+/// Tree/list switch of a list toolbar.
+fn view_toggle(id: &'static str, tree: bool) -> Button {
+    Button::new(id)
+        .ghost()
+        .small()
+        .icon(icon(if tree {
+            AtlasIcon::List
+        } else {
+            AtlasIcon::TreeStructure
+        }))
+        .tooltip(tr(if tree {
+            "git_view_list"
+        } else {
+            "git_view_tree"
+        }))
+}
+
 fn centered(content: impl IntoElement) -> AnyElement {
     v_flex()
         .flex_1()
@@ -496,6 +543,8 @@ impl GitPanel {
             .filter(|ch| ch.unstaged.is_some() && !ch.conflicted())
             .count();
         let busy = self.busy();
+        let weak = cx.entity().downgrade();
+        let can_push = self.push_action(false).is_some();
         let commit_box = v_flex()
             .gap_2()
             .p_3()
@@ -514,6 +563,17 @@ impl GitPanel {
                             .on_click(cx.listener(|p, checked: &bool, window, cx| {
                                 p.set_amend(*checked, window, cx);
                             })),
+                    )
+                    .child(
+                        view_toggle("git-change-view", self.view.change_tree).on_click(
+                            cx.listener(|p, _, _, cx| {
+                                let view = GitView {
+                                    change_tree: !p.view.change_tree,
+                                    ..p.view
+                                };
+                                p.set_view(view, cx);
+                            }),
+                        ),
                     )
                     .child(div().flex_1())
                     .child(
@@ -549,13 +609,29 @@ impl GitPanel {
                             .tooltip(tr("git_commit_hint"))
                             .disabled(busy || (staged == 0 && !self.amend))
                             .on_click(cx.listener(|p, _, w, cx| p.commit(w, cx))),
+                    )
+                    .child(
+                        Button::new("git-commit-more")
+                            .primary()
+                            .small()
+                            .icon(icon(AtlasIcon::CaretDown))
+                            .tooltip(tr("git_commit_more"))
+                            .disabled(busy || staged == 0 || self.amend || !can_push)
+                            .dropdown_menu(move |menu, _, _| {
+                                let weak = weak.clone();
+                                menu.item(PopupMenuItem::new(tr("git_commit_and_push")).on_click(
+                                    move |_, _, cx| {
+                                        let _ = weak.update(cx, |p, cx| p.commit_then(true, cx));
+                                    },
+                                ))
+                            }),
                     ),
             );
         let rows = Arc::new(self.change_rows());
         let entity = cx.entity();
         let list = uniform_list("git-changes", rows.len(), move |range, _, cx| {
             range
-                .map(|i| Self::change_row(&entity, rows[i], i, cx))
+                .map(|i| Self::change_row(&entity, rows[i].clone(), i, cx))
                 .collect()
         })
         .track_scroll(&self.list_scroll)
@@ -575,13 +651,20 @@ impl GitPanel {
 
     fn change_row(panel: &Entity<Self>, row: ChangeRow, ix: usize, cx: &mut App) -> AnyElement {
         let c = colors(cx);
-        let this = panel.read(cx);
-        let (staged, index) = match row {
+        let (staged, index, depth) = match row {
             ChangeRow::Header(key, count) => {
                 return section_header(format!("{} · {count}", tr(key)), &c);
             }
-            ChangeRow::File { staged, index } => (staged, index),
+            folder @ ChangeRow::Folder { .. } => {
+                return Self::change_folder_row(panel, folder, ix, cx);
+            }
+            ChangeRow::File {
+                staged,
+                index,
+                depth,
+            } => (staged, index, depth),
         };
+        let this = panel.read(cx);
         let Some(change) = this.overview.status.changes.get(index) else {
             return div().into_any_element();
         };
@@ -693,7 +776,8 @@ impl GitPanel {
             .id(("git-change", ix))
             .w_full()
             .h(rem_px(ROW_H))
-            .px_2()
+            .pl(rem_px(indent(depth.unwrap_or(0))))
+            .pr_2()
             .gap_2()
             .items_center()
             .rounded_md()
@@ -713,19 +797,128 @@ impl GitPanel {
                     .child(
                         div()
                             .flex_none()
-                            .max_w(relative(0.7))
+                            .max_w(relative(if depth.is_some() { 1. } else { 0.7 }))
                             .truncate()
                             .text_sm()
                             .child(name),
                     )
+                    // The tree already shows the folder.
+                    .when(depth.is_none(), |d| {
+                        d.child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_xs()
+                                .text_color(c.muted)
+                                .child(dir),
+                        )
+                    }),
+            )
+            .child(buttons)
+            .into_any_element()
+    }
+
+    /// A folder of the Changes tree: toggles on click, and stages, unstages
+    /// or discards everything below it.
+    fn change_folder_row(
+        panel: &Entity<Self>,
+        row: ChangeRow,
+        ix: usize,
+        cx: &mut App,
+    ) -> AnyElement {
+        let ChangeRow::Folder {
+            section,
+            key,
+            label,
+            depth,
+            items,
+            collapsed,
+        } = row
+        else {
+            return div().into_any_element();
+        };
+        let c = colors(cx);
+        let this = panel.read(cx);
+        let busy = this.running.is_some();
+        let changes = &this.overview.status.changes;
+        let (mut tracked, mut untracked) = (Vec::new(), Vec::new());
+        for change in items.iter().filter_map(|&i| changes.get(i)) {
+            if change.untracked() {
+                untracked.push(change.path.clone());
+            } else {
+                tracked.push(change.path.clone());
+            }
+        }
+        let all: Vec<String> = tracked.iter().chain(&untracked).cloned().collect();
+        let weak = panel.downgrade();
+        let send = move |action: GitAction| {
+            let weak = weak.clone();
+            move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                // The row underneath toggles the folder.
+                cx.stop_propagation();
+                let _ = weak.update(cx, |p, cx| p.request(action.clone(), cx));
+            }
+        };
+        let mut buttons = h_flex().flex_none().gap_0p5();
+        match section {
+            Section::Staged => {
+                buttons = buttons.child(
+                    Button::new(("git-folder-unstage", ix))
+                        .ghost()
+                        .xsmall()
+                        .icon(icon(AtlasIcon::Minus))
+                        .tooltip(tr("git_unstage_folder"))
+                        .disabled(busy)
+                        .on_click(send(GitAction::Unstage(all))),
+                );
+            }
+            Section::Unstaged => {
+                buttons = buttons
                     .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_xs()
-                            .text_color(c.muted)
-                            .child(dir),
-                    ),
+                        Button::new(("git-folder-discard", ix))
+                            .ghost()
+                            .xsmall()
+                            .icon(icon(AtlasIcon::ArrowCounterClockwise))
+                            .tooltip(tr("git_discard_folder"))
+                            .disabled(busy)
+                            .on_click(send(GitAction::Discard { tracked, untracked })),
+                    )
+                    .child(
+                        Button::new(("git-folder-stage", ix))
+                            .ghost()
+                            .xsmall()
+                            .icon(icon(AtlasIcon::Plus))
+                            .tooltip(tr("git_stage_folder"))
+                            .disabled(busy)
+                            .on_click(send(GitAction::Stage(all))),
+                    );
+            }
+            Section::Conflicts => {}
+        }
+        let count = items.len();
+        let weak = panel.downgrade();
+        h_flex()
+            .id(("git-change-folder", ix))
+            .w_full()
+            .h(rem_px(ROW_H))
+            .pl(rem_px(indent(depth)))
+            .pr_2()
+            .gap_1p5()
+            .items_center()
+            .rounded_md()
+            .cursor_pointer()
+            .hover(|s| s.bg(c.fg.opacity(0.05)))
+            .on_click(move |_, _, cx| {
+                let _ = weak.update(cx, |p, cx| p.toggle_folder(&key, cx));
+            })
+            .child(folder_icons(collapsed, &c))
+            .child(div().flex_1().min_w_0().truncate().text_sm().child(label))
+            .child(
+                div()
+                    .flex_none()
+                    .text_xs()
+                    .text_color(c.muted)
+                    .child(count.to_string()),
             )
             .child(buttons)
             .into_any_element()
@@ -733,8 +926,35 @@ impl GitPanel {
 
     fn history_list(&self, c: &Colors, cx: &mut Context<Self>) -> AnyElement {
         let history = self.history.clone();
-        let toolbar = Self::toolbar(c)
-            .child(
+        let rows = self.history_rows.clone();
+        let filtering = !self.history_terms.is_empty();
+        let mut toolbar = Self::toolbar(c);
+        toolbar = match &self.history_path {
+            Some(path) => toolbar
+                .child(
+                    Icon::empty()
+                        .path(AtlasIcon::ClockCounterClockwise.path())
+                        .size(rem_px(14.))
+                        .text_color(c.primary),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .max_w(relative(0.4))
+                        .truncate()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(path.clone()),
+                )
+                .child(
+                    Button::new("git-history-all")
+                        .ghost()
+                        .xsmall()
+                        .icon(icon(AtlasIcon::X))
+                        .tooltip(tr("git_history_all"))
+                        .on_click(cx.listener(|p, _, _, cx| p.clear_file_history(cx))),
+                ),
+            None => toolbar.child(
                 Checkbox::new("git-all-branches")
                     .label(tr("git_all_branches"))
                     .checked(self.history_all)
@@ -744,49 +964,61 @@ impl GitPanel {
                         p.load_history(cx);
                         cx.notify();
                     })),
-            )
-            .child(div().flex_1())
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(c.muted)
-                    .child(if self.history_loading {
-                        tr("git_loading")
-                    } else {
-                        rust_i18n::t!("git_commit_total", count = history.commits.len())
-                            .into_owned()
-                    }),
-            )
-            .when(history.truncated, |bar| {
-                bar.child(
-                    Button::new("git-more-history")
-                        .ghost()
-                        .small()
-                        .label(tr("git_load_more"))
-                        .disabled(self.history_loading)
-                        .on_click(cx.listener(|p, _, _, cx| {
-                            p.history_limit += HISTORY_PAGE;
-                            p.load_history(cx);
-                            cx.notify();
-                        })),
+            ),
+        };
+        let total = history.commits.len();
+        toolbar =
+            toolbar
+                .child(
+                    div().flex_1().min_w_0().child(
+                        crate::ui::text_input::bordered(&self.history_filter)
+                            .small()
+                            .cleanable(true),
+                    ),
                 )
-            });
+                .child(div().flex_none().text_xs().text_color(c.muted).child(
+                    if self.history_loading {
+                        tr("git_loading")
+                    } else if filtering {
+                        format!("{} / {total}", rows.len())
+                    } else {
+                        rust_i18n::t!("git_commit_total", count = total).into_owned()
+                    },
+                ))
+                .when(history.truncated, |bar| {
+                    bar.child(
+                        Button::new("git-more-history")
+                            .ghost()
+                            .small()
+                            .label(tr("git_load_more"))
+                            .disabled(self.history_loading)
+                            .on_click(cx.listener(|p, _, _, cx| {
+                                p.history_limit += HISTORY_PAGE;
+                                p.load_history(cx);
+                                cx.notify();
+                            })),
+                    )
+                });
         let entity = cx.entity();
-        let count = history.commits.len();
-        let body = if count == 0 {
+        let graph = self.history_graph();
+        let body = if rows.is_empty() {
             centered(
                 div()
                     .text_sm()
                     .text_color(c.muted)
                     .child(if self.history_loading {
                         tr("git_loading")
+                    } else if filtering && total > 0 {
+                        tr("git_no_matches")
                     } else {
                         tr("git_no_commits")
                     }),
             )
         } else {
-            uniform_list("git-history", count, move |range, _, cx| {
-                range.map(|i| Self::history_row(&entity, i, cx)).collect()
+            uniform_list("git-history", rows.len(), move |range, _, cx| {
+                range
+                    .map(|i| Self::history_row(&entity, rows[i], i, graph, cx))
+                    .collect()
             })
             .track_scroll(&self.list_scroll)
             .flex_1()
@@ -800,10 +1032,17 @@ impl GitPanel {
             .into_any_element()
     }
 
-    fn history_row(panel: &Entity<Self>, ix: usize, cx: &mut App) -> AnyElement {
+    /// Commit `index` of the history, shown as list row `ix`.
+    fn history_row(
+        panel: &Entity<Self>,
+        index: usize,
+        ix: usize,
+        graph: bool,
+        cx: &mut App,
+    ) -> AnyElement {
         let c = colors(cx);
         let this = panel.read(cx);
-        let Some(commit) = this.history.commits.get(ix) else {
+        let Some(commit) = this.history.commits.get(index) else {
             return div().into_any_element();
         };
         let selected = matches!(&this.selection, Selection::Commit { id, .. } if *id == commit.id);
@@ -830,11 +1069,17 @@ impl GitPanel {
                     );
                 });
             })
-            .child(graph_cell(
-                this.history.graph.get(ix),
-                this.graph_width,
-                c.graph,
-            ))
+            .map(|row| {
+                if graph {
+                    row.child(graph_cell(
+                        this.history.graph.get(index),
+                        this.graph_width,
+                        c.graph,
+                    ))
+                } else {
+                    row.pl_3()
+                }
+            })
             .children(ref_chips(&commit.refs, &c))
             .child(
                 div()
@@ -878,36 +1123,29 @@ impl GitPanel {
                         p.open_prompt(Prompt::NewBranch { start: None }, w, cx);
                     })),
             )
-            .child(div().flex_1());
-        let branches = &self.overview.branches;
-        let local: Vec<usize> = (0..branches.len())
-            .filter(|&i| !branches[i].remote)
-            .collect();
-        let remote: Vec<usize> = (0..branches.len())
-            .filter(|&i| branches[i].remote)
-            .collect();
-        let mut rows: Vec<Option<usize>> = Vec::new();
-        let mut headers: Vec<String> = Vec::new();
-        headers.push(format!("{} · {}", tr("git_local_branches"), local.len()));
-        rows.push(None);
-        rows.extend(local.into_iter().map(Some));
-        if !remote.is_empty() {
-            headers.push(format!("{} · {}", tr("git_remote_branches"), remote.len()));
-            rows.push(None);
-            rows.extend(remote.into_iter().map(Some));
-        }
-        let rows = Arc::new(rows);
-        let headers = Arc::new(headers);
+            .child(
+                div().flex_1().min_w_0().child(
+                    crate::ui::text_input::bordered(&self.branch_filter)
+                        .small()
+                        .cleanable(true),
+                ),
+            )
+            .child(
+                view_toggle("git-branch-view", self.view.branch_tree).on_click(cx.listener(
+                    |p, _, _, cx| {
+                        let view = GitView {
+                            branch_tree: !p.view.branch_tree,
+                            ..p.view
+                        };
+                        p.set_view(view, cx);
+                    },
+                )),
+            );
+        let rows = Arc::new(self.branch_rows());
         let entity = cx.entity();
         let list = uniform_list("git-branches", rows.len(), move |range, _, cx| {
             range
-                .map(|i| match rows[i] {
-                    Some(index) => Self::branch_row(&entity, index, i, cx),
-                    None => {
-                        let header = rows[..i].iter().filter(|r| r.is_none()).count();
-                        section_header(headers[header].clone(), &colors(cx))
-                    }
-                })
+                .map(|i| Self::branch_list_row(&entity, rows[i].clone(), i, cx))
                 .collect()
         })
         .track_scroll(&self.list_scroll)
@@ -921,7 +1159,64 @@ impl GitPanel {
             .into_any_element()
     }
 
-    fn branch_row(panel: &Entity<Self>, index: usize, ix: usize, cx: &mut App) -> AnyElement {
+    fn branch_list_row(
+        panel: &Entity<Self>,
+        row: BranchRow,
+        ix: usize,
+        cx: &mut App,
+    ) -> AnyElement {
+        match row {
+            BranchRow::Header(text) => section_header(text, &colors(cx)),
+            BranchRow::Folder {
+                key,
+                label,
+                depth,
+                count,
+                collapsed,
+            } => {
+                let c = colors(cx);
+                let weak = panel.downgrade();
+                h_flex()
+                    .id(("git-branch-folder", ix))
+                    .w_full()
+                    .h(rem_px(ROW_H))
+                    .pl(rem_px(indent(depth)))
+                    .pr_2()
+                    .gap_1p5()
+                    .items_center()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(c.fg.opacity(0.05)))
+                    .on_click(move |_, _, cx| {
+                        let _ = weak.update(cx, |p, cx| p.toggle_folder(&key, cx));
+                    })
+                    .child(folder_icons(collapsed, &c))
+                    .child(div().flex_1().min_w_0().truncate().text_sm().child(label))
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_xs()
+                            .text_color(c.muted)
+                            .child(count.to_string()),
+                    )
+                    .into_any_element()
+            }
+            BranchRow::Branch {
+                index,
+                label,
+                depth,
+            } => Self::branch_row(panel, index, label, depth, ix, cx),
+        }
+    }
+
+    fn branch_row(
+        panel: &Entity<Self>,
+        index: usize,
+        label: Option<String>,
+        depth: u16,
+        ix: usize,
+        cx: &mut App,
+    ) -> AnyElement {
         let c = colors(cx);
         let this = panel.read(cx);
         let Some(branch) = this.overview.branches.get(index) else {
@@ -944,7 +1239,8 @@ impl GitPanel {
             .id(("git-branch", ix))
             .w_full()
             .h(rem_px(ROW_H))
-            .px_2()
+            .pl(rem_px(indent(depth)))
+            .pr_2()
             .gap_2()
             .items_center()
             .rounded_md()
@@ -973,7 +1269,7 @@ impl GitPanel {
                     .truncate()
                     .text_sm()
                     .when(branch.current, |d| d.font_weight(FontWeight::SEMIBOLD))
-                    .child(branch.name.clone()),
+                    .child(label.unwrap_or_else(|| branch.name.clone())),
             )
             .child(
                 div()
@@ -1398,6 +1694,29 @@ impl GitPanel {
                         .label(tr("git_show_in_folder"))
                         .on_click(cx.listener(move |p, _, _, cx| p.reveal(&reveal, cx))),
                 );
+                if change.untracked() {
+                    actions = actions.child(
+                        self.action_button(
+                            "git-d-ignore",
+                            tr("git_ignore"),
+                            GitAction::Ignore(vec![path.clone()]),
+                            cx,
+                        )
+                        .ghost(),
+                    );
+                } else {
+                    let history_path = path.clone();
+                    actions = actions.child(
+                        Button::new("git-d-history")
+                            .ghost()
+                            .small()
+                            .icon(icon(AtlasIcon::ClockCounterClockwise))
+                            .label(tr("git_file_history"))
+                            .on_click(cx.listener(move |p, _, _, cx| {
+                                p.show_file_history(history_path.clone(), cx);
+                            })),
+                    );
+                }
                 let subtitle = match &change.original {
                     Some(original) => {
                         rust_i18n::t!("git_renamed_from", path = original).into_owned()
@@ -1770,6 +2089,17 @@ impl GitPanel {
                     }
                 })),
         );
+        let copy_name = name.clone();
+        actions = actions.child(
+            Button::new("git-b-copy")
+                .ghost()
+                .small()
+                .icon(icon(AtlasIcon::Copy))
+                .tooltip(tr("git_copy_name"))
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy_name.clone()));
+                }),
+        );
         v_flex()
             .gap_3()
             .child(Self::detail_header(branch.name.clone(), subtitle, c))
@@ -1829,6 +2159,15 @@ impl GitPanel {
                     .item(item("git_reset_hard", ResetMode::Hard))
             });
         let copy_id = commit.id.clone();
+        let file_history = file.map(|path| {
+            let path = path.to_owned();
+            Button::new("git-c-file-history")
+                .ghost()
+                .small()
+                .icon(icon(AtlasIcon::ClockCounterClockwise))
+                .label(tr("git_file_history"))
+                .on_click(cx.listener(move |p, _, _, cx| p.show_file_history(path.clone(), cx)))
+        });
         let actions = h_flex()
             .gap_2()
             .flex_wrap()
@@ -1898,7 +2237,8 @@ impl GitPanel {
                     .on_click(move |_, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(copy_id.clone()));
                     }),
-            );
+            )
+            .children(file_history);
         let subtitle = format!(
             "{} · {} <{}> · {}",
             commit.short_id(),
@@ -2303,7 +2643,12 @@ impl AtlasApp {
     pub(crate) fn mount_pending_git(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(dir) = self.pending_git.take() {
             let parent = cx.entity().downgrade();
-            let panel = cx.new(|cx| GitPanel::new(dir, parent, window, cx));
+            let settings = &self.state.settings;
+            let view = GitView {
+                branch_tree: settings.git_branch_tree,
+                change_tree: settings.git_change_tree,
+            };
+            let panel = cx.new(|cx| GitPanel::new(dir, parent, view, window, cx));
             let focus = panel.read(cx).focus.clone();
             window.focus(&focus, cx);
             self.git_panel = Some(panel);

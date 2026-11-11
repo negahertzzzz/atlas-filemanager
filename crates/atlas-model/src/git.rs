@@ -255,6 +255,8 @@ pub enum GitAction {
         tracked: Vec<String>,
         untracked: Vec<String>,
     },
+    /// Add untracked paths to the repository's `.gitignore`.
+    Ignore(Vec<String>),
     /// Settle conflicted paths with our or their version and stage them.
     Resolve {
         paths: Vec<String>,

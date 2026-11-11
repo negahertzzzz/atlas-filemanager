@@ -142,6 +142,10 @@ pub struct Settings {
     /// Built-in Git integration: branch chip on repository folders and the
     /// Git panel. Off until the user turns it on.
     pub git_integration: bool,
+    /// Git panel: branches grouped into folders by `/` (`feat/x` under `feat`).
+    pub git_branch_tree: bool,
+    /// Git panel: changed files grouped into folders instead of a flat list.
+    pub git_change_tree: bool,
 }
 
 /// Convert / Actions ring preferences. Unknown action ids (from a newer or
@@ -288,6 +292,8 @@ impl Default for Settings {
             vim_mode: false,
             ring: RingPrefs::default(),
             git_integration: false,
+            git_branch_tree: true,
+            git_change_tree: false,
         }
     }
 }
@@ -388,6 +394,7 @@ mod tests {
         assert!(!old.git_integration);
         let on: Settings = serde_json::from_str(r#"{"git_integration": true}"#).unwrap();
         assert!(on.git_integration);
+        assert!(on.git_branch_tree && !on.git_change_tree);
     }
 
     #[test]
