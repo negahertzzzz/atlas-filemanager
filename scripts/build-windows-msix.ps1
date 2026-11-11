@@ -43,7 +43,13 @@ if (-not $SkipBuild) {
             throw "Cargo release build failed with exit code $LASTEXITCODE."
         }
         # Editions build different binaries for the same version: keep both symbol sets.
-        & (Join-Path $repo "scripts\archive-symbols.ps1") -Version "$sourceVersion-$Edition"
+        # Symbol archiving is a maintainer step; the script is not part of the public tree.
+        $archiveSymbols = Join-Path $repo "scripts\archive-symbols.ps1"
+        if (Test-Path -LiteralPath $archiveSymbols) {
+            & $archiveSymbols -Version "$sourceVersion-$Edition"
+        } else {
+            Write-Warning "archive-symbols.ps1 not found; skipping symbol archiving."
+        }
     } finally {
         Pop-Location
     }

@@ -149,6 +149,57 @@ pub trait ArchiveProvider: Send + Sync {
     fn archive_path(&self) -> &Path;
 }
 
+/// Largest `Zone.Identifier` stream copied from an archive. Real ones are a
+/// few hundred bytes; anything bigger is not a Mark-of-the-Web.
+#[cfg(windows)]
+const MAX_ZONE_IDENTIFIER: u64 = 64 * 1024;
+
+/// Copy the archive's Mark-of-the-Web (`Zone.Identifier` stream) onto a file
+/// that was extracted from it, as Explorer does. Without it an executable or
+/// Office document downloaded inside a zip would run without SmartScreen or
+/// Protected View once Atlas extracts it. Best effort; a no-op off Windows and
+/// for archives that carry no mark.
+pub fn propagate_mark_of_the_web(archive: &Path, extracted: &Path) {
+    #[cfg(windows)]
+    {
+        use std::io::Read as _;
+        fn zone_stream(path: &Path) -> PathBuf {
+            let mut stream = path.as_os_str().to_os_string();
+            stream.push(":Zone.Identifier");
+            PathBuf::from(stream)
+        }
+        let Ok(file) = std::fs::File::open(zone_stream(archive)) else {
+            return;
+        };
+        let mut zone = Vec::new();
+        if file.take(MAX_ZONE_IDENTIFIER + 1).read_to_end(&mut zone).is_err()
+            || zone.is_empty()
+            || zone.len() as u64 > MAX_ZONE_IDENTIFIER
+        {
+            return;
+        }
+        #[allow(clippy::disallowed_methods)] // reason: extraction runs on blocking workers
+        if let Err(error) = std::fs::write(zone_stream(extracted), &zone) {
+            tracing::debug!(%error, ?extracted, "could not propagate Mark-of-the-Web");
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = (archive, extracted);
+}
+
+/// [`ArchiveProvider::extract_to`] for files that leave Atlas (opened with
+/// their default app, dragged out, copied out): keeps the archive's
+/// Mark-of-the-Web on the extracted copy.
+pub fn extract_for_export(
+    provider: &dyn ArchiveProvider,
+    inner_path: &Path,
+    dest: &Path,
+) -> anyhow::Result<()> {
+    provider.extract_to(inner_path, dest)?;
+    propagate_mark_of_the_web(provider.archive_path(), dest);
+    Ok(())
+}
+
 // ─── Extension detection ─────────────────────────────────────────────────────
 
 /// Detected archive format (used by `archive_format` and `open`).

@@ -1126,6 +1126,8 @@ pub(crate) fn extract_entry_recursive(
                     }
                 }
             }
+            drop(out);
+            atlas_core::fs::archive::propagate_mark_of_the_web(provider.archive_path(), dest_path);
             total
         }
     }

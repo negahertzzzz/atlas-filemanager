@@ -2054,6 +2054,20 @@ impl App {
                 Action::ToggleVimMode,
             ),
             CommandDef::new(
+                "view.theme-toggle",
+                rust_i18n::t!("cmd_theme_toggle_title"),
+                rust_i18n::t!("cmd_theme_toggle_desc"),
+                AtlasIcon::Palette,
+                Action::ToggleThemeAppearance,
+            ),
+            CommandDef::new(
+                "view.theme-follow-system",
+                rust_i18n::t!("cmd_theme_follow_system_title"),
+                rust_i18n::t!("cmd_theme_follow_system_desc"),
+                AtlasIcon::Monitor,
+                Action::ToggleThemeFollowSystem,
+            ),
+            CommandDef::new(
                 "view.inspector",
                 rust_i18n::t!("cmd_view_inspector_title"),
                 rust_i18n::t!("cmd_view_inspector_desc"),

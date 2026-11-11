@@ -1480,6 +1480,19 @@ impl App {
                 }
                 Action::SetTheme(name) => self.set_theme(name),
                 Action::PreviewTheme(name) => self.preview_theme(name),
+                Action::ToggleThemeAppearance => self.toggle_theme_appearance(),
+                Action::ToggleThemeFollowSystem => {
+                    let follow = !self.theme_follows_system();
+                    self.set_theme_follow_system(follow);
+                    self.toast_info(
+                        rust_i18n::t!(if follow {
+                            "theme_follow_system_on"
+                        } else {
+                            "theme_follow_system_off"
+                        })
+                        .to_string(),
+                    );
+                }
                 Action::SwitchProfile(idx) => self.switch_profile(idx),
                 Action::CreateProfile(name) => self.create_profile(name),
                 Action::RenameActiveProfile(name) => self.rename_active_profile(name),
@@ -2165,11 +2178,16 @@ pub(crate) fn spawn_terminal(dir: &std::path::Path) {
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd")
-            .arg("/c")
-            .arg("start")
-            .arg("cmd")
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+        // Launch the system cmd.exe by absolute path in its own console. The
+        // old `cmd /c start cmd` let cmd.exe resolve "cmd" in the opened folder
+        // first, so a planted cmd.bat/cmd.com there ran instead of the shell.
+        let system_root = std::env::var_os("SystemRoot")
+            .map_or_else(|| std::path::PathBuf::from(r"C:\Windows"), std::path::PathBuf::from);
+        let _ = std::process::Command::new(system_root.join("System32").join("cmd.exe"))
             .current_dir(dir)
+            .creation_flags(CREATE_NEW_CONSOLE)
             .spawn();
     }
     #[cfg(target_os = "macos")]

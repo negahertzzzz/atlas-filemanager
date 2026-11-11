@@ -15,7 +15,7 @@
 #![allow(unsafe_code)]
 // reason: COM vtable, IDropTargetHelper and raw Win32 calls are inherently unsafe.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use windows::core::{implement, Result};
@@ -129,8 +129,17 @@ pub(super) unsafe fn read_virtual_files(data_obj: &IDataObject) -> Vec<PathBuf> 
         return Vec::new();
     }
 
-    let count = (ptr as *const u32).read() as usize;
-    let first_desc = ptr.add(std::mem::size_of::<u32>()) as *const FILEDESCRIPTORW;
+    // The drag source controls both the item count and the buffer: never read
+    // past what the HGLOBAL actually holds.
+    let available = GlobalSize(desc_medium.u.hGlobal);
+    let header = std::mem::size_of::<u32>();
+    let count = if available < header {
+        0
+    } else {
+        let declared = (ptr as *const u32).read_unaligned() as usize;
+        declared.min((available - header) / std::mem::size_of::<FILEDESCRIPTORW>())
+    };
+    let first_desc = ptr.add(header) as *const FILEDESCRIPTORW;
 
     // Prepare the temp directory.
     let session_id = std::time::SystemTime::now()
@@ -157,9 +166,13 @@ pub(super) unsafe fn read_virtual_files(data_obj: &IDataObject) -> Vec<PathBuf> 
                 .collect::<Vec<u16>>()
                 .as_slice(),
         );
-        if name.is_empty() {
+        // Virtual names may carry sub-folders ("folder\\file.txt") but must stay
+        // inside this drop's temp folder: no `..`, roots, drives or devices.
+        let Some(relative) =
+            atlas_core::fs::archive::sanitize::sanitize_inner_path(Path::new(&name))
+        else {
             continue;
-        }
+        };
 
         // Request the stream for this item.
         let content_fmt = FORMATETC {
@@ -173,7 +186,10 @@ pub(super) unsafe fn read_virtual_files(data_obj: &IDataObject) -> Vec<PathBuf> 
             continue;
         };
 
-        let dst = tmp_dir.join(&name);
+        let dst = tmp_dir.join(relative);
+        if let Some(parent) = dst.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
 
         // Prefer ISTREAM (streaming, avoids loading everything into RAM).
         if content_medium.tymed == TYMED_ISTREAM.0 as u32 {

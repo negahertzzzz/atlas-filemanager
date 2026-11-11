@@ -504,6 +504,8 @@ impl App {
                 location: atlas_model::location::Location::RecycleBin,
             }),
             "view.hidden" => Some(Action::ToggleHidden),
+            "view.theme-toggle" => Some(Action::ToggleThemeAppearance),
+            "view.theme-follow-system" => Some(Action::ToggleThemeFollowSystem),
             "view.vim-mode" => Some(Action::ToggleVimMode),
             "view.inspector" => Some(Action::ToggleInspector),
             "view.branch-view" => Some(Action::ToggleBranchViewFocused),

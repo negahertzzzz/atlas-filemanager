@@ -275,10 +275,10 @@ unsafe fn read_u32_format(obj: &IDataObject, cf: u16) -> Option<u32> {
         return None;
     }
     let ptr = GlobalLock(medium.u.hGlobal) as *const u32;
-    let val = if ptr.is_null() {
+    let val = if ptr.is_null() || GlobalSize(medium.u.hGlobal) < std::mem::size_of::<u32>() {
         None
     } else {
-        Some(ptr.read())
+        Some(ptr.read_unaligned())
     };
     if !ptr.is_null() {
         let _ = GlobalUnlock(medium.u.hGlobal);

@@ -459,6 +459,44 @@ fn open_url(url: &'static str) {
     }
 }
 
+/// Theme picker rows, recommended first. `dark` keeps only dark (`Some(true)`)
+/// or light (`Some(false)`) themes; `None` lists every available theme.
+fn theme_choice_options(cx: &gpui::App, dark: Option<bool>) -> Vec<ChoiceOption> {
+    let registry = gpui_component::ThemeRegistry::global(cx);
+    let mut options: Vec<ChoiceOption> = registry
+        .themes()
+        .iter()
+        .filter(|(name, _)| crate::app::theme::theme_is_available(name))
+        .filter(|(_, config)| dark.is_none_or(|dark| config.mode.is_dark() == dark))
+        .map(|(name, config)| {
+            let mut option = ChoiceOption::new(name.clone(), name.clone());
+            option.swatch = theme_swatch(config);
+            if name.as_ref() == RECOMMENDED_THEME {
+                option.detail = Some(t("sp_recommended"));
+            }
+            option
+        })
+        .collect();
+    options.sort_by(|a, b| {
+        (a.label != RECOMMENDED_THEME, &a.label).cmp(&(b.label != RECOMMENDED_THEME, &b.label))
+    });
+    options
+}
+
+/// Live preview while browsing a theme list; `None` reverts it.
+fn preview_theme_option(app: &mut App, name: Option<&str>) {
+    match name {
+        Some(name) => {
+            app.settings_theme_previewing = true;
+            app.preview_theme(name.to_string());
+        }
+        None => {
+            app.settings_theme_previewing = false;
+            app.restore_theme_preview();
+        }
+    }
+}
+
 fn theme_swatch(config: &gpui_component::ThemeConfig) -> Option<[Hsla; 3]> {
     let parse = |value: Option<&SharedString>| {
         value.and_then(|hex| gpui_component::try_parse_color(hex).ok())
@@ -590,26 +628,7 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
             desc: Some("sp_theme_desc"),
             keywords: "theme tema color colores dark light oscuro claro glass",
             control: Control::Choice {
-                options: |_, cx| {
-                    let registry = gpui_component::ThemeRegistry::global(cx);
-                    let mut options: Vec<ChoiceOption> = registry
-                        .themes()
-                        .iter()
-                        .filter(|(name, _)| crate::app::theme::theme_is_available(name))
-                        .map(|(name, config)| {
-                            let mut option = ChoiceOption::new(name.clone(), name.clone());
-                            option.swatch = theme_swatch(config);
-                            if name.as_ref() == RECOMMENDED_THEME {
-                                option.detail = Some(t("sp_recommended"));
-                            }
-                            option
-                        })
-                        .collect();
-                    options.sort_by(|a, b| {
-                        (a.label != RECOMMENDED_THEME, &a.label).cmp(&(b.label != RECOMMENDED_THEME, &b.label))
-                    });
-                    options
-                },
+                options: |_, cx| theme_choice_options(cx, None),
                 current: |app| {
                     app.theme_preview_before
                         .clone()
@@ -631,6 +650,49 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
                     }
                 }),
                 default: Some(|_| atlas_model::profiles::DEFAULT_THEME.into()),
+            },
+        },
+        SettingDef {
+            id: "theme-follow-system",
+            category: Category::Appearance,
+            icon: AtlasIcon::Monitor,
+            title: "sp_theme_follow_system",
+            desc: Some("sp_theme_follow_system_desc"),
+            keywords: "system sistema windows auto automatic automatico automatique dark light oscuro claro scuro chiaro night noche notte mode modo modalità appearance apariencia aspetto",
+            control: Control::Toggle {
+                get: |app| app.theme_follows_system(),
+                set: |app, on| app.set_theme_follow_system(on),
+                default: Some(|_| false),
+            },
+        },
+        SettingDef {
+            id: "theme-light",
+            category: Category::Appearance,
+            icon: AtlasIcon::Palette,
+            title: "sp_theme_light",
+            desc: Some("sp_theme_light_desc"),
+            keywords: "theme tema light claro chiaro day día giorno",
+            control: Control::Choice {
+                options: |_, cx| theme_choice_options(cx, Some(false)),
+                current: |app| app.appearance_theme(false).into(),
+                pick: |app, name| app.pick_appearance_theme(name, false),
+                preview: Some(preview_theme_option),
+                default: Some(|_| atlas_model::profiles::DEFAULT_THEME.into()),
+            },
+        },
+        SettingDef {
+            id: "theme-dark",
+            category: Category::Appearance,
+            icon: AtlasIcon::Palette,
+            title: "sp_theme_dark",
+            desc: Some("sp_theme_dark_desc"),
+            keywords: "theme tema dark oscuro scuro night noche notte",
+            control: Control::Choice {
+                options: |_, cx| theme_choice_options(cx, Some(true)),
+                current: |app| app.appearance_theme(true).into(),
+                pick: |app, name| app.pick_appearance_theme(name, true),
+                preview: Some(preview_theme_option),
+                default: Some(|_| atlas_model::profiles::DEFAULT_DARK_THEME.into()),
             },
         },
         SettingDef {

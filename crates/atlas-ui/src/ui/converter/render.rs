@@ -1542,6 +1542,14 @@ impl App {
                             license,
                             cx,
                             move |app| {
+                                // The URL comes from an extension manifest: only
+                                // web links, never a local program or URI handler.
+                                let lower = url.trim_start().to_ascii_lowercase();
+                                let is_web = lower.starts_with("https://") || lower.starts_with("http://");
+                                if !is_web {
+                                    tracing::warn!(%url, "refusing to open a non-web license link");
+                                    return;
+                                }
                                 let url = url.clone();
                                 app.rt.spawn_blocking(move || {
                                     let _ = open::that(url);

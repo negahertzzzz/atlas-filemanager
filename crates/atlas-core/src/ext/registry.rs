@@ -326,7 +326,13 @@ fn collect_tools(extensions: &[Extension]) -> HashMap<String, PathBuf> {
             if !platform_matches(&tool.os, &tool.arch) {
                 continue;
             }
-            let path = ext.dir.join(&tool.path);
+            // A provider's tools live inside its own directory; an absolute or
+            // `..` path would let a manifest alias any program on the system.
+            let Ok(relative) = super::tool_package::relative(&tool.path) else {
+                tracing::warn!(ext = %ext.manifest.id, tool = %tool.name, "ignoring tool with unsafe path");
+                continue;
+            };
+            let path = ext.dir.join(relative);
             if installed_tool_ok(&tool.name, &path) {
                 tools.insert(tool.name.clone(), path);
             }

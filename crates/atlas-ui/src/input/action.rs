@@ -178,6 +178,10 @@ pub enum Action {
     /// Switch the active profile's theme by registered theme name.
     SetTheme(String),
     PreviewTheme(String),
+    /// Swap between the active profile's light and dark theme.
+    ToggleThemeAppearance,
+    /// Follow (or stop following) the system light/dark appearance.
+    ToggleThemeFollowSystem,
     SetSort {
         col: SortColumn,
         dir: SortDir,

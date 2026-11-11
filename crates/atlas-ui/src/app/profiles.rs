@@ -107,8 +107,10 @@ impl App {
         self.state.settings.apply_workspace(&entering_ws);
         // Swap the icon-theme mappings to the entering profile's selection.
         self.apply_profile_icons();
-        // Each profile carries its own theme — apply it on next render.
+        // Each profile carries its own theme — apply it on next render, after
+        // re-reading the system appearance if the entering profile follows it.
         self.theme_dirty = true;
+        self.theme_follow_pending = true;
         // Re-apply the entering profile's sidebar width to the left dock next render.
         self.sidebar_width_dirty = true;
         self.state.profile_ui.adding_bookmark = false;

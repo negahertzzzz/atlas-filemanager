@@ -5,8 +5,8 @@
 //! the next render calls [`App::apply_active_theme`].
 
 use crate::app::App;
-use atlas_model::profiles::DEFAULT_THEME;
-use gpui::{App as GpuiApp, SharedString, Window, WindowBackgroundAppearance};
+use atlas_model::profiles::{ThemeAppearanceFeature, DEFAULT_THEME};
+use gpui::{App as GpuiApp, SharedString, Window, WindowAppearance, WindowBackgroundAppearance};
 use gpui_component::scroll::ScrollbarShow;
 use gpui_component::{Theme, ThemeColor, ThemeMode, ThemeRegistry};
 
@@ -160,6 +160,117 @@ const SOLID_CANVAS_SCALE: f32 = 0.45;
 const SOLID_PANE_BASE: f32 = 0.22;
 const SOLID_PANE_SPAN: f32 = 0.78;
 
+/// Whether the OS asks for a dark appearance (Windows: "Choose your app mode").
+pub(crate) fn system_prefers_dark(window: &Window) -> bool {
+    matches!(
+        window.appearance(),
+        WindowAppearance::Dark | WindowAppearance::VibrantDark
+    )
+}
+
+/// Light/dark pairing helpers: the profile remembers one light and one dark
+/// theme, can follow the system appearance, and can swap between the two.
+impl App {
+    pub(crate) fn theme_follows_system(&self) -> bool {
+        self.state
+            .profiles
+            .active()
+            .scoped::<ThemeAppearanceFeature>()
+            .follow_system
+    }
+
+    /// The profile's theme for a light (`dark == false`) or dark appearance.
+    pub(crate) fn appearance_theme(&self, dark: bool) -> String {
+        self.state
+            .profiles
+            .active()
+            .scoped::<ThemeAppearanceFeature>()
+            .theme_for(dark)
+    }
+
+    pub(crate) fn set_theme_follow_system(&mut self, follow: bool) {
+        let mut pairing = self.state.profiles.active().scoped::<ThemeAppearanceFeature>();
+        if pairing.follow_system == follow {
+            return;
+        }
+        pairing.follow_system = follow;
+        self.state
+            .profiles
+            .active_mut()
+            .set_scoped::<ThemeAppearanceFeature>(&pairing);
+        if follow {
+            // Switch to the theme for the current system appearance now.
+            self.theme_follow_pending = true;
+            self.theme_dirty = true;
+        }
+        self.save();
+    }
+
+    /// Swap between the profile's light and dark theme. With "follow system"
+    /// on this is a manual override until the system appearance next changes.
+    pub(crate) fn toggle_theme_appearance(&mut self) {
+        // `light_surfaces` mirrors the theme on screen: go to the other one.
+        let target = self.appearance_theme(self.light_surfaces);
+        self.set_theme(target);
+    }
+
+    /// Settings › Light theme / Dark theme. Stores the pairing and, when that
+    /// appearance is the one in use, shows the new theme right away.
+    pub(crate) fn pick_appearance_theme(&mut self, name: &str, dark: bool) {
+        let committed = self
+            .theme_preview_before
+            .clone()
+            .unwrap_or_else(|| self.state.profiles.active().theme.clone());
+        let mut pairing = self.state.profiles.active().scoped::<ThemeAppearanceFeature>();
+        // After every apply the theme on screen is its appearance's choice, so
+        // this tells whether `dark` is the appearance currently shown.
+        let in_use = pairing.theme_for(dark) == committed;
+        self.settings_theme_previewing = false;
+        if pairing.remember(name, dark) {
+            self.state
+                .profiles
+                .active_mut()
+                .set_scoped::<ThemeAppearanceFeature>(&pairing);
+        }
+        if in_use {
+            self.set_theme(name.to_string());
+        } else {
+            self.restore_theme_preview();
+            self.save();
+        }
+    }
+
+    /// Adopt the system appearance's theme when the profile follows it.
+    fn follow_system_appearance(&mut self, window: &Window) {
+        if self.theme_preview_before.is_some() {
+            // A Settings preview owns the screen; sync once it ends.
+            self.theme_follow_pending = true;
+            return;
+        }
+        let pairing = self.state.profiles.active().scoped::<ThemeAppearanceFeature>();
+        if !pairing.follow_system {
+            return;
+        }
+        let target = pairing.theme_for(system_prefers_dark(window));
+        if self.state.profiles.active().theme != target {
+            self.state.profiles.active_mut().theme = target;
+            self.save();
+        }
+    }
+
+    /// Remember the theme just applied as the choice for its appearance.
+    fn remember_applied_theme(&mut self, name: &str, dark: bool) {
+        let mut pairing = self.state.profiles.active().scoped::<ThemeAppearanceFeature>();
+        if pairing.remember(name, dark) {
+            self.state
+                .profiles
+                .active_mut()
+                .set_scoped::<ThemeAppearanceFeature>(&pairing);
+            self.save();
+        }
+    }
+}
+
 impl App {
     /// Suffix that marks a theme as the translucent "Glass" variant of a base
     /// theme. Paired by name: `"Atlas Midnight"` ↔ `"Atlas Midnight Glass"`.
@@ -199,6 +310,9 @@ impl App {
     /// legacy enum values, or a custom theme file that was removed), rewriting the
     /// profile so the UI reflects what's actually shown.
     pub(crate) fn apply_active_theme(&mut self, window: &mut Window, cx: &mut GpuiApp) {
+        if std::mem::take(&mut self.theme_follow_pending) {
+            self.follow_system_appearance(window);
+        }
         let wanted = migrated_theme_name(&self.state.profiles.active().theme).to_string();
         let registry = ThemeRegistry::global(cx);
         let custom_themes_loaded = registry.custom_themes_loaded();
@@ -229,6 +343,12 @@ impl App {
         if let Some(name) = persisted_theme_name(&self.state.profiles.active().theme, &wanted, &resolved_name, custom_themes_loaded) {
             self.state.profiles.active_mut().theme = name.to_string();
             self.save();
+        }
+
+        // Only a committed theme that was really found (not a preview, not the
+        // fallback shown while custom themes still load) updates the pairing.
+        if self.theme_preview_before.is_none() && resolved_name == wanted {
+            self.remember_applied_theme(&resolved_name, config.mode.is_dark());
         }
 
         Theme::global_mut(cx).apply_config(&config);

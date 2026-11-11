@@ -14,7 +14,13 @@ if ($PerfLog) {
     cargo build --release --locked -p atlas -p atlas-search-service -p atlas-cloud-extension -p atlas-icon-extension
 }
 if ($LASTEXITCODE -ne 0) { throw "Windows build failed ($LASTEXITCODE)." }
-& (Join-Path $PSScriptRoot "archive-symbols.ps1") -Version "$Version-installer"
+# Symbol archiving is a maintainer step; the script is not part of the public tree.
+$archiveSymbols = Join-Path $PSScriptRoot "archive-symbols.ps1"
+if (Test-Path -LiteralPath $archiveSymbols) {
+    & $archiveSymbols -Version "$Version-installer"
+} else {
+    Write-Warning "archive-symbols.ps1 not found; skipping symbol archiving."
+}
 # The Windows installer carries the same complete payload as the Cloud package.
 & (Join-Path $PSScriptRoot "build-cloud-extension.ps1") -SkipBuild
 

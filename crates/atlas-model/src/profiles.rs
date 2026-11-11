@@ -215,8 +215,57 @@ impl ProfileScoped for RecentFoldersFeature {
 /// `ThemeRegistry` (see `crates/atlas-ui/assets/themes/atlas-themes.json`).
 pub const DEFAULT_THEME: &str = "Atlas Light Glass";
 
+/// Dark counterpart of [`DEFAULT_THEME`], used by light/dark switching until
+/// the profile has picked a dark theme of its own.
+pub const DEFAULT_DARK_THEME: &str = "Atlas Graphite Glass";
+
 fn default_theme() -> String {
     DEFAULT_THEME.to_string()
+}
+
+/// Light/dark pairing for a profile: the light and the dark theme it uses,
+/// and whether Atlas follows the system's light/dark appearance. Choosing any
+/// theme remembers it for its own appearance, so switching back and forth
+/// always lands on the user's last pick.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ThemeAppearancePrefs {
+    #[serde(default)]
+    pub follow_system: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub light: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark: Option<String>,
+}
+
+impl ThemeAppearancePrefs {
+    /// The theme to show for a light (`dark == false`) or dark appearance.
+    pub fn theme_for(&self, dark: bool) -> String {
+        let (chosen, fallback) = if dark {
+            (&self.dark, DEFAULT_DARK_THEME)
+        } else {
+            (&self.light, DEFAULT_THEME)
+        };
+        chosen.clone().unwrap_or_else(|| fallback.to_string())
+    }
+
+    /// Remember `name` as the theme for its appearance. Returns whether the
+    /// stored pairing changed (and so needs saving).
+    pub fn remember(&mut self, name: &str, dark: bool) -> bool {
+        let slot = if dark { &mut self.dark } else { &mut self.light };
+        if slot.as_deref() == Some(name) {
+            return false;
+        }
+        *slot = Some(name.to_string());
+        true
+    }
+}
+
+/// Marker for [`ProfileScoped`] — stores [`ThemeAppearancePrefs`].
+pub struct ThemeAppearanceFeature;
+
+impl ProfileScoped for ThemeAppearanceFeature {
+    const KEY: &'static str = "theme_appearance";
+    type State = ThemeAppearancePrefs;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -743,6 +792,29 @@ mod tests {
             profile.scoped::<IconFeature>().theme_id.as_deref(),
             Some("material")
         );
+    }
+
+    #[test]
+    fn theme_appearance_pairs_light_and_dark_per_profile() {
+        let mut profile = Profile::new("Theme");
+        let prefs = profile.scoped::<ThemeAppearanceFeature>();
+        assert!(!prefs.follow_system);
+        assert_eq!(prefs.theme_for(false), DEFAULT_THEME);
+        assert_eq!(prefs.theme_for(true), DEFAULT_DARK_THEME);
+
+        let mut prefs = prefs;
+        assert!(prefs.remember("Atlas Nord", true));
+        assert!(!prefs.remember("Atlas Nord", true), "unchanged picks need no save");
+        assert!(prefs.remember("Atlas Rosé", false));
+        prefs.follow_system = true;
+        profile.set_scoped::<ThemeAppearanceFeature>(&prefs);
+
+        let json = serde_json::to_string(&profile).unwrap();
+        let restored: Profile = serde_json::from_str(&json).unwrap();
+        let restored = restored.scoped::<ThemeAppearanceFeature>();
+        assert_eq!(restored, prefs);
+        assert_eq!(restored.theme_for(true), "Atlas Nord");
+        assert_eq!(restored.theme_for(false), "Atlas Rosé");
     }
 
     #[test]

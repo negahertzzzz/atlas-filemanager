@@ -67,6 +67,14 @@ impl App {
             this.theme_dirty = true;
             cx.notify();
         }).detach();
+        // Windows light/dark app mode changed: profiles that follow the system
+        // switch to their light or dark theme on the next frame.
+        cx.observe_window_appearance(window, |this, _window, cx| {
+            this.theme_follow_pending = true;
+            this.theme_dirty = true;
+            cx.notify();
+        })
+        .detach();
         // Forward off the foreground executor: the retained ingress queues must
         // remain readable by the OLE modal-loop drag-hover drain as well.
         cx.background_executor()
@@ -719,6 +727,7 @@ impl App {
             content_gen: 0,
             content_cancel: None,
             theme_dirty: true,
+            theme_follow_pending: true,
             theme_preview_before: None,
             settings_theme_previewing: false,
             view_preview_before: None,

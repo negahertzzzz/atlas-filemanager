@@ -437,7 +437,7 @@ pub fn start_drag_archive(hwnd_raw: isize, items: &[(PathBuf, PathBuf)], queue: 
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "file".to_string());
             let dest = temp_dir.join(&name);
-            match provider.extract_to(inner, &dest) {
+            match atlas_core::fs::archive::extract_for_export(provider.as_ref(), inner, &dest) {
                 Ok(()) => extracted.push(dest),
                 Err(e) => push_event(
                     queue,

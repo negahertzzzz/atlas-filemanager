@@ -77,6 +77,8 @@ pub(crate) const COMMANDS: &[CommandMeta] = &[
     CommandMeta::remappable("view.group-origin", None),
     CommandMeta::remappable("view.group-expand", None),
     CommandMeta::remappable("view.group-collapse", None),
+    CommandMeta::remappable("view.theme-toggle", Some("ctrl-shift-l")),
+    CommandMeta::remappable("view.theme-follow-system", None),
     CommandMeta::remappable("view.zoom-in", Some("ctrl-=")),
     CommandMeta::remappable("view.zoom-out", Some("ctrl--")),
     CommandMeta::remappable("view.zoom-reset", Some("ctrl-0")),
@@ -174,6 +176,19 @@ mod tests {
     fn command_without_default_can_still_be_remapped() {
         assert_eq!(default_command_shortcut("view.details"), None);
         assert!(command_remappable("view.details"));
+    }
+
+    #[test]
+    fn theme_commands_are_registered_and_remappable() {
+        assert_eq!(default_command_shortcut("view.theme-toggle"), Some("ctrl-shift-l"));
+        assert!(command_remappable("view.theme-toggle"));
+        assert_eq!(default_command_shortcut("view.theme-follow-system"), None);
+        assert!(command_remappable("view.theme-follow-system"));
+        let taken = COMMANDS
+            .iter()
+            .filter(|command| command.default_shortcut == Some("ctrl-shift-l"))
+            .count();
+        assert_eq!(taken, 1, "ctrl-shift-l must not collide with another default");
     }
 
     #[test]

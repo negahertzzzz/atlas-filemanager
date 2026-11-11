@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# Checks only read the repository; never hand pull requests a write token.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: ${{ matrix.os }}

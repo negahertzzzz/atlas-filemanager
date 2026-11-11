@@ -35,7 +35,7 @@ async fn cancelled(cancel: &AtomicBool) {
     }
 }
 
-fn relative(value: &str) -> Result<PathBuf> {
+pub(crate) fn relative(value: &str) -> Result<PathBuf> {
     ensure!(
         !value.is_empty() && !value.contains('\\'),
         "Invalid package path"

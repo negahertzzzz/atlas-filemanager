@@ -350,6 +350,10 @@ pub struct App {
     /// which `process_actions` lacks). Starts `true` so the restored profile theme
     /// is applied on first paint.
     pub(crate) theme_dirty: bool,
+    /// When set, the next theme apply first re-reads the system light/dark
+    /// appearance (startup, profile switch, OS change) for profiles that
+    /// follow it.
+    pub(crate) theme_follow_pending: bool,
     pub(crate) theme_preview_before: Option<String>,
     /// A Settings theme dropdown is hover-previewing; reverted when it closes.
     pub(crate) settings_theme_previewing: bool,

@@ -597,7 +597,16 @@ fn handle_client(pipe: HANDLE, state: &State) {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
         ),
-        Ok(ServiceRequest::Search(query)) => ServiceResponse::Search(execute_search(state, &query)),
+        Ok(ServiceRequest::Search(query)) => {
+            let mut batch = execute_search(state, &query);
+            match visible_to_client(pipe, std::mem::take(&mut batch.results)) {
+                Ok(results) => {
+                    batch.results = results;
+                    ServiceResponse::Search(batch)
+                }
+                Err(error) => ServiceResponse::Error(error),
+            }
+        }
         Err(error) => ServiceResponse::Error(error.to_string()),
     };
     let Ok(bytes) = serde_json::to_vec(&response) else {
@@ -613,6 +622,41 @@ fn handle_client(pipe: HANDLE, state: &State) {
             null_mut(),
         );
     }
+}
+
+/// The index is built from every volume's MFT by a LocalSystem service, so it
+/// names files inside other users' private folders. Hand each client only what
+/// it could list itself: impersonate the pipe client and keep the results its
+/// own token can read the attributes of. Fails closed when the client cannot
+/// be impersonated.
+fn visible_to_client(pipe: HANDLE, results: Vec<SearchResult>) -> Result<Vec<SearchResult>, String> {
+    use windows_sys::Win32::Security::RevertToSelf;
+    use windows_sys::Win32::System::Pipes::ImpersonateNamedPipeClient;
+
+    struct Revert;
+    impl Drop for Revert {
+        fn drop(&mut self) {
+            // Never keep serving with a client's identity on this thread.
+            if unsafe { RevertToSelf() } == 0 {
+                std::process::abort();
+            }
+        }
+    }
+
+    if results.is_empty() {
+        return Ok(results);
+    }
+    if unsafe { ImpersonateNamedPipeClient(pipe) } == 0 {
+        return Err(format!(
+            "cannot verify the client's access: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    let _revert = Revert;
+    Ok(results
+        .into_iter()
+        .filter(|result| fs::symlink_metadata(&result.path).is_ok())
+        .collect())
 }
 
 fn execute_search(state: &State, query: &SearchQuery) -> SearchBatch {
