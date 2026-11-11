@@ -168,6 +168,10 @@ impl App {
         if self.compare_panel.is_some() {
             layers.push(self.render_folder_compare(cx));
         }
+        self.mount_pending_git(window, cx);
+        if self.git_panel.is_some() {
+            layers.push(self.render_git_panel(cx));
+        }
         if self.vault.is_some() {
             layers.push(self.render_vault(window, cx));
         }

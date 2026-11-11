@@ -35,6 +35,11 @@ pub enum NetworkOutcome {
 }
 
 pub enum BgResult {
+    /// Repository probe of a folder for the pane header's branch chip.
+    GitProbe {
+        dir: PathBuf,
+        head: Option<crate::git::RepoHead>,
+    },
     /// A native SMB request finished. `tab` is reloaded (or navigated to
     /// `navigate`) on success; `target` is the share or drive it concerned.
     Network {

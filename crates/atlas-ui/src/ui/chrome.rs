@@ -132,6 +132,35 @@ impl App {
                     });
                 }));
         }
+        // Branch chip: the folder is in a Git repository (Git integration on).
+        if let Some(head) = self.pane_git_head(pane_id) {
+            let app = view.clone();
+            let dir = self
+                .tab_data_for(pane_id)
+                .and_then(|t| t.location.fs_dir().map(std::path::Path::to_path_buf));
+            let mut label = head.label();
+            if head.changes > 0 {
+                label.push_str(&format!(" •{}", head.changes));
+            }
+            if head.ahead > 0 {
+                label.push_str(&format!(" ↑{}", head.ahead));
+            }
+            if head.behind > 0 {
+                label.push_str(&format!(" ↓{}", head.behind));
+            }
+            tools = tools.child(gpui_component::button::Button::new(
+                SharedString::from(format!("git-chip-{}", pane_id.0)))
+                .ghost().small().icon(Icon::empty().path(AtlasIcon::GitBranch.path()))
+                .label(label)
+                .tooltip(rust_i18n::t!("git_chip_tooltip", changes = head.changes).into_owned())
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(move |_, _, cx| {
+                    app.update(cx, |this, cx| {
+                        this.open_git_panel(dir.clone());
+                        cx.notify();
+                    });
+                }));
+        }
         for (id, title, icon) in commands {
             let app = view.clone();
             tools = tools.child(gpui_component::button::Button::new(

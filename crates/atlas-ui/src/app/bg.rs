@@ -813,6 +813,10 @@ impl App {
                     });
                     info.notify_panes.push(tab);
                 }
+                BgResult::GitProbe { dir, head } => {
+                    let panes = self.apply_git_probe(dir, head);
+                    info.notify_panes.extend(panes);
+                }
                 BgResult::Network { tab, target, navigate, outcome } => {
                     #[cfg(windows)]
                     self.apply_network_result(tab, target, navigate, outcome);

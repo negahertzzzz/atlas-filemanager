@@ -41,6 +41,7 @@ pub mod crash_report;
 pub mod cleanup;
 pub mod ext;
 pub mod fs;
+pub mod git;
 pub mod license;
 pub mod search;
 pub mod space_lens;

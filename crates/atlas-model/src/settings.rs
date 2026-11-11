@@ -139,6 +139,9 @@ pub struct Settings {
     pub icon_style: IconStyle,
     /// Convert / Actions radial menu preferences.
     pub ring: RingPrefs,
+    /// Built-in Git integration: branch chip on repository folders and the
+    /// Git panel. Off until the user turns it on.
+    pub git_integration: bool,
 }
 
 /// Convert / Actions ring preferences. Unknown action ids (from a newer or
@@ -284,6 +287,7 @@ impl Default for Settings {
             getting_started_seen: false,
             vim_mode: false,
             ring: RingPrefs::default(),
+            git_integration: false,
         }
     }
 }
@@ -375,6 +379,15 @@ mod tests {
 
         let ws: Workspace = serde_json::from_str(json).unwrap();
         assert!(ws.vim_mode);
+    }
+
+    #[test]
+    fn git_integration_is_off_until_turned_on() {
+        assert!(!Settings::default().git_integration);
+        let old: Settings = serde_json::from_str(r#"{"font_size": 13.0}"#).unwrap();
+        assert!(!old.git_integration);
+        let on: Settings = serde_json::from_str(r#"{"git_integration": true}"#).unwrap();
+        assert!(on.git_integration);
     }
 
     #[test]

@@ -21,6 +21,7 @@ pub mod devices;
 mod edition;
 pub mod ext;
 pub mod fs_sync;
+pub(crate) mod git;
 pub(crate) mod icon_loader;
 pub(crate) mod liquid_glass;
 pub mod nav;
@@ -43,6 +44,12 @@ pub struct App {
     pub(crate) compare_panel: Option<Entity<crate::ui::compare::ComparePanel>>,
     /// `(left, right)` waiting for a `Context` to mount the compare panel.
     pub(crate) pending_compare: Option<(std::path::PathBuf, std::path::PathBuf)>,
+    /// Git panel of the repository a folder belongs to.
+    pub(crate) git_panel: Option<Entity<crate::ui::git_panel::GitPanel>>,
+    /// Folder waiting for a window to mount the Git panel.
+    pub(crate) pending_git: Option<std::path::PathBuf>,
+    /// Cached repository probes for the pane headers' branch chips.
+    pub(crate) git_probes: git::GitProbes,
     pub(crate) mounted_volumes: Vec<(PathBuf, u32)>,
     pub(crate) preview_delay: crate::ui::preview_delay::PreviewDelay,
     pub(crate) state: AppState,

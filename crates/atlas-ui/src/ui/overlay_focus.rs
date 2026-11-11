@@ -40,6 +40,7 @@ use gpui_component::WindowExt;
 pub(crate) enum OverlayClaim {
     DiskCleanup,
     FolderCompare,
+    Git,
     Vault,
     Converter,
     TagPicker,
@@ -78,6 +79,9 @@ impl App {
         }
         if self.compare_panel.is_some() {
             return Some(OverlayClaim::FolderCompare);
+        }
+        if self.git_panel.is_some() {
+            return Some(OverlayClaim::Git);
         }
         if self.converter.as_ref().is_some_and(|s| s.visible()) {
             return Some(OverlayClaim::Converter);
@@ -172,6 +176,14 @@ impl App {
                 if panel.read(cx).focus.contains_focused(window,cx) {return;}
             }
         }
+        // The Git panel's text fields and menus hold focus inside the panel.
+        if matches!(self.active_claim(), Some(OverlayClaim::Git)) {
+            if let Some(panel) = &self.git_panel {
+                if panel.read(cx).focus.contains_focused(window, cx) {
+                    return;
+                }
+            }
+        }
         if self.vault.is_some() {
             let focus = self.overlay_focus(cx);
             if focus.contains_focused(window, cx) { return; }
@@ -205,6 +217,7 @@ impl App {
         match self.active_claim()? {
             OverlayClaim::DiskCleanup => self.cleanup_panel.as_ref().map(|p|p.read(cx).focus.clone()),
             OverlayClaim::FolderCompare => self.compare_panel.as_ref().map(|p| p.read(cx).focus.clone()),
+            OverlayClaim::Git => self.git_panel.as_ref().map(|p| p.read(cx).focus.clone()),
             OverlayClaim::Vault => Some(self.vault_focus(window, cx)),
             OverlayClaim::Converter => Some(self.overlay_focus(cx)),
             OverlayClaim::TagPicker => self

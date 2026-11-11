@@ -1001,6 +1001,19 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
             },
         },
         SettingDef {
+            id: "git-integration",
+            category: Category::Files,
+            icon: AtlasIcon::GitBranch,
+            title: "sp_git_integration",
+            desc: Some("sp_git_integration_desc"),
+            keywords: "git repository repositorio commit branch rama history historial github",
+            control: Control::Toggle {
+                get: |app| app.state.settings.git_integration,
+                set: |app, on| app.state.settings.git_integration = on,
+                default: Some(|s| s.git_integration),
+            },
+        },
+        SettingDef {
             id: "single-click-folders",
             category: Category::Files,
             icon: AtlasIcon::CursorClick,

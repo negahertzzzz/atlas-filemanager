@@ -1822,7 +1822,7 @@ impl App {
             CommandDef::new("folder.inherit-view", rust_i18n::t!("cmd_folder_inherit_title"), rust_i18n::t!("cmd_folder_inherit_desc"), AtlasIcon::Folder, Action::ToggleFolderViewRecursive),
         ];
 
-        let nav = vec![
+        let mut nav = vec![
             CommandDef::new(
                 "nav.back",
                 rust_i18n::t!("cmd_nav_back_title"),
@@ -1885,6 +1885,15 @@ impl App {
                 Action::CompareFolders,
             ),
         ];
+        if self.state.settings.git_integration {
+            nav.push(CommandDef::new(
+                "git.open",
+                rust_i18n::t!("cmd_git_open_title"),
+                rust_i18n::t!("cmd_git_open_desc"),
+                AtlasIcon::GitBranch,
+                Action::OpenGit,
+            ));
+        }
 
         let selection = vec![
             CommandDef::new(

@@ -1492,6 +1492,7 @@ impl App {
                     }
                 }
                 Action::CompareFolders => self.open_folder_compare(),
+                Action::OpenGit => self.open_git_panel(None),
                 Action::ToggleThemeAppearance => self.toggle_theme_appearance(),
                 Action::ToggleThemeFollowSystem => {
                     let follow = !self.theme_follows_system();

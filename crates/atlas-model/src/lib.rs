@@ -9,6 +9,7 @@ pub mod batch_rename;
 pub mod clamp;
 pub mod cleanup;
 pub mod compare;
+pub mod git;
 pub mod edition;
 #[cfg(feature = "provider-host")]
 pub mod cloud_model;

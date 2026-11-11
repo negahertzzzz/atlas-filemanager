@@ -58,6 +58,7 @@ pub(crate) const COMMANDS: &[CommandMeta] = &[
     #[cfg(target_os = "windows")]
     CommandMeta::remappable("net.map-drive", None),
     CommandMeta::remappable("pane.compare", None),
+    CommandMeta::remappable("git.open", None),
     CommandMeta::remappable("view.hidden", Some("ctrl-.")),
     CommandMeta::remappable("view.vim-mode", None),
     CommandMeta::remappable("view.inspector", Some("ctrl-i")),

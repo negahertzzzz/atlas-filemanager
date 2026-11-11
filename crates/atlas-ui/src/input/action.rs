@@ -182,6 +182,8 @@ pub enum Action {
     MapNetworkDrive,
     /// Compare the focused pane's folder with the neighbouring pane's folder.
     CompareFolders,
+    /// Git panel for the focused pane's folder (when Git integration is on).
+    OpenGit,
     /// Swap between the active profile's light and dark theme.
     ToggleThemeAppearance,
     /// Follow (or stop following) the system light/dark appearance.

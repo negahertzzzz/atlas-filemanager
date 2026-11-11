@@ -753,6 +753,9 @@ impl App {
             cleanup_panel: None,
             compare_panel: None,
             pending_compare: None,
+            git_panel: None,
+            pending_git: None,
+            git_probes: Default::default(),
             vault: None,
             #[cfg(windows)]
             vault_mount: None,

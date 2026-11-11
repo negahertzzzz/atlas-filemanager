@@ -130,6 +130,32 @@ impl App {
             // The panel is modal: keys never reach the panes behind it.
             return true;
         }
+        if let Some(panel) = self.git_panel.clone() {
+            if ev.keystroke.key == "escape" {
+                // A prompt or confirmation inside the panel closes first; the
+                // panel itself is closed here, never from inside its own update.
+                if !panel.update(cx, |p, cx| p.escape(window, cx)) {
+                    let root = panel.read(cx).repo_root();
+                    if let Some(root) = root {
+                        self.invalidate_git_probe(&root);
+                        self.notify_all_panes(cx);
+                    }
+                    self.git_panel = None;
+                    window.focus(&self.focus_handle, cx);
+                }
+                cx.notify();
+                return true;
+            }
+            // Typing goes to the panel's text fields (commit message, names).
+            if self.any_text_input_focused(window, cx) {
+                return false;
+            }
+            if panel.update(cx, |p, cx| p.handle_key(ev, window, cx)) {
+                cx.notify();
+            }
+            // The panel is modal: keys never reach the panes behind it.
+            return true;
+        }
         if self.command_shortcut_capture.is_some() {
             return self.handle_command_shortcut_key(ev);
         }
@@ -522,6 +548,7 @@ impl App {
             #[cfg(target_os = "windows")]
             "net.map-drive" => Some(Action::MapNetworkDrive),
             "pane.compare" => Some(Action::CompareFolders),
+            "git.open" => Some(Action::OpenGit),
             "view.hidden" => Some(Action::ToggleHidden),
             "view.theme-toggle" => Some(Action::ToggleThemeAppearance),
             "view.theme-follow-system" => Some(Action::ToggleThemeFollowSystem),

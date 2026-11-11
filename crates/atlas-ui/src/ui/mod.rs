@@ -25,6 +25,7 @@ pub mod breadcrumb_menu;
 pub mod chrome;
 pub mod cleanup;
 pub(crate) mod compare;
+pub(crate) mod git_panel;
 pub mod chrome_dg;
 pub mod dg;
 pub(crate) mod current_bounds;

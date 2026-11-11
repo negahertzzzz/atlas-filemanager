@@ -154,6 +154,7 @@ enum AtlasCmd {
     DiskCleanup,
     #[cfg(windows)]
     MapNetworkDrive,
+    Git,
     ProtectFolder,
     UnlockFolder,
     Convert,
@@ -181,6 +182,7 @@ impl AtlasCmd {
             Self::DiskCleanup => rust_i18n::t!("cleanup_open").to_string(),
             #[cfg(windows)]
             Self::MapNetworkDrive => rust_i18n::t!("network_map_drive").to_string(),
+            Self::Git => rust_i18n::t!("git_open").to_string(),
             Self::ProtectFolder => rust_i18n::t!("vault_context_protect").to_string(),
             Self::UnlockFolder => rust_i18n::t!("vault_context_unlock").to_string(),
             Self::Convert => rust_i18n::t!("convert_title").to_string(),
@@ -207,6 +209,7 @@ impl AtlasCmd {
             Self::DiskCleanup => Some(AtlasIcon::HardDrive),
             #[cfg(windows)]
             Self::MapNetworkDrive => Some(AtlasIcon::NetworkDrive),
+            Self::Git => Some(AtlasIcon::GitBranch),
             Self::ProtectFolder | Self::UnlockFolder => Some(AtlasIcon::Lock),
             Self::Convert => Some(AtlasIcon::ArrowClockwise),
             Self::Open => Some(AtlasIcon::Eye),
@@ -233,6 +236,7 @@ impl AtlasCmd {
             Self::DiskCleanup => "disk.cleanup",
             #[cfg(windows)]
             Self::MapNetworkDrive => "net.map-drive",
+            Self::Git => "git.open",
             Self::ProtectFolder => "vault.protect",
             Self::UnlockFolder => "vault.unlock",
             Self::Convert => "files.convert",
@@ -764,7 +768,23 @@ impl App {
             } else if state.paths.len() == 1 && state.paths[0].is_dir()
                 && self.state.active_tab_data().is_some_and(|t| !t.location.is_archive()) {
                 atlas_items.insert(2, (AtlasCmd::ProtectFolder, false));
+                if self.state.settings.git_integration {
+                    atlas_items.insert(2, (AtlasCmd::Git, false));
+                }
             }
+        }
+        // The pane's own folder: its repository, or the offer to create one.
+        if state.background
+            && self.state.settings.git_integration
+            && self.state.active_tab_data().is_some_and(|t| {
+                matches!(t.location, atlas_model::location::Location::Directory(_))
+            })
+        {
+            let at = atlas_items
+                .iter()
+                .position(|(cmd, _)| *cmd == AtlasCmd::OpenTerminal)
+                .map_or(atlas_items.len(), |i| i + 1);
+            atlas_items.insert(at, (AtlasCmd::Git, true));
         }
 
         let current_view = self
@@ -1474,6 +1494,9 @@ impl App {
             #[cfg(windows)]
             AtlasCmd::MapNetworkDrive => {
                 self.map_network_drive(menu_paths.first().cloned());
+            }
+            AtlasCmd::Git => {
+                self.open_git_panel(menu_paths.first().cloned());
             }
             AtlasCmd::ProtectFolder => {
                 if let [path] = menu_paths.as_slice() {
