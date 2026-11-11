@@ -1480,6 +1480,18 @@ impl App {
                 }
                 Action::SetTheme(name) => self.set_theme(name),
                 Action::PreviewTheme(name) => self.preview_theme(name),
+                Action::MapNetworkDrive => {
+                    #[cfg(windows)]
+                    {
+                        let remote = self
+                            .tab_data_for(self.state.focused_tile)
+                            .and_then(|td| td.location.fs_dir())
+                            .filter(|dir| atlas_core::fs::network::share_root(dir).is_some())
+                            .map(std::path::Path::to_path_buf);
+                        self.map_network_drive(remote);
+                    }
+                }
+                Action::CompareFolders => self.open_folder_compare(),
                 Action::ToggleThemeAppearance => self.toggle_theme_appearance(),
                 Action::ToggleThemeFollowSystem => {
                     let follow = !self.theme_follows_system();

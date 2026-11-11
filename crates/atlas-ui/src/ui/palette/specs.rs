@@ -327,6 +327,18 @@ fn split_query_base(query: &str) -> Option<(PathBuf, String)> {
     if !absolute {
         return None;
     }
+    // `\\server` and `\\server\partial-share` name a server, not a folder to
+    // search in: the typed path itself is the destination. `\\server\share\`
+    // and deeper scope the search like any folder.
+    let unc = q
+        .strip_prefix(r"\\")
+        .or_else(|| q.strip_prefix("//").filter(|_| cfg!(windows)));
+    if let Some(unc) = unc {
+        let parts = unc.split(['/', '\\']).filter(|s| !s.is_empty()).count();
+        if parts <= 1 || (parts == 2 && !unc.ends_with(['/', '\\'])) {
+            return None;
+        }
+    }
     let pos = q.rfind(['/', '\\'])?;
     let (base, rest) = q.split_at(pos + 1);
     let base_trimmed = if base.len() > 1 && (base.ends_with('/') || base.ends_with('\\')) && !base.ends_with("://") && base != "/" {
@@ -446,6 +458,22 @@ mod goto_query_tests {
             assert_eq!(base, home);
             assert!(needle.is_empty());
         }
+    }
+
+    #[test]
+    fn typed_servers_and_partial_shares_are_destinations_not_search_scopes() {
+        for query in [r"\\srvdati", r"\\srvdati\", r"\\srvdati\Pubb"] {
+            assert!(split_query_base(query).is_none(), "{query}");
+        }
+        if cfg!(windows) {
+            assert!(split_query_base("//srvdati").is_none());
+        }
+        let (base, needle) = split_query_base(r"\\srvdati\Pubblica\").unwrap();
+        assert_eq!(base, Path::new(r"\\srvdati\Pubblica"));
+        assert!(needle.is_empty());
+        let (base, needle) = split_query_base(r"\\srvdati\Pubblica\Doc").unwrap();
+        assert_eq!(base, Path::new(r"\\srvdati\Pubblica"));
+        assert_eq!(needle, "Doc");
     }
 
     #[test]
@@ -974,10 +1002,20 @@ impl App {
                 .and_then(|h| expand_home_query(trimmed, &h))
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from(trimmed));
-            let direct_exists = direct_path.exists();
+            // A typed UNC path (`\\server`, `\\server\share\...`) is offered as
+            // is: probing it would block the palette on a slow or unreachable
+            // server, and navigation itself lists shares or asks for credentials.
+            let network_path = atlas_core::fs::network::unc_parts(&direct_path).is_some();
+            let direct_exists = network_path || direct_path.exists();
             if direct_exists && !entries.iter().any(|e| e.path == direct_path) {
-                let is_dir = direct_path.is_dir();
-                let direct_item = goto_item(direct_path.clone(), focused_tile, pane);
+                let is_dir = network_path || direct_path.is_dir();
+                let direct_item = if network_path {
+                    // Servers and shares open as folders whatever their name looks like.
+                    let title = direct_path.to_string_lossy().into_owned();
+                    goto_entry(title, direct_path.clone(), AtlasIcon::Folder, true, focused_tile, pane)
+                } else {
+                    goto_item(direct_path.clone(), focused_tile, pane)
+                };
                 if is_dir {
                     folders.insert(0, direct_item);
                 } else {
@@ -998,7 +1036,7 @@ impl App {
                 files,
             );
             let mut sections = Vec::new();
-            if files_first {
+            if files_first && !network_path {
                 sections.extend(files_sec);
                 sections.extend(dirs_sec);
             } else {
@@ -1830,6 +1868,21 @@ impl App {
                     tab: focused,
                     location: atlas_model::location::Location::RecycleBin,
                 },
+            ),
+            #[cfg(target_os = "windows")]
+            CommandDef::new(
+                "net.map-drive",
+                rust_i18n::t!("cmd_net_map_drive_title"),
+                rust_i18n::t!("cmd_net_map_drive_desc"),
+                AtlasIcon::NetworkDrive,
+                Action::MapNetworkDrive,
+            ),
+            CommandDef::new(
+                "pane.compare",
+                rust_i18n::t!("cmd_pane_compare_title"),
+                rust_i18n::t!("cmd_pane_compare_desc"),
+                AtlasIcon::ArrowsLeftRight,
+                Action::CompareFolders,
             ),
         ];
 

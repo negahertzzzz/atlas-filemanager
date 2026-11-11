@@ -19,6 +19,7 @@ use crate::ui::root::DraggedFiles;
 #[cfg(all(feature = "provider-host", windows))]
 use crate::InstallWinFspForRemote;
 use crate::{
+    DisconnectNetworkDrive, MapNetworkDrive,
     OpenPropertiesForPath, OpenSpaceLensForPath, OpenThisPcProperties, SidebarDeleteTag,
     SidebarHideSection, SidebarMoveSectionDown, SidebarMoveSectionUp, SidebarNewGlobalTag,
     SidebarNewProfileTag, SidebarRemoveBookmark, SidebarRenameTag, SidebarResetSections,
@@ -1385,7 +1386,31 @@ impl Render for SidebarPanel {
                 cx.listener(|_this, _: &OpenThisPcProperties, _window, _cx| {
                     crate::ui::shell_context_menu::show_this_pc_properties();
                 }),
-            );
+            )
+            .on_action(cx.listener(|this, action: &MapNetworkDrive, _window, cx| {
+                #[cfg(windows)]
+                if let Some(app) = this.app.upgrade() {
+                    let remote = action.remote.clone();
+                    app.update(cx, |app, cx| {
+                        app.map_network_drive(remote);
+                        cx.notify();
+                    });
+                }
+                #[cfg(not(windows))]
+                let _ = (this, action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &DisconnectNetworkDrive, _window, cx| {
+                #[cfg(windows)]
+                if let Some(app) = this.app.upgrade() {
+                    let path = action.path.clone();
+                    app.update(cx, |app, cx| {
+                        app.disconnect_network_drive(path);
+                        cx.notify();
+                    });
+                }
+                #[cfg(not(windows))]
+                let _ = (this, action, cx);
+            }));
         #[cfg(feature = "provider-host")]
         {
             col = col.on_action(
@@ -2184,7 +2209,9 @@ pub(crate) fn sidebar_shell_tex(
 
 #[inline]
 pub(crate) fn drive_icon(drive: &atlas_core::fs::mounts::DriveInfo) -> AtlasIcon {
-    if drive.is_removable {
+    if drive.network.is_some() {
+        AtlasIcon::NetworkDrive
+    } else if drive.is_removable {
         AtlasIcon::Usb
     } else if drive.is_system {
         AtlasIcon::HardDriveSystem
@@ -2195,7 +2222,9 @@ pub(crate) fn drive_icon(drive: &atlas_core::fs::mounts::DriveInfo) -> AtlasIcon
 
 #[inline]
 pub(crate) fn drive_icon_name(drive: &atlas_core::fs::mounts::DriveInfo) -> &'static str {
-    if drive.is_removable {
+    if drive.network.is_some() {
+        "network-drive"
+    } else if drive.is_removable {
         "usb"
     } else if drive.is_system {
         "hard-drive-system"
@@ -2220,6 +2249,7 @@ fn ph_icon(name: &str) -> AtlasIcon {
         "hard-drive" => AtlasIcon::HardDrive,
         "hard-drive-system" => AtlasIcon::HardDriveSystem,
         "usb" => AtlasIcon::Usb,
+        "network-drive" => AtlasIcon::NetworkDrive,
         "terminal-window" => AtlasIcon::TerminalWindow,
         "caret-down" => AtlasIcon::CaretDown,
         "caret-right" => AtlasIcon::CaretRight,
@@ -3557,8 +3587,10 @@ fn drive_row(
     } else {
         accent
     };
-    let free_label = if drive.total_bytes == 0 {
-        String::new()
+    let free_label = if drive.network.as_ref().is_some_and(|n| !n.connected) {
+        rust_i18n::t!("network_drive_disconnected").to_string()
+    } else if drive.total_bytes == 0 {
+        drive.network.as_ref().map(|n| n.remote.clone()).unwrap_or_default()
     } else {
         let free_gb = drive.available_bytes as f64 / 1_073_741_824.0;
         rust_i18n::t!("sidebar_free_space", gb = format!("{free_gb:.0}")).to_string()
@@ -3652,8 +3684,9 @@ fn drive_row(
         row.context_menu({
             let lens_path = drive.mount_point.clone();
             let properties_path = drive.mount_point.clone();
+            let network = drive.network.is_some();
             move |menu, _window, _cx| {
-                menu.menu(
+                let menu = menu.menu(
                     rust_i18n::t!("sidebar_analyze_space"),
                     Box::new(OpenSpaceLensForPath {
                         path: lens_path.clone(),
@@ -3664,7 +3697,17 @@ fn drive_row(
                     Box::new(OpenPropertiesForPath {
                         path: properties_path.clone(),
                     }),
-                )
+                );
+                if network {
+                    menu.separator().menu(
+                        rust_i18n::t!("network_disconnect"),
+                        Box::new(DisconnectNetworkDrive {
+                            path: properties_path.clone(),
+                        }),
+                    )
+                } else {
+                    menu
+                }
             }
         })
         .into_any_element()
@@ -3933,9 +3976,15 @@ pub(crate) fn sidebar_context_menu(
             );
     }
     if kind == SectionKind::Drives {
-        menu = menu
-            .separator()
-            .menu("This PC Properties", Box::new(OpenThisPcProperties));
+        menu = menu.separator();
+        #[cfg(windows)]
+        {
+            menu = menu.menu(
+                rust_i18n::t!("network_map_drive"),
+                Box::new(MapNetworkDrive { remote: None }),
+            );
+        }
+        menu = menu.menu(rust_i18n::t!("sidebar_this_pc_properties"), Box::new(OpenThisPcProperties));
     }
     menu
 }

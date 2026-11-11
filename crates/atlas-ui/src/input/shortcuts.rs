@@ -114,6 +114,13 @@ impl App {
                 return true;
             }
         }
+        if let Some(panel) = self.compare_panel.clone() {
+            if panel.update(cx, |p, cx| p.handle_key(ev, window, cx)) {
+                cx.notify();
+            }
+            // The panel is modal: keys never reach the panes behind it.
+            return true;
+        }
         if self.command_shortcut_capture.is_some() {
             return self.handle_command_shortcut_key(ev);
         }
@@ -503,6 +510,9 @@ impl App {
                 tab: focused,
                 location: atlas_model::location::Location::RecycleBin,
             }),
+            #[cfg(target_os = "windows")]
+            "net.map-drive" => Some(Action::MapNetworkDrive),
+            "pane.compare" => Some(Action::CompareFolders),
             "view.hidden" => Some(Action::ToggleHidden),
             "view.theme-toggle" => Some(Action::ToggleThemeAppearance),
             "view.theme-follow-system" => Some(Action::ToggleThemeFollowSystem),

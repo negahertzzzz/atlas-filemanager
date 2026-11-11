@@ -55,6 +55,9 @@ pub(crate) const COMMANDS: &[CommandMeta] = &[
     CommandMeta::remappable("nav.refresh", Some("f5")),
     #[cfg(target_os = "windows")]
     CommandMeta::remappable("nav.recycle-bin", None),
+    #[cfg(target_os = "windows")]
+    CommandMeta::remappable("net.map-drive", None),
+    CommandMeta::remappable("pane.compare", None),
     CommandMeta::remappable("view.hidden", Some("ctrl-.")),
     CommandMeta::remappable("view.vim-mode", None),
     CommandMeta::remappable("view.inspector", Some("ctrl-i")),

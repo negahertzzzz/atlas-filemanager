@@ -310,6 +310,15 @@ impl App {
                 }
             }
         }
+        // Like Explorer, going up from `\\server\share` shows the server's shares.
+        if let Some(server) = self
+            .tab_data_for(tab_id)
+            .and_then(|td| td.location.fs_dir())
+            .and_then(atlas_core::fs::network::parent)
+        {
+            self.navigate(tab_id, server);
+            return;
+        }
         let parent = self
             .tab_data_for(tab_id)
             .and_then(|td| td.location.ascend());

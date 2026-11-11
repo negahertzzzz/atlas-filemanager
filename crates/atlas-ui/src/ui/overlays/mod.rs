@@ -164,6 +164,10 @@ impl App {
         if self.cleanup_panel.is_some() {
             layers.push(self.render_disk_cleanup(cx));
         }
+        self.mount_pending_compare(cx);
+        if self.compare_panel.is_some() {
+            layers.push(self.render_folder_compare(cx));
+        }
         if self.vault.is_some() {
             layers.push(self.render_vault(window, cx));
         }

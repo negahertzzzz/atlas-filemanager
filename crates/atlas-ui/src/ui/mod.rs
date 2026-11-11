@@ -24,6 +24,7 @@ pub fn rem_px_abs(n: f32, window: &gpui::Window) -> gpui::Pixels {
 pub mod breadcrumb_menu;
 pub mod chrome;
 pub mod cleanup;
+pub(crate) mod compare;
 pub mod chrome_dg;
 pub mod dg;
 pub(crate) mod current_bounds;

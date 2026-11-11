@@ -183,6 +183,16 @@ pub async fn list_dir_with_preview(
     // Other platforms and unsupported providers retain the portable enumerator.
     let entries = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<FileEntry>> {
         crate::fs::paths::ensure_wsl_ready(&dir)?;
+        // A bare server path is not a directory: like Explorer, it lists the shares.
+        if let Some(server) = crate::fs::network::bare_server(&dir) {
+            return match crate::fs::network::share_entries(&server, show_hidden) {
+                Ok(mut entries) => {
+                    sort_entries(&mut entries, &sort_col, &sort_dir, folder_order);
+                    Ok(entries)
+                }
+                Err(error) => Err(network_error(&dir, error.into())),
+            };
+        }
         #[cfg(windows)]
         {
             let directory = atlas_model::file_entry::EntryDirectory::new(dir.clone());
@@ -251,7 +261,8 @@ pub async fn list_dir_with_preview(
                 &sort_dir,
                 folder_order,
                 preview,
-            );
+            )
+            .map_err(|error| network_error(&dir, error));
         }
         #[cfg(not(windows))]
         list_dir_portable(
@@ -265,6 +276,16 @@ pub async fn list_dir_with_preview(
     })
     .await??;
     Ok(entries)
+}
+
+/// Tag SMB failures that new credentials could fix so the UI can show the
+/// Windows credential prompt instead of a dead "Access denied" pane.
+fn network_error(dir: &Path, error: anyhow::Error) -> anyhow::Error {
+    if crate::fs::network::wants_credentials(dir, &error) {
+        anyhow::anyhow!(crate::fs::network::CREDENTIALS_REQUIRED)
+    } else {
+        error
+    }
 }
 
 fn list_dir_portable(

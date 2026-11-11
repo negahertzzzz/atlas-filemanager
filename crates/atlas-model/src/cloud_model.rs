@@ -36,11 +36,40 @@ pub enum RemoteKind {
         host: String,
         port: u16,
         user: String,
+        /// Windows/Active Directory domain. Empty means rclone's default
+        /// (`WORKGROUP`), which is right for NAS boxes and local accounts.
+        #[serde(default)]
+        domain: String,
     },
     /// Google Drive (OAuth; browser approval, no stored password).
     GoogleDrive,
     /// Microsoft `OneDrive` (OAuth).
     OneDrive,
+}
+
+/// Split an SMB login typed as `DOMAIN\user` (or `DOMAIN/user`) into
+/// `(user, domain)`. `user@domain.tld` stays whole: NTLM accepts the UPN form.
+pub fn split_smb_login(login: &str) -> (String, String) {
+    let login = login.trim();
+    match login.split_once(['\\', '/']) {
+        Some((domain, user)) if !domain.is_empty() && !user.is_empty() => {
+            (user.trim().to_owned(), domain.trim().to_owned())
+        }
+        _ => (login.to_owned(), String::new()),
+    }
+}
+
+#[cfg(test)]
+mod smb_login_tests {
+    #[test]
+    fn domain_logins_are_split_and_other_forms_kept() {
+        use super::split_smb_login as split;
+        assert_eq!(split(r"CONTOSO\mario"), ("mario".into(), "CONTOSO".into()));
+        assert_eq!(split("CONTOSO/mario"), ("mario".into(), "CONTOSO".into()));
+        assert_eq!(split(" mario@contoso.local "), ("mario@contoso.local".into(), String::new()));
+        assert_eq!(split("guest"), ("guest".into(), String::new()));
+        assert_eq!(split(r"\mario"), (r"\mario".into(), String::new()));
+    }
 }
 
 impl RemoteKind {

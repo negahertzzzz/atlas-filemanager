@@ -136,7 +136,13 @@ impl CleanupPanel {
             .rounded_lg()
             .bg(fg.opacity(0.05))
             .child(segment("cleanup-tab-map", "cleanup_map", Tab::Map, cx))
-            .child(segment("cleanup-tab-temp", "cleanup_temp", Tab::Cleanup, cx));
+            .child(segment("cleanup-tab-files", "cleanup_tab_files", Tab::Files, cx))
+            .child(segment("cleanup-tab-types", "cleanup_tab_types", Tab::Types, cx))
+            .child(segment("cleanup-tab-dups", "cleanup_tab_duplicates", Tab::Duplicates, cx))
+            // Temporary-file categories exist on local system volumes only.
+            .when(!self.network, |s| {
+                s.child(segment("cleanup-tab-temp", "cleanup_temp", Tab::Cleanup, cx))
+            });
         let capacity = self
             .snapshot
             .capacity
@@ -155,7 +161,16 @@ impl CleanupPanel {
                     .w_full()
                     .items_center()
                     .gap_3()
-                    .child(theme_icon(AtlasIcon::HardDrive, 28., accent, windows))
+                    .child(theme_icon(
+                        if self.network {
+                            AtlasIcon::NetworkDrive
+                        } else {
+                            AtlasIcon::HardDrive
+                        },
+                        28.,
+                        accent,
+                        windows,
+                    ))
                     .child(
                         v_flex()
                             .flex_1()
@@ -170,6 +185,15 @@ impl CleanupPanel {
                             .child(div().text_sm().text_color(muted).child(subtitle)),
                     )
                     .when(self.tab != Tab::History, |row| row.child(switcher))
+                    .child(
+                        Button::new("cleanup-export")
+                            .ghost()
+                            .small()
+                            .tooltip(tr("cleanup_export_csv"))
+                            .disabled(busy || !self.can_export())
+                            .child(theme_icon(AtlasIcon::TrayArrowDown, 18., muted, windows))
+                            .on_click(cx.listener(|p, _, _, cx| p.export_csv(cx))),
+                    )
                     .child(
                         Button::new("cleanup-refresh")
                             .ghost()
@@ -190,7 +214,7 @@ impl CleanupPanel {
                                 if p.tab == Tab::History {
                                     p.tab = Tab::Map;
                                 }
-                                p.fast_requested = cfg!(windows);
+                                p.fast_requested = cfg!(windows) && !p.network;
                                 p.scan(cx);
                             })),
                     )

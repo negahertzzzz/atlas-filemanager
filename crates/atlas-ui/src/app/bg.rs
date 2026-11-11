@@ -813,8 +813,26 @@ impl App {
                     });
                     info.notify_panes.push(tab);
                 }
-                BgResult::DirListError { tab, op_id, error } => {
+                BgResult::Network { tab, target, navigate, outcome } => {
+                    #[cfg(windows)]
+                    self.apply_network_result(tab, target, navigate, outcome);
+                    #[cfg(not(windows))]
+                    let _ = (tab, target, navigate, outcome);
+                    info.notify_panes.extend(self.state.tab_states.keys().copied());
+                }
+                BgResult::DirListError { tab, op_id, mut error } => {
                     tracing::warn!(tab = tab.0, op_id, %error, "directory listing failed");
+                    if error == atlas_core::fs::network::CREDENTIALS_REQUIRED {
+                        let current = self.state.tab_states.get(&tab).is_some_and(|ts| ts.last_nav_op_id == op_id);
+                        let dir = self.tab_data_for(tab).and_then(|td| td.location.fs_dir()).map(std::path::Path::to_path_buf);
+                        #[cfg(windows)]
+                        if current && dir.as_deref().is_some_and(|dir| self.request_network_credentials(tab, dir)) {
+                            // The pane keeps loading while Windows asks for credentials.
+                            continue;
+                        }
+                        let _ = (current, dir);
+                        error = rust_i18n::t!("network_err_denied").into_owned();
+                    }
                     if let Some(ts) = self.state.tab_states.get_mut(&tab) {
                         if op_id == ts.last_nav_op_id {
                             ts.load_state = LoadState::Error(error);

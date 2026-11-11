@@ -1,4 +1,5 @@
 //! Atlas-owned disk analysis. No external cleaner or shell scripts are executed.
+mod duplicates;
 mod execution;
 #[cfg(windows)]
 mod mft;
@@ -11,7 +12,8 @@ pub use execution::{execute, prepare_plan, prepare_plan_in};
 pub use policy::{categories, is_cleanup_root, is_drive_root, protected, user_temp_root, Category};
 pub use scan::{ScanJob, ScanMode};
 use std::path::PathBuf;
-pub use tree::{cached_snapshot, invalidate as invalidate_tree};
+pub use duplicates::{DuplicateJob, DEFAULT_MIN_BYTES as DUPLICATE_MIN_BYTES};
+pub use tree::{cached_snapshot, cached_treemap, cached_types, invalidate as invalidate_tree};
 
 /// Open and identify the given files in parallel; files that vanished, are
 /// locked or are otherwise unsafe are simply left out.
@@ -33,8 +35,18 @@ pub fn inspect_candidates(
     }
 }
 
+/// Roots the analyzer opens on: a drive (local or mapped network drive) or an
+/// SMB share (`\server\share`).
+pub fn is_analysis_root(path: &std::path::Path) -> bool {
+    policy::is_drive_root(path) || crate::fs::network::is_share_root(path)
+}
+
 /// Move one analyzed entry to the Recycle Bin and update the cached totals.
 pub fn move_to_trash(path: &std::path::Path) -> std::io::Result<()> {
+    // SMB shares have no Recycle Bin: Windows would delete permanently.
+    if crate::fs::network::is_network_path(path) {
+        return Err(std::io::Error::other("cleanup_network_no_trash"));
+    }
     let blocked = policy::is_drive_root(path)
         || policy::protected(path)
         || crate::vault::is_private_path(path)

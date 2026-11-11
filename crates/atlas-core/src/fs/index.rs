@@ -285,6 +285,8 @@ pub fn build_extended_index(injector: nucleo::Injector<IndexEntry>) {
     rayon::spawn(move || {
         let roots: Vec<PathBuf> = super::mounts::list_drives()
             .into_iter()
+            // Crawling a share would flood the server and stall on slow links.
+            .filter(|drive| drive.network.is_none())
             .map(|drive| drive.mount_point)
             .chain(super::paths::list_wsl_roots())
             .collect();

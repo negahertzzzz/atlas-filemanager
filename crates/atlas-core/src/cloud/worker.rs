@@ -459,10 +459,18 @@ impl Worker {
         let is_oauth = remote.kind.is_oauth();
         let params = match &remote.kind {
             RemoteKind::Sftp { host, port, user }
-            | RemoteKind::Ftp { host, port, user }
-            | RemoteKind::Smb { host, port, user } => json!({
+            | RemoteKind::Ftp { host, port, user } => json!({
                 "host": host, "port": port.to_string(), "user": user, "pass": secret,
             }),
+            RemoteKind::Smb { host, port, user, domain } => {
+                let mut params = json!({
+                    "host": host, "port": port.to_string(), "user": user, "pass": secret,
+                });
+                if !domain.is_empty() {
+                    params["domain"] = json!(domain);
+                }
+                params
+            }
             RemoteKind::WebDav { url, vendor, user } => json!({
                 "url": url, "vendor": vendor, "user": user, "pass": secret,
             }),

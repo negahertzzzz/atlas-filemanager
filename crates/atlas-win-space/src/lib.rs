@@ -48,6 +48,7 @@ pub mod process_job;
 pub mod vault_safety;
 pub mod vault_driver;
 pub mod data_protection;
+pub mod network;
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;

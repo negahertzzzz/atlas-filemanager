@@ -24,6 +24,8 @@ pub mod fs_sync;
 pub(crate) mod icon_loader;
 pub(crate) mod liquid_glass;
 pub mod nav;
+#[cfg(windows)]
+pub(crate) mod network;
 pub mod ops;
 pub mod pane_ops;
 pub mod profiles;
@@ -37,6 +39,10 @@ pub struct App {
     pub(crate) vault_mount: Option<atlas_core::vault::mount::Mounted>,
     pub(crate) converter: Option<crate::ui::converter::Session>,
     pub(crate) cleanup_panel: Option<Entity<crate::ui::cleanup::CleanupPanel>>,
+    /// Folder comparison between the two visible panes.
+    pub(crate) compare_panel: Option<Entity<crate::ui::compare::ComparePanel>>,
+    /// `(left, right)` waiting for a `Context` to mount the compare panel.
+    pub(crate) pending_compare: Option<(std::path::PathBuf, std::path::PathBuf)>,
     pub(crate) mounted_volumes: Vec<(PathBuf, u32)>,
     pub(crate) preview_delay: crate::ui::preview_delay::PreviewDelay,
     pub(crate) state: AppState,
@@ -377,6 +383,9 @@ pub struct App {
     // Used only on the main (UI) thread.
     #[cfg(windows)]
     pub(crate) hwnd: Option<isize>,
+    /// Native SMB prompts in flight (see `app::network`).
+    #[cfg(windows)]
+    pub(crate) network: crate::app::network::NetworkUi,
     // DnD sub-system: drop target COM object (kept alive), zone registry
     // (updated each render frame while a drag is active), and the action queue
     // (COM vtable pushes, App drains in drain_dnd_queue).

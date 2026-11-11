@@ -1,6 +1,6 @@
 //! Immutable in-memory size tree. One scan produces one `SpaceTree`; navigating
 //! to any folder is then a lookup, never another disk read.
-use atlas_model::cleanup::{DiskEntry, DiskSnapshot, ScanBackend, ScanStatus};
+use atlas_model::cleanup::{DiskEntry, DiskSnapshot, ScanBackend, ScanStatus, TreemapNode, TypeStat};
 use std::{
     cmp::Reverse,
     collections::BinaryHeap,
@@ -212,6 +212,123 @@ impl SpaceTree {
         true
     }
 
+    /// Nested treemap of `path`, at most `budget` rectangles. The largest
+    /// entries are expanded first, so a small budget still shows the big
+    /// structure; anything below `min_fraction` of the whole is folded into its
+    /// parent's `other` bytes.
+    pub fn treemap(&self, path: &Path, budget: usize, min_fraction: f64) -> Option<TreemapNode> {
+        let id = self.find(path)?;
+        let total = self.nodes[id as usize].size.max(1);
+        let floor = (total as f64 * min_fraction) as u64;
+        // Breadth-first by size: decide which nodes are drawn before building.
+        let mut drawn: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut frontier: BinaryHeap<(u64, u32)> = BinaryHeap::new();
+        frontier.push((self.nodes[id as usize].size, id));
+        drawn.insert(id);
+        while let Some((_, at)) = frontier.pop() {
+            for kid in self.kids_of(at) {
+                let node = &self.nodes[*kid as usize];
+                // Kids are sorted by size: the rest are smaller still.
+                if node.size <= floor || node.size == 0 || drawn.len() >= budget {
+                    break;
+                }
+                drawn.insert(*kid);
+                if node.dir {
+                    frontier.push((node.size, *kid));
+                }
+            }
+        }
+        Some(self.treemap_node(id, path, &drawn))
+    }
+
+    fn treemap_node(&self, id: u32, path: &Path, drawn: &std::collections::HashSet<u32>) -> TreemapNode {
+        let node = &self.nodes[id as usize];
+        let children: Vec<TreemapNode> = self
+            .kids_of(id)
+            .iter()
+            .filter(|kid| drawn.contains(kid))
+            .map(|kid| self.treemap_node(*kid, &path.join(&*self.nodes[*kid as usize].name), drawn))
+            .collect();
+        let shown = children.iter().fold(0u64, |sum, c| sum.saturating_add(c.bytes));
+        TreemapNode {
+            path: path.to_owned(),
+            name: path
+                .file_name()
+                .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned()),
+            bytes: node.size,
+            directory: node.dir,
+            other: node.size.saturating_sub(shown),
+            children,
+        }
+    }
+
+    /// Space by file extension below `path`. Files under [`FILE_KEEP`] are not
+    /// indexed one by one; their total is reported as one "small files" row.
+    pub fn types(&self, path: &Path) -> Option<Vec<TypeStat>> {
+        let id = self.find(path)?;
+        let mut by_ext: std::collections::HashMap<String, (u64, u64)> = std::collections::HashMap::new();
+        let mut stack = vec![id];
+        let (mut kept_bytes, mut kept_files) = (0u64, 0u64);
+        while let Some(at) = stack.pop() {
+            for kid in self.kids_of(at) {
+                let node = &self.nodes[*kid as usize];
+                if node.dir {
+                    stack.push(*kid);
+                    continue;
+                }
+                let extension = Path::new(&*node.name)
+                    .extension()
+                    .map(|e| e.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                let slot = by_ext.entry(extension).or_default();
+                slot.0 = slot.0.saturating_add(node.size);
+                slot.1 += node.files;
+                kept_bytes = kept_bytes.saturating_add(node.size);
+                kept_files += node.files;
+            }
+        }
+        let root = &self.nodes[id as usize];
+        let mut stats: Vec<TypeStat> = by_ext
+            .into_iter()
+            .map(|(extension, (bytes, files))| TypeStat {
+                extension,
+                bytes,
+                files,
+                small_files: false,
+            })
+            .collect();
+        let small = root.size.saturating_sub(kept_bytes);
+        if small > 0 {
+            stats.push(TypeStat {
+                extension: String::new(),
+                bytes: small,
+                files: root.files.saturating_sub(kept_files),
+                small_files: true,
+            });
+        }
+        stats.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.extension.cmp(&b.extension)));
+        Some(stats)
+    }
+
+    /// Every individually indexed file (at least [`FILE_KEEP`]) below `path`.
+    pub fn files_under(&self, path: &Path) -> Option<Vec<(PathBuf, u64)>> {
+        let id = self.find(path)?;
+        let mut files = Vec::new();
+        let mut stack = vec![(id, path.to_owned())];
+        while let Some((at, base)) = stack.pop() {
+            for kid in self.kids_of(at) {
+                let node = &self.nodes[*kid as usize];
+                let child = base.join(&*node.name);
+                if node.dir {
+                    stack.push((*kid, child));
+                } else {
+                    files.push((child, node.size));
+                }
+            }
+        }
+        Some(files)
+    }
+
     /// Snapshot of any folder inside this tree; no I/O besides the capacity query.
     pub fn snapshot(&self, path: &Path, generation: u64) -> Option<DiskSnapshot> {
         let id = self.find(path)?;
@@ -266,11 +383,12 @@ impl SpaceTree {
         #[cfg(windows)]
         {
             snapshot.capacity = atlas_win_space::cleanup::capacity(path);
-            snapshot.fast_scan_available = self
-                .root
-                .ancestors()
-                .last()
-                .is_some_and(atlas_win_space::mft_space::supported);
+            snapshot.fast_scan_available = !crate::fs::network::is_network_path(&self.root)
+                && self
+                    .root
+                    .ancestors()
+                    .last()
+                    .is_some_and(atlas_win_space::mft_space::supported);
         }
         snapshot.status = if snapshot.skipped > 0 || snapshot.errors > 0 || limited {
             ScanStatus::Partial
@@ -305,6 +423,18 @@ pub fn invalidate() {
     if let Some(old) = TREE.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() {
         std::thread::spawn(move || drop(old));
     }
+}
+/// Nested treemap of `path` from the last completed scan.
+pub fn cached_treemap(path: &Path, budget: usize) -> Option<TreemapNode> {
+    cached(path)?.treemap(path, budget, 0.0015)
+}
+/// File types below `path` from the last completed scan.
+pub fn cached_types(path: &Path) -> Option<Vec<TypeStat>> {
+    cached(path)?.types(path)
+}
+/// Indexed files below `path` from the last completed scan.
+pub fn cached_files(path: &Path) -> Option<Vec<(PathBuf, u64)>> {
+    cached(path)?.files_under(path)
 }
 /// Instant folder view from the last completed scan, if it covers `path`.
 pub fn cached_snapshot(path: &Path, generation: u64) -> Option<DiskSnapshot> {
@@ -352,6 +482,42 @@ mod tests {
         let child = t.snapshot(&root.join("A"), 1).unwrap();
         assert_eq!(child.entries.len(), 1);
         assert!(!t.remove_node(&root.join("missing")));
+    }
+    #[test]
+    fn treemap_types_and_files_come_from_the_same_tree() {
+        let mut b = TreeBuilder::new(100);
+        let a = b.add_dir(0, "A");
+        let deep = b.add_dir(a, "Deep");
+        b.add_file(deep, "movie.MKV", 9_000);
+        b.add_file(a, "song.mp3", 600);
+        b.add_file(0, "notes.txt", 20);
+        b.add_file(0, "disk.iso", 2_000);
+        let root = PathBuf::from("C:\\");
+        let t = b.finish(root.clone(), ScanBackend::NativeDirectory);
+
+        let map = t.treemap(&root, 100, 0.0).unwrap();
+        assert_eq!(map.bytes, 11_620);
+        assert_eq!(map.children[0].name, "A");
+        assert_eq!(map.children[0].children[0].name, "Deep");
+        assert_eq!(map.children[0].children[0].children[0].bytes, 9_000);
+        // The 20-byte file is folded: children plus `other` equal the total.
+        let shown: u64 = map.children.iter().map(|c| c.bytes).sum();
+        assert_eq!(shown + map.other, map.bytes);
+        // A tight budget keeps only the largest rectangles.
+        let small = t.treemap(&root, 2, 0.0).unwrap();
+        assert_eq!(small.children.len(), 1);
+        assert!(small.children[0].children.is_empty());
+
+        let types = t.types(&root).unwrap();
+        assert_eq!(types[0].extension, "mkv");
+        assert_eq!(types[0].bytes, 9_000);
+        assert!(types.iter().any(|s| s.small_files && s.bytes == 20 && s.files == 1));
+        assert_eq!(types.iter().map(|s| s.bytes).sum::<u64>(), 11_620);
+
+        let mut files = t.files_under(&root.join("a")).unwrap();
+        files.sort();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|(p, b)| p.ends_with("movie.MKV") && *b == 9_000));
     }
     #[test]
     fn small_files_fold_into_the_folder_total() {

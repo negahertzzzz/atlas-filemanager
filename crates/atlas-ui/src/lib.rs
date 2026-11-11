@@ -186,6 +186,20 @@ pub struct OpenPropertiesForPath {
 #[action(namespace = atlas, no_json)]
 pub struct OpenThisPcProperties;
 
+/// Windows "Map Network Drive" dialog, optionally pre-filled with a share.
+#[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
+#[action(namespace = atlas, no_json)]
+pub struct MapNetworkDrive {
+    pub remote: Option<std::path::PathBuf>,
+}
+
+/// Disconnect a mapped network drive (`Z:\`).
+#[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
+#[action(namespace = atlas, no_json)]
+pub struct DisconnectNetworkDrive {
+    pub path: std::path::PathBuf,
+}
+
 #[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = atlas, no_json)]
 pub struct SidebarDeleteTag {

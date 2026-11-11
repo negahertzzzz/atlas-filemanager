@@ -162,21 +162,26 @@ impl Worker {
         }
         #[cfg(windows)]
         {
-            if root
+            let network = crate::fs::network::is_network_path(&root);
+            // Network shares can be analysed (plain walk), never cleaned:
+            // their deletions bypass the Recycle Bin.
+            let analysis = matches!(self.mode, ScanMode::Folder | ScanMode::FastFolder);
+            let local = root
                 .ancestors()
                 .last()
-                .is_none_or(|volume| !atlas_win_space::cleanup::local_drive(volume))
-            {
+                .is_some_and(atlas_win_space::cleanup::local_drive);
+            if !(local || (network && analysis)) {
                 self.snapshot.status = ScanStatus::Failed;
                 self.snapshot.message = Some("cleanup_unavailable".into());
                 self.finish();
                 return;
             }
             self.snapshot.capacity = atlas_win_space::cleanup::capacity(&root);
-            self.snapshot.fast_scan_available = root
-                .ancestors()
-                .last()
-                .is_some_and(atlas_win_space::mft_space::supported);
+            self.snapshot.fast_scan_available = !network
+                && root
+                    .ancestors()
+                    .last()
+                    .is_some_and(atlas_win_space::mft_space::supported);
         }
         if self.mode == ScanMode::Temporary || self.mode == ScanMode::Category {
             let temp = if self.mode == ScanMode::Category {
@@ -212,7 +217,10 @@ impl Worker {
                 return;
             }
             #[cfg(windows)]
-            if self.snapshot.fast_scan_available && self.try_mft(&root) {
+            if self.snapshot.fast_scan_available
+                && !crate::fs::network::is_network_path(&root)
+                && self.try_mft(&root)
+            {
                 return;
             }
             self.walk_tree(&root);

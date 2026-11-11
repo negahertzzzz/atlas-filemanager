@@ -3,11 +3,13 @@ pub mod list;
 pub mod scan_policy;
 pub mod dir_stats;
 pub mod mounts;
+pub mod network;
 pub mod paths;
 pub mod tag_db;
 pub mod udisks;
 pub mod desktop_apps;
 
+pub mod compare;
 pub mod compress;
 pub mod ops;
 pub mod transfer;

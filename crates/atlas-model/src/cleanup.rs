@@ -84,6 +84,60 @@ pub struct DiskSnapshot {
     pub backend_note: Option<String>,
 }
 
+/// One rectangle of the nested treemap: a folder (with children) or a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TreemapNode {
+    pub path: PathBuf,
+    pub name: String,
+    pub bytes: u64,
+    pub directory: bool,
+    /// Largest children first. Their bytes plus `other` equal `bytes`.
+    pub children: Vec<TreemapNode>,
+    /// Bytes of small files and of children too small to draw.
+    pub other: u64,
+}
+
+/// Space used by one file type (extension) below the analysed folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeStat {
+    /// Lower-case extension without the dot; empty for files without one.
+    pub extension: String,
+    pub bytes: u64,
+    pub files: u64,
+    /// True for the bucket of files too small to be indexed one by one.
+    pub small_files: bool,
+}
+
+/// Files with identical content.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DuplicateGroup {
+    /// Size of each copy.
+    pub bytes: u64,
+    /// Every copy, oldest first: the first one is the natural one to keep.
+    pub paths: Vec<PathBuf>,
+}
+
+impl DuplicateGroup {
+    /// Space freed by keeping a single copy.
+    pub const fn wasted(&self) -> u64 {
+        self.bytes.saturating_mul(self.paths.len().saturating_sub(1) as u64)
+    }
+}
+
+/// Progress and result of a duplicate search.
+#[derive(Clone, Debug, Default)]
+pub struct DuplicateReport {
+    pub generation: u64,
+    pub groups: Vec<DuplicateGroup>,
+    /// Bytes read for hashing so far, and the most it may read.
+    pub hashed_bytes: u64,
+    pub total_bytes: u64,
+    pub candidates: usize,
+    pub finished: bool,
+    pub cancelled: bool,
+    pub errors: u64,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ScanBackend {
     #[default]

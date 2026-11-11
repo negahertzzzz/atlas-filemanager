@@ -39,6 +39,7 @@ use gpui_component::WindowExt;
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OverlayClaim {
     DiskCleanup,
+    FolderCompare,
     Vault,
     Converter,
     TagPicker,
@@ -74,6 +75,9 @@ impl App {
         if self.vault.is_some() { return Some(OverlayClaim::Vault); }
         if self.cleanup_panel.is_some() {
             return Some(OverlayClaim::DiskCleanup);
+        }
+        if self.compare_panel.is_some() {
+            return Some(OverlayClaim::FolderCompare);
         }
         if self.converter.as_ref().is_some_and(|s| s.visible()) {
             return Some(OverlayClaim::Converter);
@@ -200,6 +204,7 @@ impl App {
         use crate::ui::palette::PaletteKind;
         match self.active_claim()? {
             OverlayClaim::DiskCleanup => self.cleanup_panel.as_ref().map(|p|p.read(cx).focus.clone()),
+            OverlayClaim::FolderCompare => self.compare_panel.as_ref().map(|p| p.read(cx).focus.clone()),
             OverlayClaim::Vault => Some(self.vault_focus(window, cx)),
             OverlayClaim::Converter => Some(self.overlay_focus(cx)),
             OverlayClaim::TagPicker => self

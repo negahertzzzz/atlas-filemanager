@@ -152,6 +152,8 @@ pub(crate) struct CtxMenuState {
 #[derive(Clone, Copy, PartialEq)]
 enum AtlasCmd {
     DiskCleanup,
+    #[cfg(windows)]
+    MapNetworkDrive,
     ProtectFolder,
     UnlockFolder,
     Convert,
@@ -177,6 +179,8 @@ impl AtlasCmd {
     fn label(self) -> String {
         match self {
             Self::DiskCleanup => rust_i18n::t!("cleanup_open").to_string(),
+            #[cfg(windows)]
+            Self::MapNetworkDrive => rust_i18n::t!("network_map_drive").to_string(),
             Self::ProtectFolder => rust_i18n::t!("vault_context_protect").to_string(),
             Self::UnlockFolder => rust_i18n::t!("vault_context_unlock").to_string(),
             Self::Convert => rust_i18n::t!("convert_title").to_string(),
@@ -201,6 +205,8 @@ impl AtlasCmd {
     fn icon(self) -> Option<AtlasIcon> {
         match self {
             Self::DiskCleanup => Some(AtlasIcon::HardDrive),
+            #[cfg(windows)]
+            Self::MapNetworkDrive => Some(AtlasIcon::NetworkDrive),
             Self::ProtectFolder | Self::UnlockFolder => Some(AtlasIcon::Lock),
             Self::Convert => Some(AtlasIcon::ArrowClockwise),
             Self::Open => Some(AtlasIcon::Eye),
@@ -225,6 +231,8 @@ impl AtlasCmd {
     fn command_id(self) -> &'static str {
         match self {
             Self::DiskCleanup => "disk.cleanup",
+            #[cfg(windows)]
+            Self::MapNetworkDrive => "net.map-drive",
             Self::ProtectFolder => "vault.protect",
             Self::UnlockFolder => "vault.unlock",
             Self::Convert => "files.convert",
@@ -737,13 +745,18 @@ impl App {
         let drive_root = cfg!(windows)
             && !state.background
             && state.paths.len() == 1
-            && atlas_core::cleanup::is_drive_root(&state.paths[0]);
+            && atlas_core::cleanup::is_analysis_root(&state.paths[0]);
         if drive_root {
             atlas_items = vec![
                 (AtlasCmd::Open, false),
                 (AtlasCmd::DiskCleanup, true),
                 (AtlasCmd::Properties, false),
             ];
+            // A share inside `\server`: offer to map it like Explorer does.
+            #[cfg(windows)]
+            if atlas_core::fs::network::is_share_root(&state.paths[0]) {
+                atlas_items.insert(2, (AtlasCmd::MapNetworkDrive, false));
+            }
         }
         if !state.background && !is_recycle_bin && !drive_root {
             if state.paths.iter().any(|p| atlas_core::vault::is_private_path(p)) {
@@ -1457,6 +1470,10 @@ impl App {
                 if let [path] = menu_paths.as_slice() {
                     self.open_disk_cleanup(path.clone(), cx);
                 }
+            }
+            #[cfg(windows)]
+            AtlasCmd::MapNetworkDrive => {
+                self.map_network_drive(menu_paths.first().cloned());
             }
             AtlasCmd::ProtectFolder => {
                 if let [path] = menu_paths.as_slice() {

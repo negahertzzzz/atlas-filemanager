@@ -20,6 +20,17 @@ pub struct DriveInfo {
     pub available_bytes: u64,
     pub is_removable: bool,
     pub is_system: bool,
+    /// Set for drive letters mapped to an SMB share.
+    pub network: Option<NetworkDrive>,
+}
+
+/// The share behind a mapped network drive.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NetworkDrive {
+    /// `\\server\share`
+    pub remote: String,
+    /// False for a mapping Windows remembers but has not reconnected yet.
+    pub connected: bool,
 }
 
 impl DriveInfo {
@@ -64,6 +75,16 @@ pub fn list_drives() -> Vec<DriveInfo> {
     drives
 }
 
+/// Forget the cached drive list, e.g. right after a network drive was mapped
+/// or disconnected, so the sidebar does not wait for the 5 s refresh.
+pub fn invalidate_drive_cache() {
+    if let Some(cache) = DRIVE_CACHE.get() {
+        if let Ok(mut guard) = cache.lock() {
+            *guard = None;
+        }
+    }
+}
+
 fn list_drives_internal() -> Vec<DriveInfo> {
     let disks = sysinfo::Disks::new_with_refreshed_list();
     let mut drives: Vec<DriveInfo> = disks
@@ -89,12 +110,89 @@ fn list_drives_internal() -> Vec<DriveInfo> {
                 available_bytes: disk.available_space(),
                 is_removable,
                 is_system,
+                network: None,
             }
         })
         .collect();
+    #[cfg(windows)]
+    drives.extend(network_drives());
     drives.sort_by(|a, b| a.mount_point.cmp(&b.mount_point));
     drives.dedup_by(|a, b| a.mount_point == b.mount_point);
     drives
+}
+
+/// Last known `(total, free)` of each connected network drive. A server can
+/// take many seconds to answer, so capacity is only ever read off-thread and
+/// the drive list never waits for it.
+#[cfg(windows)]
+static NETWORK_CAPACITY: OnceLock<Mutex<std::collections::HashMap<PathBuf, Option<(u64, u64)>>>> =
+    OnceLock::new();
+
+#[cfg(windows)]
+fn network_capacity(root: &std::path::Path) -> (u64, u64) {
+    let cache = NETWORK_CAPACITY.get_or_init(Default::default);
+    let mut guard = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let known = guard.get(root).copied();
+    // `None` inside the map marks a query in flight.
+    if known != Some(None) {
+        guard.insert(root.to_owned(), None);
+        let root = root.to_owned();
+        std::thread::spawn(move || {
+            let capacity = atlas_win_space::cleanup::capacity(&root);
+            if let Ok(mut guard) = cache.lock() {
+                guard.insert(root, Some(capacity.unwrap_or((0, 0))));
+            }
+        });
+    }
+    known.flatten().unwrap_or((0, 0))
+}
+
+/// Drive letters mapped to SMB shares, labelled like Explorer:
+/// `share (\\server) (Z:)`.
+#[cfg(windows)]
+fn network_drives() -> Vec<DriveInfo> {
+    atlas_win_space::network::mapped_drives()
+        .into_iter()
+        .map(|drive| {
+            let mount_point = PathBuf::from(format!("{}\\", drive.local));
+            let (total_bytes, available_bytes) = if drive.connected {
+                network_capacity(&mount_point)
+            } else {
+                (0, 0)
+            };
+            DriveInfo {
+                label: network_label(&drive.remote, &drive.local),
+                mount_point,
+                total_bytes,
+                available_bytes,
+                is_removable: false,
+                is_system: false,
+                network: Some(NetworkDrive {
+                    remote: drive.remote,
+                    connected: drive.connected,
+                }),
+            }
+        })
+        .collect()
+}
+
+/// `share (\\server) (Z:)` from `\\server\share` and `Z:`.
+pub fn network_label(remote: &str, local: &str) -> String {
+    let mut parts = remote.split(['\\', '/']).filter(|p| !p.is_empty());
+    match (parts.next(), parts.next_back()) {
+        (Some(server), Some(share)) => format!(r"{share} (\\{server}) ({local})"),
+        _ => format!("{remote} ({local})"),
+    }
+}
+
+#[cfg(test)]
+mod network_tests {
+    #[test]
+    fn network_drive_labels_follow_explorer() {
+        assert_eq!(super::network_label(r"\\nas\media", "Z:"), r"media (\\nas) (Z:)");
+        assert_eq!(super::network_label(r"\\nas\media\film", "Y:"), r"film (\\nas) (Y:)");
+        assert_eq!(super::network_label("odd", "X:"), "odd (X:)");
+    }
 }
 
 #[inline]

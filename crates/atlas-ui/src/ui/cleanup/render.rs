@@ -1,4 +1,7 @@
-use super::{bubble_map_element::BubbleMapElement, tr, CleanupPanel, Row, Tab};
+use super::{
+    bubble_map_element::BubbleMapElement, tr, treemap_element::TreemapElement, CleanupPanel, Row,
+    Tab,
+};
 use crate::ui::icons::{theme_icon, AtlasIcon};
 use atlas_model::cleanup::ScanStatus;
 use gpui::{prelude::*, *};
@@ -33,6 +36,7 @@ fn button(
 
 impl Render for CleanupPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.ensure_derived(cx);
         let fg = cx.theme().foreground;
         let muted = super::muted(cx);
         let border = cx.theme().border;
@@ -132,6 +136,10 @@ impl Render for CleanupPanel {
                 );
         } else if self.tab == Tab::Cleanup && !self.cats.is_empty() {
             content = content.child(self.categories_view(cx));
+        } else if self.tab == Tab::Types {
+            content = content.child(self.types_view(cx));
+        } else if self.tab == Tab::Duplicates {
+            content = content.child(self.duplicates_view(cx));
         } else {
             if self.tab == Tab::Map {
                 content = content.child(
@@ -155,6 +163,34 @@ impl Render for CleanupPanel {
                                 .text_xs()
                                 .text_color(muted)
                                 .child(self.current.display().to_string()),
+                        )
+                        .child(
+                            Button::new("cleanup-treemap")
+                                .ghost()
+                                .small()
+                                .tooltip(tr(if self.treemap {
+                                    "cleanup_show_bubbles"
+                                } else {
+                                    "cleanup_show_treemap"
+                                }))
+                                .disabled(self.list_only)
+                                .child(theme_icon(
+                                    if self.treemap {
+                                        AtlasIcon::Grid
+                                    } else {
+                                        AtlasIcon::Columns
+                                    },
+                                    17.,
+                                    muted,
+                                    windows,
+                                ))
+                                .on_click(cx.listener(|p, _, _, cx| {
+                                    p.treemap = !p.treemap;
+                                    p.hovered = None;
+                                    p.treemap_hovered = None;
+                                    p.treemap_hover_path = None;
+                                    cx.notify();
+                                })),
                         )
                         .child(
                             Button::new("cleanup-view")
@@ -268,8 +304,34 @@ impl Render for CleanupPanel {
                     .min_h_0()
                     .rounded_lg()
                     .overflow_hidden()
-                    .bg(cx.theme().background)
-                    .child(BubbleMapElement {
+                    .bg(cx.theme().background);
+                let treemap = self.treemap_root.clone().filter(|_| self.treemap);
+                let map = if let Some(root) = treemap {
+                    map.child(TreemapElement {
+                        panel: cx.entity().downgrade(),
+                        root,
+                        revision: self.treemap_revision,
+                        selected: self.selected.clone(),
+                        hovered: self.treemap_hovered,
+                        cache: self.treemap_cache.clone(),
+                        fg,
+                        background: cx.theme().background,
+                        dark,
+                        colors: super::appearance::palette(cx),
+                        other_label: tr("cleanup_other"),
+                    })
+                } else if self.treemap && self.treemap_pending {
+                    map.flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child(tr("cleanup_treemap_computing")),
+                        )
+                } else {
+                    map.child(BubbleMapElement {
                         panel: cx.entity().downgrade(),
                         nodes: self.map_nodes.clone(),
                         revision: self.revision,
@@ -292,7 +354,8 @@ impl Render for CleanupPanel {
                                 })
                                 .collect(),
                         ),
-                    });
+                    })
+                };
                 if narrow {
                     content = content.child(map);
                 } else {
@@ -331,12 +394,18 @@ impl Render for CleanupPanel {
                             ),
                     );
                 }
-                content = content.child(
-                    div()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(tr("cleanup_map_hint")),
-                );
+                let hint = match &self.treemap_hover_path {
+                    Some((path, label, size)) if self.treemap => match path {
+                        Some(path) => format!("{label} · {size} · {}", path.display()),
+                        None => format!("{label} · {size}"),
+                    },
+                    _ => tr(if self.treemap {
+                        "cleanup_treemap_hint"
+                    } else {
+                        "cleanup_map_hint"
+                    }),
+                };
+                content = content.child(div().text_xs().text_color(muted).truncate().child(hint));
             } else if self.rows.is_empty() {
                 content = content.child(
                     v_flex()
@@ -389,7 +458,7 @@ impl Render for CleanupPanel {
                             row.child(button(
                                 "cleanup-trash",
                                 "cleanup_trash",
-                                busy || self.trashing,
+                                busy || self.trashing || self.network,
                                 cx,
                                 |p, _, cx| p.trash_selected(cx),
                             ))
@@ -411,6 +480,15 @@ impl Render for CleanupPanel {
                         }),
                 );
             }
+        }
+        if let Some(notice) = &self.notice {
+            content = content.child(
+                div()
+                    .text_sm()
+                    .text_color(muted)
+                    .truncate()
+                    .child(notice.clone()),
+            );
         }
         if let Some(error) = &self.error {
             content = content.child(div().text_sm().text_color(cx.theme().danger).child(format!(
@@ -827,6 +905,7 @@ impl CleanupPanel {
         }
         if self.tab == Tab::Map
             && !self.list_only
+            && !self.treemap
             && !self.map_nodes.is_empty()
             && matches!(key, "left" | "right" | "up" | "down")
         {
@@ -860,7 +939,7 @@ impl CleanupPanel {
                     }
                 }
             }
-            "delete" if self.tab == Tab::Map => self.trash_selected(cx),
+            "delete" if self.tab == Tab::Map && !self.network => self.trash_selected(cx),
             "space" if self.tab == Tab::Cleanup && self.cats.is_empty() => {
                 if let Some(row) = self.rows.get(self.cursor) {
                     self.toggle(row.path.clone());
@@ -967,7 +1046,7 @@ impl CleanupPanel {
             .child(list)
             .into_any_element()
     }
-    fn reveal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn reveal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(selected) = &self.selected else {
             return;
         };

@@ -739,6 +739,8 @@ impl App {
             #[cfg(windows)]
             hwnd: hwnd_opt,
             #[cfg(windows)]
+            network: Default::default(),
+            #[cfg(windows)]
             dnd: dnd_opt,
             #[cfg(windows)]
             shell_menu,
@@ -749,6 +751,8 @@ impl App {
             eco_cleared: false,
             converter: None,
             cleanup_panel: None,
+            compare_panel: None,
+            pending_compare: None,
             vault: None,
             #[cfg(windows)]
             vault_mount: None,

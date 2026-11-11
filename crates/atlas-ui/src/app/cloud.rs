@@ -287,11 +287,15 @@ impl App {
                     user,
                 }
             }
-            AddRemoteKind::Smb => RemoteKind::Smb {
-                host: host.clone(),
-                port: form.port.trim().parse().unwrap_or(445),
-                user,
-            },
+            AddRemoteKind::Smb => {
+                let (user, domain) = atlas_model::cloud_model::split_smb_login(&user);
+                RemoteKind::Smb {
+                    host: host.clone(),
+                    port: form.port.trim().parse().unwrap_or(445),
+                    user,
+                    domain,
+                }
+            }
             AddRemoteKind::GoogleDrive => RemoteKind::GoogleDrive,
             AddRemoteKind::OneDrive => RemoteKind::OneDrive,
         };

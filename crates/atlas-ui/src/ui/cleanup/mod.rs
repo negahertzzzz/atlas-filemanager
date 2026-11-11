@@ -1,14 +1,16 @@
 //! Native, independently rendered disk analysis and reviewed temporary cleanup.
+mod analysis;
 mod appearance;
 mod bubble_map_element;
 #[cfg(feature = "ui-lab")]
 pub mod diagnostic;
 mod packing;
 mod render;
+mod treemap_element;
 
 use crate::app::App;
 use atlas_core::cleanup::{ScanJob, ScanMode};
-use atlas_model::cleanup::{CleanupPlan, CleanupReport, DiskSnapshot};
+use atlas_model::cleanup::{CleanupPlan, CleanupReport, DiskSnapshot, TreemapNode, TypeStat};
 use bubble_map_element::{Cache, Node};
 use gpui::{AppContext, ColorExt, Context, FocusHandle, WeakEntity, Window};
 use std::{
@@ -26,9 +28,14 @@ use std::{
 pub(super) enum Tab {
     Map,
     Files,
+    Types,
+    Duplicates,
     Cleanup,
     History,
 }
+
+/// What a derived view (treemap, file types) was computed for.
+type DerivedKey = (PathBuf, u64, u64);
 
 #[derive(Clone)]
 pub(super) struct Row {
@@ -102,10 +109,30 @@ pub(crate) struct CleanupPanel {
     cat_pending: usize,
     plans: Vec<CleanupPlan>,
     trashing: bool,
+    /// SMB share or mapped network drive: no MFT, no Recycle Bin, no temp cleanup.
+    network: bool,
+    /// Nested rectangles instead of bubbles in the map tab.
+    treemap: bool,
+    treemap_root: Option<Arc<TreemapNode>>,
+    treemap_key: Option<DerivedKey>,
+    treemap_pending: bool,
+    treemap_revision: u64,
+    treemap_cache: Rc<RefCell<treemap_element::Cache>>,
+    pub(super) treemap_hovered: Option<usize>,
+    /// Hovered tile: path (`None` for the "other" area), label and size.
+    pub(super) treemap_hover_path: Option<(Option<PathBuf>, String, String)>,
+    types: Option<Arc<Vec<TypeStat>>>,
+    types_key: Option<DerivedKey>,
+    types_pending: bool,
+    types_scroll: gpui::UniformListScrollHandle,
+    dup: analysis::Duplicates,
+    /// Short confirmation shown under the content (export written, files moved).
+    notice: Option<String>,
 }
 
 impl CleanupPanel {
     pub(crate) fn new(volume: PathBuf, parent: WeakEntity<App>, cx: &mut Context<Self>) -> Self {
+        let network = atlas_core::fs::network::is_network_path(&volume);
         let mut panel = Self {
             focus: cx.focus_handle(),
             parent,
@@ -135,7 +162,8 @@ impl CleanupPanel {
             list_only: false,
             completed: VecDeque::new(),
             // NTFS volumes read the MFT by default; a refused UAC falls back to the parallel walk.
-            fast_requested: cfg!(windows),
+            // Network volumes have no readable MFT: they always use the walk.
+            fast_requested: cfg!(windows) && !network,
             enter: 0.85,
             opened: std::time::Instant::now(),
             back: Vec::new(),
@@ -145,6 +173,21 @@ impl CleanupPanel {
             cat_pending: 0,
             plans: Vec::new(),
             trashing: false,
+            network,
+            treemap: false,
+            treemap_root: None,
+            treemap_key: None,
+            treemap_pending: false,
+            treemap_revision: 0,
+            treemap_cache: Rc::default(),
+            treemap_hovered: None,
+            treemap_hover_path: None,
+            types: None,
+            types_key: None,
+            types_pending: false,
+            types_scroll: gpui::UniformListScrollHandle::new(),
+            dup: analysis::Duplicates::default(),
+            notice: None,
         };
         panel.scan(cx);
         panel
@@ -442,7 +485,9 @@ impl CleanupPanel {
         } else {
             &self.snapshot.entries
         };
-        let mut rows = if self.tab == Tab::Cleanup {
+        let mut rows = if matches!(self.tab, Tab::Types | Tab::Duplicates) {
+            Vec::new()
+        } else if self.tab == Tab::Cleanup {
             self.snapshot
                 .candidates
                 .iter()
@@ -539,6 +584,7 @@ impl CleanupPanel {
         self.review = None;
         self.plans.clear();
         self.error = None;
+        self.notice = None;
         self.cursor = 0;
         self.selected = None;
         if tab != Tab::History
@@ -867,7 +913,7 @@ fn muted(cx: &gpui::App) -> gpui::Hsla {
 
 impl App {
     pub(crate) fn open_disk_cleanup(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if !atlas_core::cleanup::is_drive_root(&path) {
+        if !atlas_core::cleanup::is_analysis_root(&path) {
             return;
         }
         if let Some(panel) = &self.cleanup_panel {

@@ -19,7 +19,30 @@ pub enum FsChange {
     Rename { from: PathBuf, entry: FileEntry },
 }
 
+/// How a native SMB request (credential prompt, map, disconnect) ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkOutcome {
+    /// Windows accepted the credentials for the share.
+    Connected,
+    /// A drive letter (`Z:`) now points at the share.
+    Mapped(String),
+    /// The drive or connection was removed.
+    Disconnected(String),
+    /// The user closed the Windows dialog.
+    Cancelled,
+    /// Win32 error code (when known) and its system message.
+    Failed { code: Option<i32>, message: String },
+}
+
 pub enum BgResult {
+    /// A native SMB request finished. `tab` is reloaded (or navigated to
+    /// `navigate`) on success; `target` is the share or drive it concerned.
+    Network {
+        tab: Option<TabId>,
+        target: String,
+        navigate: Option<PathBuf>,
+        outcome: NetworkOutcome,
+    },
     IconKeysReady(Vec<String>),
     DirTypeLabels { tab: TabId, op_id: u64, labels: Vec<String> },
     /// Payload stays in the isolated conversion session; this wakes the UI drain.

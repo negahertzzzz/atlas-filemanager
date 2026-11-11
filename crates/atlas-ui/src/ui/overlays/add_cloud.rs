@@ -287,7 +287,11 @@ impl App {
                                 ),
                         )
                         .child(field(
-                            rust_i18n::t!("cloud_field_user").to_string(),
+                            if kind == AddRemoteKind::Smb {
+                                rust_i18n::t!("cloud_field_user_domain").to_string()
+                            } else {
+                                rust_i18n::t!("cloud_field_user").to_string()
+                            },
                             &user_input,
                         ))
                         .child(field(
