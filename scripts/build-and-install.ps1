@@ -8,11 +8,13 @@
     2. Builds the release binaries (atlas, search service, cloud and icon
        extensions). With LTO this takes 15-20 minutes.
     3. Packages the Cloud extension (pinned, SHA-256-checked rclone).
-    4. Compiles the Inno Setup installer into target\installer.
-    5. Installs it silently over the current installation. Windows asks for
+    4. Stages the Visual C++ runtime that the installer ships next to
+       atlas.exe (from Visual Studio, else from the copy installed in Windows).
+    5. Compiles the Inno Setup installer into target\installer.
+    6. Installs it silently over the current installation. Windows asks for
        administrator rights; Atlas is closed for the update and the tasks you
        chose at first install (shortcuts, search service, ...) are kept.
-    6. Checks that the installed atlas.exe is the one just built.
+    7. Checks that the installed binaries are the ones just built.
 
     The Microsoft Store (MSIX) copy of Atlas is separate and is not touched.
 
@@ -111,6 +113,51 @@ function Import-VsDevEnvironment {
     }
 }
 
+# Fallback for stage-windows-runtime.ps1 when the Build Tools lack the
+# "C++ Redistributable" component: the same Microsoft-signed x64 DLLs that the
+# installed Visual C++ Redistributable put in System32, in the same layout.
+function Copy-InstalledRuntime {
+    $system = if ([Environment]::Is64BitProcess) { "System32" } else { "Sysnative" }
+    $source = Join-Path $env:SystemRoot $system
+    $output = Join-Path $repo "target\windows-runtime"
+    $names = @("vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll", "msvcp140.dll",
+        "msvcp140_1.dll", "msvcp140_2.dll", "msvcp140_atomic_wait.dll", "msvcp140_codecvt_ids.dll",
+        "concrt140.dll", "vccorlib140.dll")
+    foreach ($required in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $source $required))) {
+            throw "The Visual C++ runtime is not installed ($required missing). Install the 'C++ Redistributable' component in Visual Studio Installer."
+        }
+    }
+    if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $output | Out-Null
+    $entries = @()
+    foreach ($name in $names) {
+        $dll = Join-Path $source $name
+        if (-not (Test-Path -LiteralPath $dll)) { continue }
+        $signature = Get-AuthenticodeSignature -LiteralPath $dll
+        if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
+            throw "$dll is not signed by Microsoft; refusing to bundle it."
+        }
+        Copy-Item -LiteralPath $dll -Destination $output
+        $entries += [ordered]@{
+            file    = $name
+            version = (Get-Item -LiteralPath $dll).VersionInfo.FileVersion
+            sha256  = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    $entries | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $output "MICROSOFT-RUNTIME.json") -Encoding UTF8
+    @(
+        "Microsoft Visual C++ Runtime (x64 desktop redistributable files)",
+        "Copyright Microsoft Corporation. These files retain Microsoft's license terms;",
+        "they are not relicensed under Atlas's AGPL license.",
+        "Copied unmodified from the Visual C++ Redistributable installed in Windows.",
+        "File versions and SHA-256 values are recorded in MICROSOFT-RUNTIME.json.",
+        "Redistribution and servicing information:",
+        "https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files"
+    ) | Set-Content -LiteralPath (Join-Path $output "MICROSOFT-RUNTIME-NOTICE.txt") -Encoding UTF8
+    Write-Host "Staged $($entries.Count) Microsoft runtime DLLs in $output"
+}
+
 function Find-Iscc {
     $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
@@ -163,10 +210,19 @@ foreach ($name in $binaries) {
 Write-Step "Packaging the Cloud extension"
 & (Join-Path $PSScriptRoot "build-cloud-extension.ps1") -SkipBuild | Out-Null
 
+Write-Step "Staging the Visual C++ runtime"
+# atlas.iss ships the x64 CRT DLLs from target\windows-runtime next to atlas.exe.
+try {
+    & (Join-Path $PSScriptRoot "stage-windows-runtime.ps1")
+} catch {
+    Write-Host "Visual Studio's redistributable folder is missing ($($_.Exception.Message))."
+    Write-Host "Using the Visual C++ runtime installed in Windows instead."
+    Copy-InstalledRuntime
+}
+
 Write-Step "Compiling the installer"
 # build-windows-installer.ps1 also runs the release-only third-party license
-# verification, which needs files outside the public tree; a local update
-# does not need it.
+# verification and symbol archiving; a local update does not need them.
 $iscc = Find-Iscc
 Invoke-Native $iscc @("/Q", "/DAppVersion=$Version", (Join-Path $repo "packaging\windows\atlas.iss"))
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed ($LASTEXITCODE)." }
