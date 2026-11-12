@@ -1564,19 +1564,6 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
             },
         },
         SettingDef {
-            id: "check-updates",
-            category: Category::About,
-            icon: AtlasIcon::ArrowClockwise,
-            title: "sp_check_updates",
-            desc: Some("sp_check_updates_desc"),
-            keywords: "update updates aggiornamenti aggiornamento actualizar version privacy privacidad",
-            control: Control::Toggle {
-                get: |app| app.state.settings.check_updates,
-                set: |app, on| app.state.settings.check_updates = on,
-                default: Some(|s| s.check_updates),
-            },
-        },
-        SettingDef {
             id: "guide",
             category: Category::About,
             icon: AtlasIcon::Lifebuoy,
@@ -1601,6 +1588,31 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
         link!("winfsp", AtlasIcon::HardDrives, "sp_winfsp", Some("sp_winfsp_desc"), "winfsp file system proxy", "https://github.com/winfsp/winfsp"),
         link!("icons8", AtlasIcon::Image, "sp_icons8", Some("settings_icons_by"), "icons iconos icons8 credits creditos", "https://icons8.com"),
     ];
+    // Windows updates come from the Microsoft Store and the app checks no
+    // feed, so the toggle only exists where a startup check still happens.
+    #[cfg(not(windows))]
+    {
+        let at = list
+            .iter()
+            .position(|def| def.id == "guide")
+            .unwrap_or(list.len());
+        list.insert(
+            at,
+            SettingDef {
+                id: "check-updates",
+                category: Category::About,
+                icon: AtlasIcon::ArrowClockwise,
+                title: "sp_check_updates",
+                desc: Some("sp_check_updates_desc"),
+                keywords: "update updates aggiornamenti aggiornamento actualizar version privacy privacidad",
+                control: Control::Toggle {
+                    get: |app| app.state.settings.check_updates,
+                    set: |app, on| app.state.settings.check_updates = on,
+                    default: Some(|s| s.check_updates),
+                },
+            },
+        );
+    }
     #[cfg(windows)]
     list.insert(
         2,
