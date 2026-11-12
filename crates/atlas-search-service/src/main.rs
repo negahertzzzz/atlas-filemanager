@@ -157,35 +157,55 @@ mod windows_impl {
         Ok(())
     }
 
+    /// Register (or repair) the service and start it. The SCM API quotes the
+    /// image path itself: `sc.exe create binPath= ...` stored it with a leading
+    /// space on some Windows 11 builds, and the service then never started
+    /// ("The parameter is incorrect"). A re-install also repairs such a
+    /// registration instead of failing on the existing service.
     fn install_service() -> anyhow::Result<()> {
-        use std::os::windows::process::CommandExt;
-        let current_exe = std::env::current_exe()?;
-        let path_str = current_exe.to_string_lossy();
-        let status = std::process::Command::new("sc.exe")
-            .args([
-                "create",
-                SERVICE_NAME,
-                "binPath=",
-                &format!("\"{}\"", path_str),
-                "start=",
-                "auto",
-                "DisplayName=",
-                "Atlas Search Service",
-            ])
-            .creation_flags(0x0800_0000)
-            .status()?;
-        if !status.success() {
-            anyhow::bail!("sc.exe create failed with status {status}");
-        }
+        use windows_service::service::{
+            ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType,
+        };
+        use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
+        let info = ServiceInfo {
+            name: OsString::from(SERVICE_NAME),
+            display_name: OsString::from("Atlas Search Service"),
+            service_type: ServiceType::OWN_PROCESS,
+            start_type: ServiceStartType::AutoStart,
+            error_control: ServiceErrorControl::Normal,
+            executable_path: std::env::current_exe()?,
+            launch_arguments: Vec::new(),
+            dependencies: Vec::new(),
+            account_name: None, // LocalSystem
+            account_password: None,
+        };
+        let manager = ServiceManager::local_computer(
+            None::<&str>,
+            ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
+        )?;
+        let access =
+            ServiceAccess::QUERY_STATUS | ServiceAccess::START | ServiceAccess::CHANGE_CONFIG;
+        let service = match manager.create_service(&info, access) {
+            Ok(service) => service,
+            Err(windows_service::Error::Winapi(error))
+                if error.raw_os_error()
+                    == Some(windows_sys::Win32::Foundation::ERROR_SERVICE_EXISTS as i32) =>
+            {
+                let service = manager.open_service(SERVICE_NAME, access)?;
+                service
+                    .change_config(&info)
+                    .context("repair the existing service registration")?;
+                service
+            }
+            Err(error) => return Err(error).context("register the search service"),
+        };
         eprintln!("Service '{SERVICE_NAME}' registered with start=auto.");
-        let start_status = std::process::Command::new("sc.exe")
-            .args(["start", SERVICE_NAME])
-            .creation_flags(0x0800_0000)
-            .status()?;
-        if start_status.success() {
-            eprintln!("Service '{SERVICE_NAME}' started successfully.");
-        } else {
-            eprintln!("Service '{SERVICE_NAME}' registered; start returned {start_status}");
+        if service.query_status()?.current_state != ServiceState::Stopped {
+            return Ok(());
+        }
+        match service.start::<&OsStr>(&[]) {
+            Ok(()) => eprintln!("Service '{SERVICE_NAME}' started successfully."),
+            Err(error) => eprintln!("Service '{SERVICE_NAME}' registered; start failed: {error}"),
         }
         Ok(())
     }

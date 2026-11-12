@@ -294,6 +294,18 @@ foreach ($name in $binaries) {
 if ($failed) {
     throw "Some files were not replaced. Close Atlas (and stop 'Atlas Search Service' if needed), then run again with -SkipBuild. Log: $log"
 }
+$searchService = Get-Service -Name AtlasSearchService -ErrorAction SilentlyContinue
+if ($searchService) {
+    try { $searchService.WaitForStatus('Running', [TimeSpan]::FromSeconds(15)) } catch {}
+    $searchService.Refresh()
+    if ($searchService.Status -eq 'Running') {
+        Write-Host "  ok    Atlas Search Service running"
+    } else {
+        $image = (Get-CimInstance Win32_Service -Filter "Name='AtlasSearchService'").PathName
+        Write-Host "  WARN  Atlas Search Service is $($searchService.Status) (image path: [$image])" -ForegroundColor Yellow
+    }
+    $searchService.Dispose()
+}
 if ($redirectAgent) {
     # Started with the same command Windows runs at sign-in.
     $exe = Join-Path $installed.Location "atlas.exe"
