@@ -160,7 +160,14 @@ impl ZipProvider {
                 }
                 inner = PathBuf::from(s);
             }
-            let raw_name = entry.name();
+            // Names that are not valid text cannot be shown or opened.
+            let Ok(raw_name) = entry.name() else { continue };
+            // enclosed_name() turns "/x" or "C:/x" into "x", a name the entry
+            // cannot be opened by; such entries stay hidden as before.
+            let stored = Path::new(&*raw_name);
+            if stored.has_root() || matches!(stored.components().next(), Some(std::path::Component::Prefix(_))) {
+                continue;
+            }
             // Skip __MACOSX cruft and other meta entries.
             if raw_name.starts_with("__MACOSX/") || raw_name.ends_with(".DS_Store") {
                 continue;

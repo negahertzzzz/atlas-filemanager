@@ -256,8 +256,9 @@ pub fn execute(
         outcome
     };
     let outcomes: Vec<Outcome> = match rayon::ThreadPoolBuilder::new()
-        .num_threads(2)
+        .num_threads(crate::resources::scaled(2))
         .thread_name(|n| format!("atlas-convert-{n}"))
+        .start_handler(|_| crate::resources::lower_current_thread())
         .build()
     {
         Ok(pool) => pool.install(|| plan.commands.par_iter().map(run).collect()),

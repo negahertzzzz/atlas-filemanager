@@ -38,12 +38,13 @@ pub(super) fn normalize(command: &Command, output: &Path, cancel: &AtomicBool) -
     let mut expanded = 0_u64;
     for index in 0..source.len() {
         let part = source.by_index(index)?;
+        let part_name = part.name()?;
         ensure!(
-            safe_member(Path::new(part.name())) && !part.name().contains('\\'),
+            safe_member(Path::new(part_name.as_ref())) && !part_name.contains('\\'),
             "Unsafe Office part path"
         );
         ensure!(
-            names.insert(part.name().to_lowercase()),
+            names.insert(part_name.to_lowercase()),
             "Duplicate Office part"
         );
         expanded = expanded
@@ -144,7 +145,7 @@ pub(super) fn normalize(command: &Command, output: &Path, cancel: &AtomicBool) -
     for index in 0..source.len() {
         ensure!(!cancel.load(Ordering::Relaxed), "Cancelled");
         let part = source.by_index(index)?;
-        let name = part.name().to_owned();
+        let name = part.name()?.into_owned();
         let lower = name.to_ascii_lowercase();
         let owner = name.rsplit_once("/_rels/").and_then(|(parent, file)| {
             file.strip_suffix(".rels")

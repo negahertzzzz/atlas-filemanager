@@ -125,26 +125,39 @@ fn list_drives_internal() -> Vec<DriveInfo> {
 /// take many seconds to answer, so capacity is only ever read off-thread and
 /// the drive list never waits for it.
 #[cfg(windows)]
-static NETWORK_CAPACITY: OnceLock<Mutex<std::collections::HashMap<PathBuf, Option<(u64, u64)>>>> =
-    OnceLock::new();
+#[allow(clippy::type_complexity)]
+static NETWORK_CAPACITY: OnceLock<
+    Mutex<std::collections::HashMap<PathBuf, Option<(u64, u64, std::time::Instant)>>>,
+> = OnceLock::new();
+
+/// How long a network drive's capacity answer is reused.
+#[cfg(windows)]
+const NETWORK_CAPACITY_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[cfg(windows)]
 fn network_capacity(root: &std::path::Path) -> (u64, u64) {
     let cache = NETWORK_CAPACITY.get_or_init(Default::default);
     let mut guard = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let known = guard.get(root).copied();
-    // `None` inside the map marks a query in flight.
-    if known != Some(None) {
+    // `None` inside the map marks a query in flight. A fresh answer is reused:
+    // the drive list refreshes often and every query is a round trip to the
+    // server (and a sign-in when its session has expired).
+    let fresh = known
+        .flatten()
+        .is_some_and(|(_, _, at)| at.elapsed() < NETWORK_CAPACITY_TTL);
+    let paused = crate::fs::network::server_of(root)
+        .is_some_and(|server| crate::fs::network_guard::paused_for(&server).is_some());
+    if known != Some(None) && !fresh && !paused {
         guard.insert(root.to_owned(), None);
         let root = root.to_owned();
         std::thread::spawn(move || {
-            let capacity = atlas_win_space::cleanup::capacity(&root);
+            let (total, free) = atlas_win_space::cleanup::capacity(&root).unwrap_or((0, 0));
             if let Ok(mut guard) = cache.lock() {
-                guard.insert(root, Some(capacity.unwrap_or((0, 0))));
+                guard.insert(root, Some((total, free, std::time::Instant::now())));
             }
         });
     }
-    known.flatten().unwrap_or((0, 0))
+    known.flatten().map_or((0, 0), |(total, free, _)| (total, free))
 }
 
 /// Drive letters mapped to SMB shares, labelled like Explorer:

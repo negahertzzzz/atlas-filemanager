@@ -235,6 +235,9 @@ impl App {
             "startup: tag db spawned"
         );
 
+        // The resource limit must be in place before the first heavy job.
+        atlas_core::resources::apply(state.settings.cpu_limit);
+
         // Trigger directory loads for all panes (focused first, rest on demand)
         let list_started = std::time::Instant::now();
         let pane_ids = state.all_pane_tile_ids();
@@ -351,7 +354,11 @@ impl App {
         );
 
         let update_tx = tx.clone();
+        let check_updates = state.settings.check_updates;
         rt.spawn(async move {
+            if !check_updates {
+                return;
+            }
             match atlas_core::update::check_for_update(atlas_core::update::APP_VERSION).await {
                 Ok(Some(update)) => {
                     let _ = update_tx.send(BgResult::AppUpdateAvailable {

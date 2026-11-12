@@ -35,7 +35,7 @@ fn run_stdio(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        command.creation_flags(crate::resources::tool_creation_flags(0x0800_0000)); // CREATE_NO_WINDOW
     }
     if cancel.load(Ordering::Relaxed) {
         bail!("Cancelled");
@@ -43,6 +43,7 @@ fn run_stdio(
     let mut child = command
         .spawn()
         .context("Could not start conversion engine")?;
+    crate::resources::contain_child(&child);
     let started = Instant::now();
     let status = loop {
         if cancel.load(Ordering::Relaxed) || started.elapsed() > Duration::from_secs(3600) {

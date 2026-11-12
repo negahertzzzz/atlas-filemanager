@@ -45,6 +45,7 @@ pub mod metadata;
 pub mod media;
 pub mod pdf;
 pub mod process_job;
+pub mod resource_limit;
 pub mod vault_safety;
 pub mod vault_driver;
 pub mod data_protection;

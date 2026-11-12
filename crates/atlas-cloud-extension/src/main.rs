@@ -30,6 +30,7 @@ struct ActiveRequest {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    atlas_core::resources::apply_from_env();
     let output = Arc::new(Mutex::new(std::io::stdout()));
     let (runtime, _daemon) = start_provider(output.clone()).await?;
     for line in std::io::stdin().lock().lines() {

@@ -1,8 +1,13 @@
 //! Native SMB, the way File Explorer does it: Windows' own "Map Network Drive"
 //! dialog, its credential prompt when a share refuses access, and
-//! disconnecting mapped drives. Passwords never pass through Atlas; Windows
-//! keeps them in Credential Manager when the user asks it to.
+//! disconnecting mapped drives.
+//!
+//! Sign-ins are capped: one attempt per answer in the credential dialog and at
+//! most two refused attempts per server before `network_guard` pauses it, so
+//! Atlas never produces the bursts of failed logons that lock accounts or
+//! alert security monitoring.
 use crate::app::App;
+use atlas_core::fs::network_guard as guard;
 use atlas_model::app_state::{BgResult, NetworkOutcome};
 use atlas_model::layout_tree::{Tile, TileId};
 use std::path::{Path, PathBuf};
@@ -27,8 +32,74 @@ fn failure(error: &std::io::Error) -> NetworkOutcome {
     }
 }
 
+fn paused(pause: Duration) -> NetworkOutcome {
+    NetworkOutcome::Failed {
+        code: None,
+        message: guard::paused_error(pause),
+    }
+}
+
+/// Counts a refused attempt against `server`; `Some` when it is now paused.
+fn refused(server: Option<&str>, error: &std::io::Error) -> Option<NetworkOutcome> {
+    let code = error.raw_os_error()?;
+    if !guard::is_sign_in_failure(code) {
+        return None;
+    }
+    server.and_then(guard::record_failure).map(paused)
+}
+
+/// Signs in to `target` with at most two attempts: the credentials Windows
+/// has saved (only for a remembered drive letter), then exactly one attempt
+/// with what the user types. The dialog itself never contacts the server.
+fn sign_in(owner: isize, target: &str, local: Option<&str>, server: Option<&str>) -> NetworkOutcome {
+    use atlas_win_space::network as net;
+    let mut last_refusal = 0;
+    if local.is_some() {
+        match net::connect(target, local, None) {
+            Ok(()) => {
+                if let Some(server) = server {
+                    guard::record_success(server);
+                }
+                return NetworkOutcome::Connected;
+            }
+            Err(error) => {
+                if let Some(outcome) = refused(server, &error) {
+                    return outcome;
+                }
+                let code = error.raw_os_error().unwrap_or_default();
+                if !guard::is_sign_in_failure(code) && !net::credentials_may_help(code) {
+                    return failure(&error);
+                }
+                last_refusal = code as u32;
+            }
+        }
+    }
+    let credentials = match net::prompt_credentials(owner, target, last_refusal) {
+        Ok(Some(credentials)) => credentials,
+        Ok(None) => return NetworkOutcome::Cancelled,
+        Err(error) => return failure(&error),
+    };
+    match net::connect(target, local, Some(&credentials)) {
+        Ok(()) => {
+            if let Some(server) = server {
+                guard::record_success(server);
+                if credentials.save {
+                    if let Err(error) = net::remember_credentials(server, &credentials) {
+                        tracing::warn!(%error, "cannot remember network credentials");
+                    }
+                }
+            }
+            NetworkOutcome::Connected
+        }
+        Err(error) => refused(server, &error).unwrap_or_else(|| failure(&error)),
+    }
+}
+
 /// User-facing text for a failed SMB request.
 pub(crate) fn failure_text(code: Option<i32>, message: &str) -> String {
+    if let Some(minutes) = guard::parse_paused(message) {
+        return paused_text(minutes);
+    }
     match code {
         Some(1219) => rust_i18n::t!("network_err_conflict").into_owned(),
         Some(2401 | 2404) => rust_i18n::t!("network_err_open_files").into_owned(),
@@ -37,6 +108,16 @@ pub(crate) fn failure_text(code: Option<i32>, message: &str) -> String {
         Some(85) => rust_i18n::t!("network_err_letter_in_use").into_owned(),
         _ => rust_i18n::t!("network_err_generic", detail = message.trim()).into_owned(),
     }
+}
+
+/// "Paused after two refused sign-ins" with the minutes left.
+pub(crate) fn paused_text(minutes: u64) -> String {
+    rust_i18n::t!(
+        "network_signin_paused",
+        attempts = guard::MAX_FAILED_SIGN_INS,
+        minutes = minutes
+    )
+    .into_owned()
 }
 
 impl App {
@@ -56,17 +137,33 @@ impl App {
             atlas_core::fs::network::share_root(&path)
                 .and_then(|root| root.to_str().map(str::to_owned))
         });
+        let server = remote
+            .as_deref()
+            .and_then(|remote| atlas_core::fs::network::unc_parts(Path::new(remote)))
+            .map(|(server, _)| server);
+        if let Some(pause) = server.as_deref().and_then(guard::paused_for) {
+            self.toast_error(paused_text(pause.as_secs().div_ceil(60).max(1)));
+            return;
+        }
         std::thread::spawn(move || {
             let result = atlas_win_space::network::with_sta(|| {
                 atlas_win_space::network::map_drive_dialog(owner, remote.as_deref())
             });
             let (navigate, outcome) = match result {
-                Ok(Some(letter)) => (
-                    Some(PathBuf::from(format!("{letter}\\"))),
-                    NetworkOutcome::Mapped(letter),
-                ),
+                Ok(Some(letter)) => {
+                    if let Some(server) = &server {
+                        guard::record_success(server);
+                    }
+                    (
+                        Some(PathBuf::from(format!("{letter}\\"))),
+                        NetworkOutcome::Mapped(letter),
+                    )
+                }
                 Ok(None) => (None, NetworkOutcome::Cancelled),
-                Err(error) => (None, failure(&error)),
+                Err(error) => (
+                    None,
+                    refused(server.as_deref(), &error).unwrap_or_else(|| failure(&error)),
+                ),
             };
             let _ = tx.send(BgResult::Network {
                 tab: Some(tab),
@@ -125,20 +222,18 @@ impl App {
         {
             return false;
         }
+        let server = atlas_core::fs::network::unc_parts(Path::new(&target)).map(|(server, _)| server);
+        if server.as_deref().and_then(guard::paused_for).is_some() {
+            return false;
+        }
         self.network.prompt_open = Some(target.clone());
         self.network.prompted.insert(target.clone(), Instant::now());
         let owner = self.owner_window();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let result = atlas_win_space::network::with_sta(|| {
-                let prompt = local.is_none();
-                atlas_win_space::network::connect(owner, &target, local.as_deref(), prompt, false)
+            let outcome = atlas_win_space::network::with_sta(|| {
+                sign_in(owner, &target, local.as_deref(), server.as_deref())
             });
-            let outcome = match result {
-                Ok(()) => NetworkOutcome::Connected,
-                Err(error) if error.raw_os_error() == Some(1223) => NetworkOutcome::Cancelled,
-                Err(error) => failure(&error),
-            };
             let _ = tx.send(BgResult::Network {
                 tab: Some(tab),
                 target,

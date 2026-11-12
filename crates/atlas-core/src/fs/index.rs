@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 
 pub fn build_index(current_root: PathBuf, injector: nucleo::Injector<IndexEntry>) {
     rayon::spawn(move || {
+        let _background = crate::resources::Background::enter();
         let home = dirs::home_dir().unwrap_or_else(|| current_root.clone());
         let mut seen = HashSet::new();
 
@@ -61,6 +62,7 @@ const SCOPED_MAX_ENTRIES: usize = 50_000;
 /// query carries an absolute-path prefix (drill-in).
 pub fn build_index_scoped(root: PathBuf, injector: nucleo::Injector<IndexEntry>) {
     rayon::spawn(move || {
+        let _background = crate::resources::Background::enter();
         let mut injected = 0usize;
         for entry in WalkDir::new(&root)
             .max_depth(SCOPED_MAX_DEPTH)
@@ -283,6 +285,7 @@ fn wsl_home_of(path: &Path) -> PathBuf {
 /// memory cost stays bounded (roughly 100 bytes per folder).
 pub fn build_extended_index(injector: nucleo::Injector<IndexEntry>) {
     rayon::spawn(move || {
+        let _background = crate::resources::Background::enter();
         let roots: Vec<PathBuf> = super::mounts::list_drives()
             .into_iter()
             // Crawling a share would flood the server and stall on slow links.

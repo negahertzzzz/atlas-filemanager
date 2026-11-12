@@ -1,9 +1,12 @@
 //! Native SMB through the Windows Multiple Provider Router (`mpr.dll`) and the
 //! LAN Manager share API (`netapi32.dll`).
 //!
-//! Atlas never sees a network password: interactive connections use the same
-//! Windows credential prompt as File Explorer, and Windows stores the answer in
-//! Credential Manager when the user ticks "Remember my credentials".
+//! Sign-ins use the same Windows credential dialog as File Explorer, but Atlas
+//! makes exactly one connection attempt per answer instead of letting Windows
+//! retry in a loop, so a wrong password never turns into a burst of failed
+//! logons on the server. The password is wiped from memory right after that
+//! attempt; when the user ticks "Remember my credentials" it is handed to
+//! Credential Manager, like Explorer does.
 use std::ffi::OsStr;
 use std::io;
 use std::os::windows::ffi::OsStrExt;
@@ -12,11 +15,10 @@ use std::ptr::{null, null_mut};
 use windows_sys::Win32::Foundation::{ERROR_CANCELLED, ERROR_MORE_DATA, HANDLE, NO_ERROR};
 use windows_sys::Win32::NetworkManagement::NetManagement::NetApiBufferFree;
 use windows_sys::Win32::NetworkManagement::WNet::{
-    WNetAddConnection3W, WNetCancelConnection2W, WNetCloseEnum, WNetConnectionDialog1W,
+    WNetAddConnection2W, WNetCancelConnection2W, WNetCloseEnum, WNetConnectionDialog1W,
     WNetEnumResourceW, WNetGetConnectionW, WNetOpenEnumW, CONNDLG_RO_PATH, CONNDLG_USE_MRU,
-    CONNECTDLGSTRUCTW, CONNECT_INTERACTIVE, CONNECT_PROMPT, CONNECT_TEMPORARY,
-    CONNECT_UPDATE_PROFILE, NETRESOURCEW, RESOURCETYPE_DISK, RESOURCE_CONNECTED,
-    RESOURCE_REMEMBERED,
+    CONNECTDLGSTRUCTW, CONNECT_TEMPORARY, CONNECT_UPDATE_PROFILE, NETRESOURCEW,
+    RESOURCETYPE_DISK, RESOURCE_CONNECTED, RESOURCE_REMEMBERED,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     NetShareEnum, SHARE_INFO_1, STYPE_DISKTREE, STYPE_MASK, STYPE_SPECIAL,
@@ -192,6 +194,17 @@ pub fn remote_of(local: &str) -> Option<String> {
         .map(|(_, remote)| remote)
 }
 
+/// `\\server\share` behind `local` (`Z:`) when it is a network drive,
+/// connected or remembered. Local disks answer `None` from the drive type
+/// alone, so this is cheap enough to call for every listing.
+pub fn network_remote_of(local: &str) -> Option<String> {
+    let letter = local.trim_end_matches(['\\', '/']);
+    match drive_type(letter) {
+        DRIVE_REMOTE | DRIVE_NO_ROOT_DIR => remote_of(letter),
+        _ => None,
+    }
+}
+
 /// A remembered mapping (`Z:` → `\\server\share`) that is not connected in
 /// this process's logon session, e.g. VPN down at sign-in or Atlas running
 /// elevated. Opening the drive should reconnect it under the same letter.
@@ -307,18 +320,136 @@ pub fn map_drive_dialog(owner: isize, remote: Option<&str>) -> io::Result<Option
     }
 }
 
-/// Connect to `remote` (`\\server\share`), optionally on a drive letter.
+/// A user name and password typed into the Windows credential dialog. The
+/// password lives only as long as one connection attempt and is wiped from
+/// memory when this value is dropped.
+pub struct Credentials {
+    /// NUL-terminated `DOMAIN\user`, `user@domain` or `user`.
+    user: Vec<u16>,
+    /// NUL-terminated.
+    password: Vec<u16>,
+    /// The user ticked "Remember my credentials".
+    pub save: bool,
+}
+
+impl Credentials {
+    pub fn user(&self) -> String {
+        String::from_utf16_lossy(self.user.split(|&c| c == 0).next().unwrap_or_default())
+    }
+}
+
+impl Drop for Credentials {
+    fn drop(&mut self) {
+        wipe(&mut self.password);
+    }
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials").field("user", &self.user()).finish_non_exhaustive()
+    }
+}
+
+/// Overwrite secret UTF-16 text so it does not linger in freed memory.
+fn wipe(buffer: &mut [u16]) {
+    for unit in buffer.iter_mut() {
+        // SAFETY: `unit` is a valid, aligned element of `buffer`.
+        unsafe { std::ptr::write_volatile(unit, 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Show the Windows credential dialog (the one File Explorer uses) for
+/// `target` (`\\server\share`). `refused` is the error of the previous
+/// attempt (`1326` shows "The user name or password is incorrect"), or 0.
 ///
-/// `prompt` forces the Windows credential dialog even when cached
-/// credentials exist (used after the server refused them); otherwise Windows
-/// uses the signed-in user and only asks when it must.
-pub fn connect(
-    owner: isize,
-    remote: &str,
-    local: Option<&str>,
-    prompt: bool,
-    persist: bool,
-) -> io::Result<()> {
+/// Showing the dialog never contacts the server: nothing is attempted until
+/// the caller passes the answer to [`connect`]. `Ok(None)` means Cancel.
+pub fn prompt_credentials(owner: isize, target: &str, refused: u32) -> io::Result<Option<Credentials>> {
+    use windows_sys::Win32::Security::Credentials::{
+        CredUIPromptForWindowsCredentialsW, CredUnPackAuthenticationBufferW, CREDUIWIN_CHECKBOX,
+        CREDUI_INFOW, CRED_PACK_PROTECTED_CREDENTIALS,
+    };
+    let caption = wide("Atlas");
+    let message = wide(target);
+    let info = CREDUI_INFOW {
+        cbSize: std::mem::size_of::<CREDUI_INFOW>() as u32,
+        hwndParent: owner,
+        pszMessageText: message.as_ptr(),
+        pszCaptionText: caption.as_ptr(),
+        hbmBanner: 0,
+    };
+    let mut package = 0u32;
+    let mut out: *mut std::ffi::c_void = null_mut();
+    let mut out_len = 0u32;
+    let mut save = 0i32;
+    // SAFETY: every pointer is valid for the call; `out` is freed below.
+    let status = unsafe {
+        CredUIPromptForWindowsCredentialsW(
+            &info,
+            refused,
+            &mut package,
+            null(),
+            0,
+            &mut out,
+            &mut out_len,
+            &mut save,
+            CREDUIWIN_CHECKBOX,
+        )
+    };
+    if status == ERROR_CANCELLED {
+        return Ok(None);
+    }
+    if status != NO_ERROR {
+        return Err(win32(status));
+    }
+    let mut user = vec![0u16; 514];
+    let mut domain = vec![0u16; 338];
+    let mut password = vec![0u16; 514];
+    let unpacked = [CRED_PACK_PROTECTED_CREDENTIALS, 0].into_iter().any(|flags| {
+        let (mut user_len, mut domain_len, mut password_len) =
+            (user.len() as u32, domain.len() as u32, password.len() as u32);
+        // SAFETY: the lengths are the buffer capacities in UTF-16 units.
+        unsafe {
+            CredUnPackAuthenticationBufferW(
+                flags,
+                out,
+                out_len,
+                user.as_mut_ptr(),
+                &mut user_len,
+                domain.as_mut_ptr(),
+                &mut domain_len,
+                password.as_mut_ptr(),
+                &mut password_len,
+            ) != 0
+        }
+    });
+    let error = io::Error::last_os_error();
+    // SAFETY: CredUI allocated `out_len` bytes at `out` with CoTaskMemAlloc.
+    unsafe {
+        std::ptr::write_bytes(out.cast::<u8>(), 0, out_len as usize);
+        windows::Win32::System::Com::CoTaskMemFree(Some(out.cast_const()));
+    }
+    if !unpacked {
+        wipe(&mut password);
+        return Err(error);
+    }
+    let text = |buffer: &[u16]| buffer.iter().take_while(|&&c| c != 0).copied().collect::<Vec<u16>>();
+    let (name, domain) = (text(&user), text(&domain));
+    let mut user: Vec<u16> = if domain.is_empty() {
+        name
+    } else {
+        domain.into_iter().chain(Some(u16::from(b'\\'))).chain(name).collect()
+    };
+    user.push(0);
+    Ok(Some(Credentials { user, password, save: save != 0 }))
+}
+
+/// One sign-in attempt to `remote` (`\\server\share`), optionally on a drive
+/// letter. `None` uses the signed-in user or the credentials saved in
+/// Credential Manager. Never shows UI and never retries: the caller decides
+/// whether a refused attempt may be followed by another.
+pub fn connect(remote: &str, local: Option<&str>, credentials: Option<&Credentials>) -> io::Result<()> {
     let mut remote_wide = wide(remote);
     let mut local_wide = local.map(wide);
     let mut resource: NETRESOURCEW = unsafe { std::mem::zeroed() };
@@ -327,21 +458,45 @@ pub fn connect(
     if let Some(local) = local_wide.as_mut() {
         resource.lpLocalName = local.as_mut_ptr();
     }
-    let mut flags = CONNECT_INTERACTIVE;
-    if prompt {
-        flags |= CONNECT_PROMPT;
-    }
-    flags |= if persist && local.is_some() {
-        CONNECT_UPDATE_PROFILE
-    } else {
-        CONNECT_TEMPORARY
-    };
-    // SAFETY: null user/password make Windows use the signed-in user or ask.
-    let status = unsafe { WNetAddConnection3W(owner, &resource, null(), null(), flags) };
+    let (user, password) = credentials.map_or((null(), null()), |c| (c.user.as_ptr(), c.password.as_ptr()));
+    // SAFETY: the strings are NUL-terminated and outlive the call.
+    let status = unsafe { WNetAddConnection2W(&resource, password, user, CONNECT_TEMPORARY) };
     match status {
         NO_ERROR => Ok(()),
         code => Err(win32(code)),
     }
+}
+
+/// Store `credentials` for `server` in Credential Manager, as File Explorer
+/// does for "Remember my credentials", so Windows signs in on its own next
+/// time. Call only after they were accepted.
+pub fn remember_credentials(server: &str, credentials: &Credentials) -> io::Result<()> {
+    use windows_sys::Win32::Security::Credentials::{
+        CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_DOMAIN_PASSWORD,
+    };
+    let mut target = wide(server.trim_matches(['\\', '/']));
+    let mut user = credentials.user.clone();
+    let secret_len = credentials.password.iter().take_while(|&&c| c != 0).count();
+    let mut secret = credentials.password[..secret_len].to_vec();
+    let credential = CREDENTIALW {
+        Flags: 0,
+        Type: CRED_TYPE_DOMAIN_PASSWORD,
+        TargetName: target.as_mut_ptr(),
+        Comment: null_mut(),
+        LastWritten: windows_sys::Win32::Foundation::FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 },
+        CredentialBlobSize: (secret.len() * 2) as u32,
+        CredentialBlob: secret.as_mut_ptr().cast(),
+        Persist: CRED_PERSIST_LOCAL_MACHINE,
+        AttributeCount: 0,
+        Attributes: null_mut(),
+        TargetAlias: null_mut(),
+        UserName: user.as_mut_ptr(),
+    };
+    // SAFETY: every pointer in `credential` outlives the call.
+    let written = unsafe { CredWriteW(&credential, 0) } != 0;
+    let error = io::Error::last_os_error();
+    wipe(&mut secret);
+    if written { Ok(()) } else { Err(error) }
 }
 
 /// Disconnect a mapped drive (`Z:`) or a deviceless `\\server\share`

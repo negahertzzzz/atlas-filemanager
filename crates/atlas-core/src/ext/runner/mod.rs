@@ -53,7 +53,7 @@ pub fn run_thumbnail(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
+        cmd.creation_flags(crate::resources::tool_creation_flags(0x0800_0000));
     }
     let ran = cmd.output();
     let ok = matches!(&ran, Ok(out) if out.status.success());
@@ -139,7 +139,7 @@ pub fn run(
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x0800_0000);
+                cmd.creation_flags(crate::resources::tool_creation_flags(0x0800_0000));
             }
             match cmd.output() {
                 Ok(out) if out.status.success() => {}
@@ -186,7 +186,7 @@ fn run_sidecar_command(
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
-                proc_cmd.creation_flags(0x0800_0000);
+                proc_cmd.creation_flags(crate::resources::tool_creation_flags(0x0800_0000));
             }
             let mut child = proc_cmd.spawn()?;
             let request = SidecarCommandRequest {

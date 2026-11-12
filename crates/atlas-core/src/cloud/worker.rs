@@ -523,6 +523,16 @@ impl Worker {
         sort_col: SortColumn, sort_dir: SortDir, folder_order: FolderOrder) {
         self.listings.retain(|_, task| !task.is_finished());
         if let Some(task) = self.listings.remove(&tab) { task.abort(); }
+        // A remote that refused two sign-ins is left alone for a while.
+        let guard_key = crate::fs::network_guard::cloud_key(&id);
+        if let Some(left) = crate::fs::network_guard::paused_for(&guard_key) {
+            let _ = self.bg_tx.send(BgResult::DirListError {
+                tab,
+                op_id,
+                error: crate::fs::network_guard::paused_error(left),
+            });
+            return;
+        }
         let Some(provider) = self
             .require_ready(|e| BgResult::DirListError {
                 tab,
@@ -538,6 +548,7 @@ impl Worker {
             let started = std::time::Instant::now();
             match provider.list(&id, &path).await {
                 Ok(entries) => {
+                    crate::fs::network_guard::record_success(&guard_key);
                     // Mapping and natural sorting large directories never run
                     // on the UI thread or block a Tokio network worker.
                     match tokio::task::spawn_blocking(move || {
@@ -551,11 +562,13 @@ impl Worker {
                     let _ = bg.send(BgResult::DirListTiming { tab, op_id, elapsed: started.elapsed() });
                 }
                 Err(e) => {
-                    let _ = bg.send(BgResult::DirListError {
-                        tab,
-                        op_id,
-                        error: e.to_string(),
-                    });
+                    let mut error = e.to_string();
+                    if crate::fs::network_guard::is_sign_in_failure_text(&format!("{e:#}")) {
+                        if let Some(pause) = crate::fs::network_guard::record_failure(&guard_key) {
+                            error = crate::fs::network_guard::paused_error(pause);
+                        }
+                    }
+                    let _ = bg.send(BgResult::DirListError { tab, op_id, error });
                 }
             }
         });

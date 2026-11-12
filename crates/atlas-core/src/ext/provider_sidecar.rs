@@ -28,6 +28,8 @@ impl ProviderSidecar {
     ) -> Result<Self> {
         let program = confined_program(extension_dir, command)?;
         let mut cmd = Command::new(program);
+        // Provider extensions (cloud) follow the user's resource limit.
+        cmd.env(crate::resources::ENV_VAR, crate::resources::percent().to_string());
         cmd.args(args)
             .current_dir(extension_dir)
             .stdin(Stdio::piped())

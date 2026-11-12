@@ -461,6 +461,13 @@ fn open_url(url: &'static str) {
 
 /// Theme picker rows, recommended first. `dark` keeps only dark (`Some(true)`)
 /// or light (`Some(false)`) themes; `None` lists every available theme.
+/// Position of `percent` among the resource-limit choices; values that are
+/// not offered (hand-edited settings) show as unlimited.
+fn cpu_limit_index(percent: u8) -> usize {
+    let choices = atlas_core::resources::CHOICES;
+    choices.iter().position(|&choice| choice == percent).unwrap_or(choices.len() - 1)
+}
+
 fn theme_choice_options(cx: &gpui::App, dark: Option<bool>) -> Vec<ChoiceOption> {
     let registry = gpui_component::ThemeRegistry::global(cx);
     let mut options: Vec<ChoiceOption> = registry
@@ -1389,6 +1396,30 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
             },
         },
         SettingDef {
+            id: "cpu-limit",
+            category: Category::Performance,
+            icon: AtlasIcon::Gauge,
+            title: "sp_cpu_limit",
+            desc: Some("sp_cpu_limit_desc"),
+            keywords: "cpu processor processore risorse resources limit limite performance prestazioni rendimiento battery batteria fan ventola",
+            control: Control::Segmented {
+                labels: || {
+                    atlas_core::resources::CHOICES
+                        .iter()
+                        .map(|percent| SharedString::from(format!("{percent}%")))
+                        .collect()
+                },
+                icons: &[],
+                get: |app| cpu_limit_index(app.state.settings.cpu_limit),
+                set: |app, index| {
+                    let percent = atlas_core::resources::CHOICES.get(index).copied().unwrap_or(100);
+                    app.state.settings.cpu_limit = percent;
+                    atlas_core::resources::apply(percent);
+                },
+                default: Some(|s| cpu_limit_index(s.cpu_limit)),
+            },
+        },
+        SettingDef {
             id: "goto-extended-index",
             category: Category::Performance,
             icon: AtlasIcon::Search,
@@ -1435,6 +1466,19 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
             keywords: "about acerca version versión atlas",
             control: Control::Info {
                 value: |_| format!("Atlas {}", atlas_core::update::APP_VERSION).into(),
+            },
+        },
+        SettingDef {
+            id: "check-updates",
+            category: Category::About,
+            icon: AtlasIcon::ArrowClockwise,
+            title: "sp_check_updates",
+            desc: Some("sp_check_updates_desc"),
+            keywords: "update updates aggiornamenti aggiornamento actualizar version privacy privacidad",
+            control: Control::Toggle {
+                get: |app| app.state.settings.check_updates,
+                set: |app, on| app.state.settings.check_updates = on,
+                default: Some(|s| s.check_updates),
             },
         },
         SettingDef {

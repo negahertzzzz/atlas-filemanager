@@ -5,3 +5,5 @@
 pub mod config;
 pub mod display;
 pub mod guard;
+#[cfg(windows)]
+pub mod winfsp;

@@ -826,6 +826,10 @@ impl App {
                 }
                 BgResult::DirListError { tab, op_id, mut error } => {
                     tracing::warn!(tab = tab.0, op_id, %error, "directory listing failed");
+                    #[cfg(windows)]
+                    if let Some(minutes) = atlas_core::fs::network_guard::parse_paused(&error) {
+                        error = crate::app::network::paused_text(minutes);
+                    }
                     if error == atlas_core::fs::network::CREDENTIALS_REQUIRED {
                         let current = self.state.tab_states.get(&tab).is_some_and(|ts| ts.last_nav_op_id == op_id);
                         let dir = self.tab_data_for(tab).and_then(|td| td.location.fs_dir()).map(std::path::Path::to_path_buf);

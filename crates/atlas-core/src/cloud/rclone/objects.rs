@@ -89,7 +89,10 @@ impl RcClient {
             .map_err(|_| anyhow::anyhow!("invalid Drive API base URL"))?
             .pop_if_empty()
             .push(object_id);
-        let client = reqwest::Client::new();
+        // Reuse the pooled client: repeated Drive calls keep their TLS
+        // connection instead of a new handshake each. Credentials are set
+        // per request, so nothing of the local rc login reaches Google.
+        let client = &self.http;
         let request = if let Some(body) = body {
             client.patch(url).json(&body)
         } else {

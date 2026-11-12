@@ -188,7 +188,7 @@ fn extract_binary(zip_path: &Path, dest: &Path) -> anyhow::Result<()> {
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
+        let name = entry.name()?.into_owned();
         if name.ends_with(&format!("/{bin_name}")) || name == bin_name {
             let mut bytes = Vec::with_capacity(entry.size() as usize);
             entry.read_to_end(&mut bytes)?;
@@ -254,6 +254,11 @@ pub fn spawn_daemon(binary: &Path) -> anyhow::Result<Daemon> {
         .arg(&pass)
         .arg("--cache-dir")
         .arg(&cache_dir)
+        .args(["--low-level-retries", "2", "--retries", "2"])
+        .arg("--transfers")
+        .arg(crate::resources::scaled(4).to_string())
+        .arg("--checkers")
+        .arg(crate::resources::scaled(8).to_string())
         .kill_on_drop(true)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());

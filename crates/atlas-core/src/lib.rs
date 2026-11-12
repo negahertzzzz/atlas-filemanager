@@ -43,6 +43,7 @@ pub mod ext;
 pub mod fs;
 pub mod git;
 pub mod license;
+pub mod resources;
 pub mod search;
 pub mod space_lens;
 pub mod update;

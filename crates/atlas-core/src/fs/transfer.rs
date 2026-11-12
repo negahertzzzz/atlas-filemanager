@@ -562,8 +562,9 @@ async fn try_copy_small_tree_parallel(
 
         let bytes_done = AtomicU64::new(0);
         let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(worker_count)
+            .num_threads(crate::resources::scaled(worker_count))
             .thread_name(|index| format!("atlas-copy-{index}"))
+            .start_handler(|_| crate::resources::lower_current_thread())
             .build()
             .ok()?;
         let outcomes = pool.install(|| {

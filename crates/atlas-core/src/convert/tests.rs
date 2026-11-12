@@ -106,6 +106,7 @@ fn word_package_conversion_preserves_styles_tables_images_headers_and_removes_ma
         assert_eq!(rels[0].attribute("Id"), Some("image"));
         assert!(!zip
             .file_names()
+            .filter_map(Result::ok)
             .any(|n| n.contains("vbaProject") || n.starts_with("_xmlsignatures/")));
         assert_eq!(std::fs::read(source).unwrap(), original);
         if let Some(directory) = std::env::var_os("ATLAS_PAGE_TEST_ARTIFACTS") {
@@ -687,7 +688,7 @@ fn native_books_write_valid_epub_packages_and_roundtrip_text_without_engines() {
     let epub = report.outputs()[0].clone();
     let mut zip = zip::ZipArchive::new(File::open(&epub).unwrap()).unwrap();
     let first = zip.by_index(0).unwrap();
-    assert_eq!(first.name(), "mimetype");
+    assert_eq!(first.name().unwrap(), "mimetype");
     assert_eq!(first.compression(), zip::CompressionMethod::Stored);
     drop(first);
     for index in 1..zip.len() {

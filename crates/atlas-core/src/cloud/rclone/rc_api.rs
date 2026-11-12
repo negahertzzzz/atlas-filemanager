@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 #[derive(Clone)]
 pub struct RcClient {
-    http: reqwest::Client,
+    pub(super) http: reqwest::Client,
     base: String,
     user: String,
     pass: String,

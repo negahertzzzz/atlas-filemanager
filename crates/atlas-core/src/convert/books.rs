@@ -161,7 +161,7 @@ fn epub(path: &Path) -> Result<Book> {
     for index in 0..zip.len() {
         let entry = zip.by_index(index)?;
         ensure!(
-            names.insert(entry.name().to_owned()),
+            names.insert(entry.name()?.into_owned()),
             "EPUB has duplicate archive members"
         );
     }

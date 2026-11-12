@@ -127,7 +127,7 @@ fn visit<'s>(shared: &'s Shared<'s>, scope: &rayon::Scope<'s>, path: PathBuf, id
 fn thread_count() -> usize {
     let cpus = std::thread::available_parallelism().map_or(8, |n| n.get());
     // Enumeration blocks on the filesystem, so oversubscribe the cores.
-    (cpus * 2).clamp(8, 32)
+    crate::resources::scaled((cpus * 2).clamp(8, 32))
 }
 
 /// Walks `root` and returns its tree. `poll` runs about every 100 ms on the
@@ -140,6 +140,7 @@ pub(super) fn walk(
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(thread_count())
         .thread_name(|i| format!("atlas-walk-{i}"))
+        .start_handler(|_| crate::resources::lower_current_thread())
         .build()
         .map_err(std::io::Error::other)?;
     let shared = Shared {

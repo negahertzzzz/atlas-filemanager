@@ -30,3 +30,18 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Fails on any known vulnerability in Cargo.lock (RustSec database).
+      # Deliberate exceptions live in .cargo/audit.toml with their reason.
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit

@@ -60,7 +60,7 @@ pub(crate) fn run_declarative_preview(cmd: &CommandRef, input: &Path) -> Preview
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd_proc.creation_flags(0x0800_0000);
+        cmd_proc.creation_flags(crate::resources::tool_creation_flags(0x0800_0000));
     }
     let ran = cmd_proc.output();
     let result = match ran {

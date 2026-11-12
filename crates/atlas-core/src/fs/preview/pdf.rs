@@ -59,7 +59,7 @@ fn preview_pdf(path: &Path, pdftoppm: &Path) -> PreviewResult {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
+        cmd.creation_flags(crate::resources::tool_creation_flags(0x0800_0000));
     }
     let output = match cmd.output() {
         Ok(output) => output,

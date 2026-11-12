@@ -4,6 +4,7 @@ pub mod scan_policy;
 pub mod dir_stats;
 pub mod mounts;
 pub mod network;
+pub mod network_guard;
 pub mod paths;
 pub mod tag_db;
 pub mod udisks;

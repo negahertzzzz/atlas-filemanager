@@ -97,6 +97,26 @@ pub fn is_network_path(path: &Path) -> bool {
     }
 }
 
+/// The server a sign-in for `path` goes to: the UNC server, or the server
+/// behind a mapped or remembered drive letter. Local disks answer `None` from
+/// their drive type alone, without touching the network.
+pub fn server_of(path: &Path) -> Option<String> {
+    if let Some((server, _)) = unc_parts(path) {
+        return Some(server);
+    }
+    #[cfg(windows)]
+    {
+        let letter = drive_letter(path)?;
+        let remote = atlas_win_space::network::network_remote_of(&letter)?;
+        unc_parts(Path::new(&remote)).map(|(server, _)| server)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = drive_letter(path);
+        None
+    }
+}
+
 /// The connection to (re)authenticate for `path`: its `\\server\share`, the
 /// share behind a mapped drive, or the server's `IPC$` for a share list.
 pub fn connection_target(path: &Path) -> Option<String> {

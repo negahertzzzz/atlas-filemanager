@@ -183,10 +183,22 @@ pub async fn list_dir_with_preview(
     // Other platforms and unsupported providers retain the portable enumerator.
     let entries = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<FileEntry>> {
         crate::fs::paths::ensure_wsl_ready(&dir)?;
+        // A server that refused two sign-ins is left alone for a while, so
+        // Atlas never adds failed logons that lock accounts or trip alarms.
+        let sign_in_server = crate::fs::network::server_of(&dir);
+        if let Some(left) = sign_in_server.as_deref().and_then(crate::fs::network_guard::paused_for) {
+            anyhow::bail!(crate::fs::network_guard::paused_error(left));
+        }
+        let signed_in = || {
+            if let Some(server) = &sign_in_server {
+                crate::fs::network_guard::record_success(server);
+            }
+        };
         // A bare server path is not a directory: like Explorer, it lists the shares.
         if let Some(server) = crate::fs::network::bare_server(&dir) {
             return match crate::fs::network::share_entries(&server, show_hidden) {
                 Ok(mut entries) => {
+                    signed_in();
                     sort_entries(&mut entries, &sort_col, &sort_dir, folder_order);
                     Ok(entries)
                 }
@@ -250,11 +262,25 @@ pub async fn list_dir_with_preview(
                     }
                 }
             });
-            if native.is_ok() {
-                sort_entries(&mut entries, &sort_col, &sort_dir, folder_order);
-                return Ok(entries);
+            match native {
+                Ok(()) => {
+                    signed_in();
+                    sort_entries(&mut entries, &sort_col, &sort_dir, folder_order);
+                    return Ok(entries);
+                }
+                // The portable fallback would be a second sign-in attempt.
+                Err(error)
+                    if sign_in_server.is_some()
+                        && error.raw_os_error().is_some_and(|code| {
+                            crate::fs::network_guard::is_sign_in_failure(code)
+                                || atlas_win_space::network::credentials_may_help(code)
+                        }) =>
+                {
+                    return Err(network_error(&dir, error.into()));
+                }
+                Err(_) => {}
             }
-            return list_dir_portable(
+            let listed = list_dir_portable(
                 &dir,
                 show_hidden,
                 &sort_col,
@@ -263,6 +289,10 @@ pub async fn list_dir_with_preview(
                 preview,
             )
             .map_err(|error| network_error(&dir, error));
+            if listed.is_ok() {
+                signed_in();
+            }
+            return listed;
         }
         #[cfg(not(windows))]
         list_dir_portable(
@@ -280,7 +310,17 @@ pub async fn list_dir_with_preview(
 
 /// Tag SMB failures that new credentials could fix so the UI can show the
 /// Windows credential prompt instead of a dead "Access denied" pane.
+///
+/// A refused sign-in counts against the server; the second one pauses it.
 fn network_error(dir: &Path, error: anyhow::Error) -> anyhow::Error {
+    use crate::fs::network_guard as guard;
+    if let (Some(server), Some(code)) = (crate::fs::network::server_of(dir), guard::os_code(&error)) {
+        if guard::is_sign_in_failure(code) {
+            if let Some(pause) = guard::record_failure(&server) {
+                return anyhow::anyhow!(guard::paused_error(pause));
+            }
+        }
+    }
     if crate::fs::network::wants_credentials(dir, &error) {
         anyhow::anyhow!(crate::fs::network::CREDENTIALS_REQUIRED)
     } else {

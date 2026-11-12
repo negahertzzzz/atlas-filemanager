@@ -1,0 +1,17 @@
+# `cargo audit` policy (RustSec advisory database).
+#
+# Every ignored advisory must name why it cannot affect the shipped app.
+[advisories]
+ignore = [
+    # rustls 0.21 / rustls-webpki 0.101 / h2 0.3 appear in Cargo.lock only
+    # through the optional legacy HTTP stack of aws-smithy-http-client, used by
+    # the release publisher (`atlas-publisher`). No Atlas binary compiles it:
+    # `cargo tree --target all -i rustls@0.21.12` finds no path.
+    "RUSTSEC-2026-0346", # rustls 0.21: Debug impls expose TLS secrets
+    "RUSTSEC-2026-0349", # rustls 0.21: ServerHello downgrade
+    "RUSTSEC-2026-0098", # rustls-webpki 0.101: URI name constraints
+    "RUSTSEC-2026-0099", # rustls-webpki 0.101: wildcard name constraints
+    "RUSTSEC-2026-0104", # rustls-webpki 0.101: CRL parsing panic
+    "RUSTSEC-2026-0382", # rustls-webpki 0.101: distrusted intermediates
+    "RUSTSEC-2026-0258", # h2 0.3: unbounded empty DATA frames
+]

@@ -26,7 +26,7 @@ fn speedup_config() -> Value {
     json!({
         "Immutable": true,
         "MultiThreadCutoff": "64Mi",
-        "MultiThreadStreams": 4,
+        "MultiThreadStreams": crate::resources::scaled(4),
     })
 }
 

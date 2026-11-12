@@ -625,7 +625,12 @@ pub(super) fn archive(command: &Command, output: &Path, cancel: &AtomicBool) -> 
         }
         for i in 0..zip.len() {
             let entry = zip.by_index(i)?;
-            let path = entry.enclosed_name().context("Unsafe archive path")?;
+            // `enclosed_name` is the escape check; the stored name is what is
+            // repacked (`safe_member` then also refuses absolute names, which
+            // `enclosed_name` would silently make relative).
+            let stored = entry.name()?.into_owned();
+            entry.enclosed_name().context("Unsafe archive path")?;
+            let path = std::path::PathBuf::from(stored);
             if entry.is_symlink() {
                 bail!("Symbolic links are not supported during repacking");
             }

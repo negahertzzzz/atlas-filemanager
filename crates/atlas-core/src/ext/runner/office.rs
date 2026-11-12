@@ -260,7 +260,7 @@ fn pptx_preview(path: &Path) -> PreviewResult {
         Err(e) => return PreviewResult::Error(e.to_string()),
     };
     let mut names: Vec<String> = (0..zip.len())
-        .filter_map(|i| zip.by_index(i).ok().map(|f| f.name().to_string()))
+        .filter_map(|i| zip.by_index(i).ok().and_then(|f| f.name().ok().map(std::borrow::Cow::into_owned)))
         .filter(|name| name.starts_with("ppt/slides/slide") && name.ends_with(".xml"))
         .collect();
     names.sort();

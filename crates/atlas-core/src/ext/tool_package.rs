@@ -385,7 +385,7 @@ fn extract_selected(
                 if entry.is_dir() {
                     continue;
                 }
-                let name = entry.name().to_owned();
+                let name = entry.name()?.into_owned();
                 state.copy(&name, &mut entry)?;
             }
         }

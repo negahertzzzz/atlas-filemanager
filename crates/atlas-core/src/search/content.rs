@@ -41,6 +41,7 @@ pub fn search_content(
     on_hit: impl Fn(PathBuf) + Send + Sync + 'static,
 ) {
     rayon::spawn(move || {
+        let _background = crate::resources::Background::enter();
         if query.is_empty() {
             return;
         }

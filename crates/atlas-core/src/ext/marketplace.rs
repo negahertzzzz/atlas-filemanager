@@ -132,7 +132,7 @@ fn extract_zip_file(bytes: &[u8], archive_path: &str, dest: &Path) -> Result<()>
         if file.is_dir() {
             continue;
         }
-        if let Some(out_path) = sibling_dest(file.name(), archive_path, dest) {
+        if let Some(out_path) = sibling_dest(&file.name()?, archive_path, dest) {
             if let Some(parent) = out_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }

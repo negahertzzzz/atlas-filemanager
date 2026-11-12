@@ -244,9 +244,11 @@ fn scan_path(
         }
     }
 
-    let threads = std::thread::available_parallelism()
-        .map_or(1, usize::from)
-        .min(MAX_SCAN_THREADS);
+    let threads = crate::resources::scaled(
+        std::thread::available_parallelism()
+            .map_or(1, usize::from)
+            .min(MAX_SCAN_THREADS),
+    );
     #[cfg(windows)]
     let parallelism = if atlas_win_space::storage::incurs_seek_penalty(&root) == Some(false) {
         Parallelism::RayonNewPool(threads)

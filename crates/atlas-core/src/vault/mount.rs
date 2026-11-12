@@ -151,54 +151,19 @@ impl Drop for Mounted {
 
 /// Explicit UI action only. Pin the official release and checksum before MSI execution.
 pub async fn install_driver() -> Result<()> {
-    use sha2::{Digest, Sha256};
-    use std::io::Write;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()?;
-    let mut response = client
-        .get("https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-2.1.25156.msi")
-        .send()
-        .await?
-        .error_for_status()?;
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        anyhow::ensure!(
-            bytes.len() + chunk.len() <= 32 * 1024 * 1024,
-            "vault_driver_install_failed"
-        );
-        bytes.extend_from_slice(&chunk);
-    }
-    anyhow::ensure!(
-        format!("{:x}", Sha256::digest(&bytes))
-            == "073a70e00f77423e34bed98b86e600def93393ba5822204fac57a29324db9f7a",
-        "vault_driver_install_failed"
-    );
-    let mut installer = tempfile::Builder::new()
-        .prefix("atlas-winfsp-")
-        .suffix(".msi")
-        .tempfile()?;
-    installer.write_all(&bytes)?;
-    installer.as_file().sync_all()?;
-    // MSI opens the package itself; close the write handle before invoking it.
-    let installer = installer.into_temp_path();
-    let mut command = tokio::process::Command::new("msiexec.exe");
-    command
-        .arg("/i")
-        .arg(&installer)
-        .args(["/passive", "/norestart"]);
-    command.creation_flags(0x0800_0000);
-    let status = command.status().await?;
-    if matches!(status.code(), Some(1641 | 3010)) {
+    let code = crate::util::winfsp::install(|_, _| {})
+        .await
+        .map_err(|error| anyhow::anyhow!("vault_driver_install_failed: {error}"))?;
+    if matches!(code, Some(1641 | 3010)) {
         anyhow::bail!("WinFsp was installed. Restart Windows, then open Atlas and unlock this folder again.");
     }
-    if status.code() == Some(1602) {
+    if code == Some(1602) {
         anyhow::bail!("WinFsp installation was cancelled. Your encrypted folder is unchanged; you can retry later.");
     }
     anyhow::ensure!(
-        status.success(),
+        code == Some(0),
         "vault_driver_install_failed: {}",
-        status.code().unwrap_or(-1)
+        code.unwrap_or(-1)
     );
     Ok(())
 }

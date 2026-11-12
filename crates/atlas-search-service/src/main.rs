@@ -267,9 +267,23 @@ fn run(stop: Arc<AtomicBool>) -> anyhow::Result<()> {
     result
 }
 
+/// The first index build reads every volume's MFT right after Windows starts.
+/// Run it below normal CPU priority so sign-in and foreground apps go first.
+/// CPU only: background mode would also lower the memory priority of the
+/// index pages that later searches read.
+fn index_thread_priority(lower: bool) {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_NORMAL,
+    };
+    let priority = if lower { THREAD_PRIORITY_BELOW_NORMAL } else { THREAD_PRIORITY_NORMAL };
+    // SAFETY: the pseudo-handle names the calling thread.
+    unsafe { SetThreadPriority(GetCurrentThread(), priority) };
+}
+
 fn index_loop(state: &State, stop: &AtomicBool) {
     let data_dir = data_directory();
     let _ = fs::create_dir_all(&data_dir);
+    index_thread_priority(true);
     for letter in drive_letters() {
         if stop.load(Ordering::Acquire) {
             return;
@@ -293,6 +307,9 @@ fn index_loop(state: &State, stop: &AtomicBool) {
             ),
         }
     }
+    // Journal replay holds the index lock that searches wait for: never let
+    // a low-priority thread hold it.
+    index_thread_priority(false);
     while !stop.load(Ordering::Acquire) {
         {
             let mut volumes = state.volumes.write().unwrap_or_else(|e| e.into_inner());

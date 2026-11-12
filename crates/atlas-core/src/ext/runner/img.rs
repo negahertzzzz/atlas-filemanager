@@ -44,7 +44,7 @@ pub(crate) fn run_magick_preview(path: &Path, magick: &Path) -> PreviewResult {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
+        cmd.creation_flags(crate::resources::tool_creation_flags(0x0800_0000));
     }
     let ran = cmd.output();
     let result = match ran {

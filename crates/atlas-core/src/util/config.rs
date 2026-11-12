@@ -89,7 +89,7 @@ fn write_json<T: Serialize>(file: &str, value: &T) {
 
 /// Serialize writers across processes and replace the destination only after all
 /// bytes reach disk. A crash leaves the previous JSON intact, never half a blob.
-fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     #[cfg(windows)]
     let _guard = atlas_win_space::persistence::ConfigWriteGuard::acquire()?;
     let dir = path

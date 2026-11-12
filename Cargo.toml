@@ -51,7 +51,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "fs", "io-util", "sync",
 tracing = "0.1.44"
 rust-i18n = "3"
 dirs = "6"
-zip = "2"
+zip = "9"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

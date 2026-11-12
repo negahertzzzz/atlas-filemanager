@@ -44,7 +44,7 @@ tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 semver = "1"
-lru = "0.16"
+lru = "0.18"
 # gpui's async executor uses smol; `smol::Timer` drives the BgResult drain loop.
 smol = "2"
 arboard = "3"

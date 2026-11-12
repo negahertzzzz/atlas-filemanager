@@ -76,7 +76,10 @@ pub fn install_zip(zip_path: &Path) -> anyhow::Result<String> {
     // Extract to a temp dir first, then validate + move into place.
     let tmp = std::env::temp_dir().join(format!("fp-ext-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&tmp)?;
-    archive.extract(&tmp).context("unzip extension")?;
+    if let Err(error) = extract_bundle(&mut archive, &tmp) {
+        std::fs::remove_dir_all(&tmp).ok();
+        return Err(error.context("unzip extension"));
+    }
 
     // The manifest may be at the zip root or in a single top-level folder.
     let root = if tmp.join("extension.toml").is_file() {
@@ -241,10 +244,57 @@ pub fn ensure_bundled_with_assets(id: &str, manifest_toml: &str, src: &Path) -> 
 }
 
 /// Recursively copy `src` into `dest`.
+/// Upper bounds for an extension bundle, so a hostile zip cannot fill the disk.
+const MAX_BUNDLE_ENTRIES: usize = 20_000;
+const MAX_BUNDLE_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Extract `archive` into `dest` one entry at a time. Unlike
+/// `ZipArchive::extract`, this never creates links and never writes outside
+/// `dest`: names that escape it (`..`, absolute paths, drive prefixes) and
+/// symbolic-link entries are rejected, and the expanded size is capped.
+fn extract_bundle<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    dest: &Path,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(archive.len() <= MAX_BUNDLE_ENTRIES, "extension bundle has too many files");
+    let mut written = 0_u64;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        anyhow::ensure!(!entry.is_symlink(), "extension bundle contains a link");
+        // `enclosed_name` turns "/x" or "C:/x" into "x"; the stored name is
+        // checked as well, so such entries are refused instead of relocated.
+        let stored = entry.name()?.into_owned();
+        let relative = entry
+            .enclosed_name()
+            .and(crate::fs::archive::sanitize::sanitize_inner_path(Path::new(&stored)))
+            .ok_or_else(|| anyhow!("extension bundle contains an unsafe path"))?;
+        let target = dest.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target)?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let remaining = MAX_BUNDLE_BYTES.saturating_sub(written);
+        let mut out = std::fs::File::create(&target)?;
+        // Read one byte past the budget to detect a size field that lies.
+        let copied = std::io::copy(&mut std::io::Read::take(&mut entry, remaining + 1), &mut out)?;
+        anyhow::ensure!(copied <= remaining, "extension bundle is too large");
+        written += copied;
+    }
+    Ok(())
+}
+
+/// Copy a folder tree. Links and junctions are skipped, so an extension folder
+/// cannot pull in files from elsewhere on the disk.
 fn copy_dir(src: &Path, dest: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
+        if entry.file_type()?.is_symlink() {
+            continue;
+        }
         let from = entry.path();
         let to = dest.join(entry.file_name());
         if from.is_dir() {
@@ -274,6 +324,28 @@ fn copy_dir_missing(src: &Path, dest: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_extraction_refuses_paths_that_escape() {
+        use std::io::Write as _;
+        let build = |name: &str| {
+            let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            writer.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            writer.write_all(b"x").unwrap();
+            writer.finish().unwrap().into_inner()
+        };
+        let root = tempfile::tempdir().unwrap();
+        let dest = root.path().join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        let mut good = zip::ZipArchive::new(std::io::Cursor::new(build("ext/extension.toml"))).unwrap();
+        extract_bundle(&mut good, &dest).unwrap();
+        assert!(dest.join("ext").join("extension.toml").is_file());
+        for name in ["../evil.txt", "/absolute.txt", "C:/drive.txt"] {
+            let mut bad = zip::ZipArchive::new(std::io::Cursor::new(build(name))).unwrap();
+            assert!(extract_bundle(&mut bad, &dest).is_err(), "{name} was extracted");
+        }
+        assert!(!root.path().join("evil.txt").exists());
+    }
 
     #[test]
     fn packaged_provider_seeds_a_clean_profile_and_replaces_an_old_build() {
