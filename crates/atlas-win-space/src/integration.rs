@@ -201,9 +201,20 @@ pub fn win_e_enabled() -> io::Result<bool> {
 pub fn set_win_e_enabled(enabled: bool) -> io::Result<()> {
     set_enabled_at(TARGET, BACKUP, &launch_executable()?, enabled)
 }
+
+/// Command-line argument the uninstaller runs `atlas.exe` with.
+pub const UNINSTALL_ARG: &str = "--remove-shell-integration";
+
+/// Undo what Atlas changed in the user's shell before its files go away: the
+/// Win+E override, the Explorer redirect agent and its autostart. Best effort,
+/// since an uninstaller has no one to report errors to.
+pub fn remove_for_uninstall() {
+    let _ = set_win_e_enabled(false);
+    let _ = crate::explorer_redirect::disable_and_wait(std::time::Duration::from_secs(3));
+}
 /// MSIX installs live under `WindowsApps`, which Explorer cannot launch
 /// directly; the package's execution alias is the stable launchable path.
-fn launch_executable() -> io::Result<std::path::PathBuf> {
+pub(crate) fn launch_executable() -> io::Result<std::path::PathBuf> {
     if is_packaged() {
         let local = std::env::var_os("LOCALAPPDATA")
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA is not set"))?;

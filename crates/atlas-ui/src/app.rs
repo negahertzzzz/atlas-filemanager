@@ -446,6 +446,9 @@ pub struct App {
     pub(crate) typed_selection: Option<(atlas_model::pane::TabId, String, Instant)>,
     #[cfg(windows)]
     pub(crate) win_e_enabled: bool,
+    /// Folders opened by other apps ("Open file location", ...) open in Atlas.
+    #[cfg(windows)]
+    pub(crate) explorer_folders: bool,
     /// User-facing order for Details metadata columns. Name stays fixed first.
     pub(crate) details_column_order: [DetailsColumn; 3],
     /// Active column-resize drag state (cleared on mouse-up).

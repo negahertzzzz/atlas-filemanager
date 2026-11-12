@@ -158,6 +158,26 @@ function Copy-InstalledRuntime {
     Write-Host "Staged $($entries.Count) Microsoft runtime DLLs in $output"
 }
 
+function Get-ExplorerRedirectAgent {
+    @(Get-CimInstance Win32_Process -Filter "Name = 'atlas.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match '--explorer-redirect' })
+}
+
+# Returns $true when an agent was running (and so should be restarted).
+function Stop-ExplorerRedirectAgent {
+    $running = Get-ExplorerRedirectAgent
+    if (-not $running) { return $false }
+    try {
+        $stop = [System.Threading.EventWaitHandle]::OpenExisting("Local\AtlasExplorerRedirectStop")
+        [void]$stop.Set()
+        $stop.Dispose()
+    } catch {}
+    for ($i = 0; $i -lt 30 -and (Get-ExplorerRedirectAgent); $i++) { Start-Sleep -Milliseconds 100 }
+    Get-ExplorerRedirectAgent | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Write-Host "  Stopped the Explorer redirect agent for the install."
+    return $true
+}
+
 function Find-Iscc {
     $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
@@ -244,6 +264,9 @@ Write-Step "Installing (Windows will ask for administrator rights)"
 Get-CimInstance Win32_Process -Filter "Name = 'atlas-search-service.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -match '--console' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# The Explorer redirect agent (atlas.exe --explorer-redirect) keeps atlas.exe
+# locked; ask it to exit through its stop event and restart it afterwards.
+$redirectAgent = Stop-ExplorerRedirectAgent
 
 $log = Join-Path $repo "target\installer\AtlasSetup-$Version-install.log"
 $arguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/LOG=`"$log`"")
@@ -270,6 +293,12 @@ foreach ($name in $binaries) {
 }
 if ($failed) {
     throw "Some files were not replaced. Close Atlas (and stop 'Atlas Search Service' if needed), then run again with -SkipBuild. Log: $log"
+}
+if ($redirectAgent) {
+    # Started with the same command Windows runs at sign-in.
+    $exe = Join-Path $installed.Location "atlas.exe"
+    Start-Process -FilePath $exe -ArgumentList "--explorer-redirect"
+    Write-Host "  ok    Explorer redirect agent restarted"
 }
 Write-Host ""
 Write-Host "Atlas $($installed.Version) installed in $($installed.Location)." -ForegroundColor Green

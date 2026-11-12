@@ -44,6 +44,18 @@ fn main() {
     if atlas_win_space::mft_space::helper::try_run() {
         return;
     }
+    #[cfg(windows)]
+    if atlas_win_space::explorer_redirect::try_run() {
+        return;
+    }
+    #[cfg(windows)]
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == atlas_win_space::integration::UNINSTALL_ARG)
+    {
+        atlas_win_space::integration::remove_for_uninstall();
+        return;
+    }
     let version = option_env!("ATLAS_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     // Package smoke tests must verify the ELF and version without opening a window.
     if std::env::args_os()

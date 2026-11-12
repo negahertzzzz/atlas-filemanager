@@ -4910,6 +4910,16 @@
     "es": "No se pudo cambiar Win+E: %{error}"
   },
   {
+    "key": "settings_explorer_folders",
+    "en": "Open folders from other apps in Atlas",
+    "es": "Abrir en Atlas las carpetas de otras apps"
+  },
+  {
+    "key": "settings_explorer_error",
+    "en": "Could not change how folders open: %{error}",
+    "es": "No se pudo cambiar cómo se abren las carpetas: %{error}"
+  },
+  {
     "key": "view_all_items_hidden",
     "en": "All items are hidden by view settings",
     "es": "Todos los elementos están ocultos por los ajustes de vista"

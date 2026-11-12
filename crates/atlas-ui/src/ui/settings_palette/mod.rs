@@ -1629,10 +1629,50 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
                     if app.win_e_enabled == on {
                         return;
                     }
-                    match atlas_win_space::integration::set_win_e_enabled(on) {
+                    use atlas_win_space::explorer_redirect;
+                    // The registry override still covers plain `explorer.exe`
+                    // launches; the agent covers Win+E itself. Another app
+                    // owning the override must not block the agent.
+                    if let Err(error) = atlas_win_space::integration::set_win_e_enabled(on) {
+                        tracing::warn!(%error, "Win+E registry override unchanged");
+                    }
+                    let mut choice = explorer_redirect::current();
+                    choice.start_page = on;
+                    match explorer_redirect::set(choice) {
                         Ok(()) => app.win_e_enabled = on,
                         Err(error) => app.toast_error(
                             rust_i18n::t!("settings_win_e_error", error = error.to_string())
+                                .into_owned(),
+                        ),
+                    }
+                },
+                default: None,
+            },
+        },
+    );
+    #[cfg(windows)]
+    list.insert(
+        3,
+        SettingDef {
+            id: "explorer-folders",
+            category: Category::General,
+            icon: AtlasIcon::FolderOpen,
+            title: "settings_explorer_folders",
+            desc: Some("sp_explorer_folders_desc"),
+            keywords: "explorer explorador esplora open file location percorso show in folder mostra cartella default predeterminado",
+            control: Control::Toggle {
+                get: |app| app.explorer_folders,
+                set: |app, on| {
+                    if app.explorer_folders == on {
+                        return;
+                    }
+                    use atlas_win_space::explorer_redirect;
+                    let mut choice = explorer_redirect::current();
+                    choice.folders = on;
+                    match explorer_redirect::set(choice) {
+                        Ok(()) => app.explorer_folders = on,
+                        Err(error) => app.toast_error(
+                            rust_i18n::t!("settings_explorer_error", error = error.to_string())
                                 .into_owned(),
                         ),
                     }

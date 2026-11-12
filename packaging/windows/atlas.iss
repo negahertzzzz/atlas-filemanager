@@ -76,6 +76,8 @@ Filename: "{app}\atlas.exe"; Description: "Launch Atlas"; Flags: nowait postinst
 
 [UninstallRun]
 Filename: "{app}\atlas-search-service.exe"; Parameters: "--uninstall"; Flags: runhidden
+; Restore Win+E and stop the Explorer redirect agent before atlas.exe is removed.
+Filename: "{app}\atlas.exe"; Parameters: "--remove-shell-integration"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveShellIntegration"
 
 
 [Code]

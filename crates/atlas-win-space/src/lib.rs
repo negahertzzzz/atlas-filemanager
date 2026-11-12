@@ -35,6 +35,7 @@ pub mod cleanup;
 pub mod crash;
 pub mod data_protection;
 pub mod directory;
+pub mod explorer_redirect;
 pub mod integration;
 pub mod media;
 pub mod metadata;
