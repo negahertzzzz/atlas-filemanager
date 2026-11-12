@@ -70,7 +70,14 @@ impl App {
     ) -> AnyElement {
         self.sync_view_transition(pane_id, cx);
         if let Some(tab) = self.tab_data_for(pane_id) {
-            let mode = if matches!(tab.view_mode, ViewMode::Details | ViewMode::List | ViewMode::Grid) { tab.group_by } else { atlas_model::tab::GroupBy::None };
+            let mode = if matches!(
+                tab.view_mode,
+                ViewMode::Details | ViewMode::List | ViewMode::Grid
+            ) {
+                tab.group_by
+            } else {
+                atlas_model::tab::GroupBy::None
+            };
             let collapsed = tab.collapsed_groups.clone();
             let visibility = (tab.show_files, tab.show_folders);
             let is_branch = tab.is_branch_view;
@@ -107,9 +114,7 @@ impl App {
             .tab_states
             .get(&pane_id)
             .is_some_and(|ts| ts.selection.scroll_to_selected);
-        if should_scroll_selected
-            && self.scroll_keyboard_selection(pane_id)
-        {
+        if should_scroll_selected && self.scroll_keyboard_selection(pane_id) {
             if let Some(ts) = self.state.tab_states.get_mut(&pane_id) {
                 ts.selection.scroll_to_selected = false;
             }
@@ -262,8 +267,12 @@ impl App {
         // Category discovery runs in the background when a listing arrives.
         // filtered_visible: Arc::clone in the common no-filter case (O(1), no alloc).
         let filter_perf = crate::perf::span("details.render.filter_projection");
-        let type_labels = self.state.tab_states.get(&pane_id)
-            .map(|ts| ts.ready_type_labels().to_vec()).unwrap_or_default();
+        let type_labels = self
+            .state
+            .tab_states
+            .get(&pane_id)
+            .map(|ts| ts.ready_type_labels().to_vec())
+            .unwrap_or_default();
         let filtered_visible = self.flat_visible_indices(pane_id);
         // Grouped panes lay headers into the same row space as files.
         let group_cells = self.grouped_cells(pane_id, atlas_model::grouping::GroupFlow::Rows);
@@ -443,7 +452,11 @@ impl App {
             };
 
             let group_overlays = group_cells.as_ref().map_or_else(Vec::new, |groups| {
-                let colors = crate::ui::group_header::GroupHeaderColors { fg, muted, border: cx.theme().border };
+                let colors = crate::ui::group_header::GroupHeaderColors {
+                    fg,
+                    muted,
+                    border: cx.theme().border,
+                };
                 groups
                     .headers
                     .iter()
@@ -498,7 +511,10 @@ impl App {
             });
 
             div()
-                .id(SharedString::from(format!("details-viewport-{}", pane_id.0)))
+                .id(SharedString::from(format!(
+                    "details-viewport-{}",
+                    pane_id.0
+                )))
                 .size_full()
                 .relative()
                 .overflow_hidden()
@@ -558,7 +574,10 @@ impl App {
         .child(timed_layout_region(
             "pane.viewport",
             PANE_VIEWPORT_TIMINGS,
-            layout_region("pane.viewport_body", self.transition_viewport(pane_id, inner)),
+            layout_region(
+                "pane.viewport_body",
+                self.transition_viewport(pane_id, inner),
+            ),
         ))
         .on_prepaint_child({
             let v = prepaint_view;
@@ -604,12 +623,20 @@ pub fn entry_type_label(entry: &FileEntry) -> String {
 }
 
 pub(crate) fn entry_display_size(entry: &FileEntry) -> String {
-    if entry.kind() == FileKind::Dir { return String::new(); }
-    entry.size().map(atlas_core::util::display::format_size).unwrap_or_default()
+    if entry.kind() == FileKind::Dir {
+        return String::new();
+    }
+    entry
+        .size()
+        .map(atlas_core::util::display::format_size)
+        .unwrap_or_default()
 }
 
 pub(crate) fn entry_display_date(entry: &FileEntry) -> String {
-    entry.modified.map(atlas_core::util::display::format_date).unwrap_or_default()
+    entry
+        .modified
+        .map(atlas_core::util::display::format_date)
+        .unwrap_or_default()
 }
 
 impl App {
@@ -1369,7 +1396,9 @@ fn render_rename_row(
     let meta_cells = layout.columns.iter().map(|col| {
         let text = match col.column {
             DetailsColumn::Size => crate::ui::views::details::entry_display_size(&entry).clone(),
-            DetailsColumn::Modified => crate::ui::views::details::entry_display_date(&entry).clone(),
+            DetailsColumn::Modified => {
+                crate::ui::views::details::entry_display_date(&entry).clone()
+            }
             DetailsColumn::Type => crate::ui::views::details::entry_type_label(&entry).clone(),
         };
         div()

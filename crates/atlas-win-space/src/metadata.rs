@@ -135,10 +135,19 @@ mod tests {
     #[test]
     fn windows_property_handlers_read_real_mp3_and_mp4_fixtures() {
         for (extension, bytes) in [
-            ("mp3", include_bytes!("../tests/fixtures/metadata.mp3").as_slice()),
-            ("mp4", include_bytes!("../tests/fixtures/metadata.mp4").as_slice()),
+            (
+                "mp3",
+                include_bytes!("../tests/fixtures/metadata.mp3").as_slice(),
+            ),
+            (
+                "mp4",
+                include_bytes!("../tests/fixtures/metadata.mp4").as_slice(),
+            ),
         ] {
-            let path = std::env::temp_dir().join(format!("atlas-properties-{}.{extension}", std::process::id()));
+            let path = std::env::temp_dir().join(format!(
+                "atlas-properties-{}.{extension}",
+                std::process::id()
+            ));
             std::fs::write(&path, bytes).unwrap();
             let properties = extended_properties(&path);
             std::fs::remove_file(&path).unwrap();

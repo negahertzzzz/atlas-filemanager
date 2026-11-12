@@ -42,7 +42,9 @@ impl RcClient {
             .post(format!("{}/{command}", self.base))
             .basic_auth(&self.user, Some(&self.pass))
             .json(&body)
-            .timeout(std::time::Duration::from_secs(if command == "config/create" { 600 } else { 30 }))
+            .timeout(std::time::Duration::from_secs(
+                if command == "config/create" { 600 } else { 30 },
+            ))
             .send()
             .await
             .with_context(|| format!("rc call {command} failed"))?;
@@ -146,31 +148,57 @@ impl RcClient {
     }
 
     pub async fn operations_stat(&self, fs: &str, remote: &str) -> anyhow::Result<Value> {
-        let value = self.call("operations/stat", json!({ "fs": fs, "remote": remote })).await?;
-        value.get("item").filter(|item| item.is_object()).cloned()
+        let value = self
+            .call("operations/stat", json!({ "fs": fs, "remote": remote }))
+            .await?;
+        value
+            .get("item")
+            .filter(|item| item.is_object())
+            .cloned()
             .ok_or_else(|| anyhow!("remote entry not found: {remote}"))
     }
 
     /// A missing object is `item: null`. Network/authentication failures must
     /// never be interpreted as permission to overwrite a destination.
     pub(crate) async fn require_missing(&self, fs: &str, remote: &str) -> anyhow::Result<()> {
-        let value = self.call("operations/stat", json!({ "fs": fs, "remote": remote })).await?;
-        anyhow::ensure!(value.get("item").is_some_and(Value::is_null),
-            "Destination already exists; choose another name: {remote}");
+        let value = self
+            .call("operations/stat", json!({ "fs": fs, "remote": remote }))
+            .await?;
+        anyhow::ensure!(
+            value.get("item").is_some_and(Value::is_null),
+            "Destination already exists; choose another name: {remote}"
+        );
         Ok(())
     }
 
     /// Recursive, additive directory copy. Never use sync/sync for uploads:
     /// it would delete destination files absent from the source.
-    pub async fn copy_directory_async(&self, src_fs: &str, dst_fs: &str, group: &str) -> anyhow::Result<AsyncJob> {
-        let value = self.call("sync/copy", json!({
-            "srcFs": src_fs, "dstFs": dst_fs, "createEmptySrcDirs": true,
-            "_config": { "Immutable": true },
-            "_async": true, "_group": group,
-        })).await?;
-        let jobid = value.get("jobid").and_then(Value::as_i64)
-            .ok_or_else(|| anyhow::Error::new(crate::cloud::control::OutcomeUnknown("sync/copy accepted without a job ID; verify the destination before retrying".into())))?;
-        Ok(AsyncJob { jobid, group: group.to_string() })
+    pub async fn copy_directory_async(
+        &self,
+        src_fs: &str,
+        dst_fs: &str,
+        group: &str,
+    ) -> anyhow::Result<AsyncJob> {
+        let value = self
+            .call(
+                "sync/copy",
+                json!({
+                    "srcFs": src_fs, "dstFs": dst_fs, "createEmptySrcDirs": true,
+                    "_config": { "Immutable": true },
+                    "_async": true, "_group": group,
+                }),
+            )
+            .await?;
+        let jobid = value.get("jobid").and_then(Value::as_i64).ok_or_else(|| {
+            anyhow::Error::new(crate::cloud::control::OutcomeUnknown(
+                "sync/copy accepted without a job ID; verify the destination before retrying"
+                    .into(),
+            ))
+        })?;
+        Ok(AsyncJob {
+            jobid,
+            group: group.to_string(),
+        })
     }
 
     pub async fn operations_mkdir(&self, fs: &str, remote: &str) -> anyhow::Result<()> {
@@ -228,10 +256,11 @@ impl RcClient {
             body["_config"] = config;
         }
         let v = self.call("operations/copyfile", body).await?;
-        let jobid = v
-            .get("jobid")
-            .and_then(Value::as_i64)
-            .ok_or_else(|| anyhow::Error::new(crate::cloud::control::OutcomeUnknown("copyfile accepted without a job ID; verify the destination before retrying".into())))?;
+        let jobid = v.get("jobid").and_then(Value::as_i64).ok_or_else(|| {
+            anyhow::Error::new(crate::cloud::control::OutcomeUnknown(
+                "copyfile accepted without a job ID; verify the destination before retrying".into(),
+            ))
+        })?;
         Ok(AsyncJob {
             jobid,
             group: group.to_string(),
@@ -309,13 +338,19 @@ impl RcClient {
 
     pub(crate) async fn unmount_account(&self, account: &str) -> anyhow::Result<()> {
         let mounts = self.call("mount/listmounts", json!({})).await?;
-        let mounts = mounts.get("mountPoints").and_then(Value::as_array)
+        let mounts = mounts
+            .get("mountPoints")
+            .and_then(Value::as_array)
             .ok_or_else(|| anyhow!("mount/listmounts returned no mount points"))?;
         for mount in mounts {
             if mount.get("Fs").and_then(Value::as_str) == Some(&format!("{account}:")) {
-                let point = mount.get("MountPoint").and_then(Value::as_str)
+                let point = mount
+                    .get("MountPoint")
+                    .and_then(Value::as_str)
                     .ok_or_else(|| anyhow!("mounted account has no mount point"))?;
-                self.unmount(point).await.context("Account remains connected because its mount could not be closed")?;
+                self.unmount(point)
+                    .await
+                    .context("Account remains connected because its mount could not be closed")?;
             }
         }
         Ok(())
@@ -323,8 +358,13 @@ impl RcClient {
 
     pub(crate) async fn require_no_mounts(&self) -> anyhow::Result<()> {
         let value = self.call("mount/listmounts", json!({})).await?;
-        anyhow::ensure!(value.get("mountPoints").and_then(Value::as_array).is_some_and(Vec::is_empty),
-            "Unmount cloud drives before disabling or uninstalling the Cloud extension");
+        anyhow::ensure!(
+            value
+                .get("mountPoints")
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty),
+            "Unmount cloud drives before disabling or uninstalling the Cloud extension"
+        );
         Ok(())
     }
 }

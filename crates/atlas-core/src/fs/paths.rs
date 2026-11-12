@@ -78,7 +78,9 @@ pub fn list_wsl_roots() -> Vec<PathBuf> {
     let cache_arc = WSL_ROOT_CACHE
         .get_or_init(|| Arc::new(Mutex::new(None)))
         .clone();
-    let mut cache = cache_arc.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut cache = cache_arc
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     if let Some((last_update, roots, is_updating)) = &mut *cache {
         if last_update.elapsed() < WSL_CACHE_TTL {
@@ -177,7 +179,8 @@ pub fn ensure_wsl_ready(path: &Path) -> anyhow::Result<()> {
     let cache = READY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if cache
         .lock()
-        .or_else(atlas_model::sync::recover).ok()
+        .or_else(atlas_model::sync::recover)
+        .ok()
         .and_then(|ready| ready.get(&distro.to_ascii_lowercase()).copied())
         .is_some_and(|last_ready| last_ready.elapsed() < WSL_READY_TTL)
     {
@@ -266,8 +269,14 @@ pub fn same_volume(a: &Path, b: &Path) -> bool {
     }
     let s_a = a.to_string_lossy();
     let s_b = b.to_string_lossy();
-    let da = s_a.get(..2).filter(|s| s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':').map(|s| s.to_ascii_uppercase());
-    let db = s_b.get(..2).filter(|s| s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':').map(|s| s.to_ascii_uppercase());
+    let da = s_a
+        .get(..2)
+        .filter(|s| s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':')
+        .map(|s| s.to_ascii_uppercase());
+    let db = s_b
+        .get(..2)
+        .filter(|s| s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':')
+        .map(|s| s.to_ascii_uppercase());
     if let (Some(da), Some(db)) = (da, db) {
         if da != db {
             return false;

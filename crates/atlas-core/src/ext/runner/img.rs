@@ -14,7 +14,8 @@ pub(crate) fn image_file_to_preview(path: &Path) -> PreviewResult {
                 img.thumbnail(1600, 1600)
             } else {
                 img
-            }.to_rgba8();
+            }
+            .to_rgba8();
             let (width, height) = img.dimensions();
             PreviewResult::Image {
                 rgba: img.into_raw(),

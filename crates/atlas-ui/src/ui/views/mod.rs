@@ -15,32 +15,32 @@ use gpui::{Div, Entity, MouseButton, MouseDownEvent, Stateful, Window};
 use gpui_component::ElementExt;
 use std::path::PathBuf;
 
-pub mod crumb_strip_element;
+mod batch_row;
 #[cfg(feature = "ui-lab")]
 pub mod chrome_diagnostic;
+#[cfg(all(feature = "ui-lab", feature = "provider-host"))]
+pub mod cloud_diagnostic;
+pub mod crumb_strip_element;
 pub mod details;
 pub mod details_dg;
 pub mod details_element;
 pub mod details_header_element;
 pub mod details_ring;
-#[cfg(all(feature = "ui-lab", feature = "provider-host"))]
-pub mod cloud_diagnostic;
 pub mod grid_deprecated;
 pub mod grid_dg;
 pub mod grid_surface_element_deprecated;
-#[cfg(feature = "ui-lab")]
-pub mod selection_diagnostic;
 pub mod list_deprecated;
 pub mod list_dg;
 pub mod miller_deprecated;
 pub mod miller_dg;
-mod batch_row;
 mod rename;
+#[cfg(feature = "ui-lab")]
+pub mod selection_diagnostic;
 pub mod space_lens;
 pub mod tabs_bar_element;
+pub(crate) mod transition;
 pub mod tree_deprecated;
 pub mod tree_dg;
-pub(crate) mod transition;
 #[cfg(feature = "ui-lab")]
 pub use transition::diagnostic as view_controls_diagnostic;
 pub mod virtual_grid_deprecated;
@@ -104,7 +104,6 @@ pub(super) fn on_entry_click(
     }
 }
 
-
 pub(super) fn on_pane_rubber_mouse_down(
     view: &Entity<App>,
     pane_id: TabId,
@@ -126,8 +125,6 @@ pub(super) fn on_pane_rubber_mouse_down(
     }
 }
 
-
-
 /// Shared right-click handler: select the target (keeping multi-selection when
 /// clicked inside it) and open the shell context menu at the cursor.
 pub(super) fn on_entry_ctx_menu(
@@ -147,8 +144,6 @@ pub(super) fn on_entry_ctx_menu(
         cx.stop_propagation();
     }
 }
-
-
 
 /// Shared folder drop target: dim on drag-over, record the hover zone for
 /// spring-loaded navigation, and accept both intra-Atlas and external drops
@@ -231,7 +226,9 @@ pub(super) fn pane_background_interactions(
             let paths = d.paths.clone();
             let pos = window.mouse_position();
             drop_view.update(cx, |this, cx| {
-                if let Some(command) = this.drag_hover_drop_command_at(f32::from(pos.x), f32::from(pos.y)) {
+                if let Some(command) =
+                    this.drag_hover_drop_command_at(f32::from(pos.x), f32::from(pos.y))
+                {
                     this.execute_drag_hover_drop_command(command, paths, true);
                 } else {
                     this.drop_files_on_pane(pane_id, paths, false);
@@ -243,7 +240,9 @@ pub(super) fn pane_background_interactions(
             let paths = paths.paths().to_vec();
             let pos = window.mouse_position();
             drop_ext_view.update(cx, |this, cx| {
-                if let Some(command) = this.drag_hover_drop_command_at(f32::from(pos.x), f32::from(pos.y)) {
+                if let Some(command) =
+                    this.drag_hover_drop_command_at(f32::from(pos.x), f32::from(pos.y))
+                {
                     this.execute_drag_hover_drop_command(command, paths, false);
                 } else {
                     this.drop_files_on_pane(pane_id, paths, true);
@@ -283,7 +282,10 @@ pub(super) fn hover_tooltip_overlay(
 ) -> gpui::AnyElement {
     let (name, path, is_dir, size, modified) = data;
     gpui::div()
-        .id(gpui::SharedString::from(format!("{scope}-tip-{}-{target}", pane_id.0)))
+        .id(gpui::SharedString::from(format!(
+            "{scope}-tip-{}-{target}",
+            pane_id.0
+        )))
         .absolute()
         .inset_0()
         .tooltip(move |window, cx| {
@@ -331,28 +333,55 @@ impl App {
             return;
         }
         self.activate_tab(pane);
-        if self.state.settings.single_click_opens_folder(is_dir, click_count, shift || ctrl) {
+        if self
+            .state
+            .settings
+            .single_click_opens_folder(is_dir, click_count, shift || ctrl)
+        {
             self.queue_tree_folder_click(pane, index, path, pos);
         } else if click_count >= 2 && !shift && !ctrl {
             if is_dir {
                 self.process_actions([Action::ToggleTreeExpand(path)]);
             } else {
-                let archive_root = self.state.tab_states.get(&pane)
-                    .and_then(|tab| tab.visible_tree_rows_snapshot().get(index).map(|row| row.0.archive_root()))
+                let archive_root = self
+                    .state
+                    .tab_states
+                    .get(&pane)
+                    .and_then(|tab| {
+                        tab.visible_tree_rows_snapshot()
+                            .get(index)
+                            .map(|row| row.0.archive_root())
+                    })
                     .flatten();
                 self.activate_file_path(pane, path, archive_root);
             }
         } else {
-            let selected = self.state.tab_states.get(&pane)
+            let selected = self
+                .state
+                .tab_states
+                .get(&pane)
                 .is_some_and(|tab| tab.selection.selected.contains(&index));
-            let selected_click = selected && self.state.tab_states.get(&pane).is_some_and(|tab| tab.selection.selected.len() > 1);
+            let selected_click = selected
+                && self
+                    .state
+                    .tab_states
+                    .get(&pane)
+                    .is_some_and(|tab| tab.selection.selected.len() > 1);
             if (!selected || selected_click) && !shift && !ctrl {
                 self.begin_rubber(pane, pos, false);
-                if selected_click { if let Some(r) = self.rubber.as_mut() { r.selected_click = Some(index); } }
+                if selected_click {
+                    if let Some(r) = self.rubber.as_mut() {
+                        r.selected_click = Some(index);
+                    }
+                }
             }
             if let Some(tab) = self.state.tab_states.get_mut(&pane) {
                 let sole = selected && tab.selection.selected.len() == 1;
-                let slow = tab.selection.slow_rename_click(index, std::time::Instant::now(), !shift && !ctrl);
+                let slow = tab.selection.slow_rename_click(
+                    index,
+                    std::time::Instant::now(),
+                    !shift && !ctrl,
+                );
                 if slow && sole {
                     self.pending_rename = Some((pane, path, false));
                 }
@@ -393,10 +422,18 @@ impl App {
             } else {
                 error.clone()
             }),
-            _ => Some(if self.state.tab_states.get(&pane_id).is_some_and(|state|
-                !state.entries.is_empty() || state.has_excluded_items) {
-                rust_i18n::t!("view_all_items_hidden").into_owned()
-            } else { empty_message }),
+            _ => Some(
+                if self
+                    .state
+                    .tab_states
+                    .get(&pane_id)
+                    .is_some_and(|state| !state.entries.is_empty() || state.has_excluded_items)
+                {
+                    rust_i18n::t!("view_all_items_hidden").into_owned()
+                } else {
+                    empty_message
+                },
+            ),
         }
     }
 }

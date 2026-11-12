@@ -404,7 +404,8 @@ mod hover_tests {
             (Slot::new(104.0, 0.0, 200.0, 52.0), "finder"),
         ];
         let origin = point(px(400.0), px(120.0));
-        let at = |x: f32, visible| hover_target(&hits, origin, point(px(400.0 + x), px(130.0)), visible);
+        let at =
+            |x: f32, visible| hover_target(&hits, origin, point(px(400.0 + x), px(130.0)), visible);
         assert_eq!(at(20.0, true), Some("back"));
         assert_eq!(at(70.0, true), None);
         assert_eq!(at(120.0, true), Some("segment"));

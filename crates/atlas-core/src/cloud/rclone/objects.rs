@@ -26,8 +26,10 @@ impl RcClient {
                     "Object addresses require a Google Drive account"
                 );
                 if object.is_dir {
-                    anyhow::ensure!(parts.len() <= index + 2,
-                        "Refresh the destination folder to obtain its immutable object ID");
+                    anyhow::ensure!(
+                        parts.len() <= index + 2,
+                        "Refresh the destination folder to obtain its immutable object ID"
+                    );
                     return Ok((
                         format!("{id},root_folder_id={}:", object.id),
                         parts[index + 1..].join("/"),
@@ -36,8 +38,10 @@ impl RcClient {
                 anyhow::bail!("A file object cannot be used as a remote directory or destination");
             }
         }
-        anyhow::ensure!(!path.contains('/') || !self.is_drive(id).await?,
-            "Refresh the destination folder to obtain its immutable object ID");
+        anyhow::ensure!(
+            !path.contains('/') || !self.is_drive(id).await?,
+            "Refresh the destination folder to obtain its immutable object ID"
+        );
         Ok((format!("{id}:"), path.to_string()))
     }
     pub(crate) async fn copy_id_async(
@@ -57,10 +61,12 @@ impl RcClient {
         }
         let result = self.call("backend/command", body).await?;
         Ok(AsyncJob {
-            jobid: result
-                .get("jobid")
-                .and_then(Value::as_i64)
-                .ok_or_else(|| anyhow::Error::new(crate::cloud::control::OutcomeUnknown("copyid accepted without a job ID; verify the destination before retrying".into())))?,
+            jobid: result.get("jobid").and_then(Value::as_i64).ok_or_else(|| {
+                anyhow::Error::new(crate::cloud::control::OutcomeUnknown(
+                    "copyid accepted without a job ID; verify the destination before retrying"
+                        .into(),
+                ))
+            })?,
             group: group.into(),
         })
     }
@@ -229,7 +235,10 @@ mod tests {
                 stream.read_exact(&mut body).unwrap();
                 let request_line = headers.lines().next().unwrap().to_string();
                 let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-                recorded.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((request_line.clone(), body));
+                recorded
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push((request_line.clone(), body));
                 let result = if request_line.contains("/config/get") {
                     json!({"type":"drive", "token":"{\"access_token\":\"test-only\"}"})
                 } else if request_line.contains("/backend/command") {
@@ -275,7 +284,9 @@ mod tests {
         client.trash_id("account-one", &selected).await.unwrap();
         stop.store(true, Ordering::Relaxed);
         server.join().unwrap();
-        let requests = requests.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let requests = requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let copy = requests
             .iter()
             .find(|(line, _)| line.contains("/backend/command"))

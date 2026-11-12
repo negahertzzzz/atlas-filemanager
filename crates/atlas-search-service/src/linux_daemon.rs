@@ -2,12 +2,8 @@
 
 use crate::arena_index::ArenaTree;
 use anyhow::Context as _;
-use atlas_core::search::catalog::{
-    SearchBackendStatus, SearchBatch, SearchProgress,
-};
-use atlas_core::search::service::{
-    ServiceRequest, ServiceResponse, PROTOCOL_VERSION,
-};
+use atlas_core::search::catalog::{SearchBackendStatus, SearchBatch, SearchProgress};
+use atlas_core::search::service::{ServiceRequest, ServiceResponse, PROTOCOL_VERSION};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -30,12 +26,23 @@ pub fn linux_socket_path() -> PathBuf {
 
 /// Directories that must never be indexed (virtual / kernel filesystems).
 const EXCLUDED_DIRS: &[&str] = &[
-    "/proc", "/sys", "/dev", "/run", "/tmp", "/var/tmp", "/var/run", "/var/lock",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/run",
+    "/tmp",
+    "/var/tmp",
+    "/var/run",
+    "/var/lock",
 ];
 
 /// Subdirectory names to skip to prevent bloating the index.
 const SKIPPED_SUBDIRS: &[&str] = &[
-    ".git/objects", "node_modules", ".cache", "target/debug", "target/release",
+    ".git/objects",
+    "node_modules",
+    ".cache",
+    "target/debug",
+    "target/release",
 ];
 
 pub fn run_daemon(foreground: bool) -> anyhow::Result<()> {
@@ -82,7 +89,11 @@ pub fn run_daemon(foreground: bool) -> anyhow::Result<()> {
 
             indexing_complete_clone.store(true, Ordering::Relaxed);
             let count = tree_clone.read().map(|t| t.active_count).unwrap_or(0);
-            let mem_mb = tree_clone.read().map(|t| t.memory_usage_bytes()).unwrap_or(0) as f64 / 1_048_576.0;
+            let mem_mb = tree_clone
+                .read()
+                .map(|t| t.memory_usage_bytes())
+                .unwrap_or(0) as f64
+                / 1_048_576.0;
             tracing::info!(
                 indexed_files = count,
                 elapsed_ms = start.elapsed().as_millis(),
@@ -164,7 +175,9 @@ fn crawl_root(root: &Path, tree: &Arc<RwLock<ArenaTree>>, running: &Arc<AtomicBo
 
         let modified = entry.metadata().ok().and_then(|m| {
             m.modified().ok().and_then(|t| {
-                t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs())
             })
         });
 
@@ -227,7 +240,10 @@ fn handle_client(
             },
             ServiceRequest::Status => {
                 let (active, is_ready) = match tree.read() {
-                    Ok(t) => (t.active_count as u64, indexing_complete.load(Ordering::Relaxed)),
+                    Ok(t) => (
+                        t.active_count as u64,
+                        indexing_complete.load(Ordering::Relaxed),
+                    ),
                     Err(_) => (0, false),
                 };
                 let status = if is_ready {

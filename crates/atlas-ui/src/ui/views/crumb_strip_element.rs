@@ -1,6 +1,5 @@
 //! Flat breadcrumb / nav surface: measured text slots + hit map (1 layout node).
 
-use atlas_model::clamp::ClampLenient;
 use crate::app::App;
 use crate::input::action::Action;
 use crate::ui::icons::AtlasIcon;
@@ -8,6 +7,7 @@ use crate::ui::surface::{
     chrome_font_size_crumbs, hit_first, line_width, paint_fill, paint_rounded, paint_theme_icon,
     shape_text, text_origin_y, Slot,
 };
+use atlas_model::clamp::ClampLenient;
 use atlas_model::location::Location;
 use atlas_model::pane::TabId;
 use gpui::ColorExt as _;
@@ -307,10 +307,8 @@ impl Element for CrumbStripElement {
             }
             if !targets.is_empty() {
                 app.update(_cx, |this, _| {
-                    {
-                        for target in targets {
-                            this.register_drag_hover_target(target);
-                        }
+                    for target in targets {
+                        this.register_drag_hover_target(target);
                     }
                 });
             }

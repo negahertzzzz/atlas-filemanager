@@ -44,6 +44,8 @@ Name: "launch"; Description: "Launch Atlas after install"; GroupDescription: "Fi
 
 [Files]
 Source: "..\..\target\release\atlas.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\target\windows-runtime\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\target\windows-runtime\MICROSOFT-RUNTIME*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\target\release\atlas-cloud-extension.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\target\release\atlas-icon-extension.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\legal\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion

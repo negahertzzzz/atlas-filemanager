@@ -168,7 +168,11 @@ pub fn list_system_apps() -> Vec<DesktopApp> {
         for entry in entries.flatten() {
             let p = entry.path();
             if p.extension().is_some_and(|e| e == "desktop") {
-                let id = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let id = p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if seen_ids.insert(id) {
                     if let Some(app) = DesktopApp::parse_file(&p) {
                         apps.push(app);
@@ -217,8 +221,12 @@ pub fn ext_to_mime_types(ext: &str) -> &'static [&'static str] {
         "c" | "h" => &["text/x-c", "text/plain"],
         "cpp" | "hpp" | "cc" | "cxx" => &["text/x-c++", "text/plain"],
         "py" => &["text/x-python", "text/plain"],
-        "js" | "mjs" | "cjs" | "jsx" => &["text/javascript", "application/javascript", "text/plain"],
-        "ts" | "mts" | "cts" | "tsx" => &["text/typescript", "application/typescript", "text/plain"],
+        "js" | "mjs" | "cjs" | "jsx" => {
+            &["text/javascript", "application/javascript", "text/plain"]
+        }
+        "ts" | "mts" | "cts" | "tsx" => {
+            &["text/typescript", "application/typescript", "text/plain"]
+        }
         "json" => &["application/json", "text/plain"],
         "toml" => &["application/toml", "text/plain"],
         "yaml" | "yml" => &["application/yaml", "text/plain"],
@@ -238,7 +246,10 @@ pub fn ext_to_mime_types(ext: &str) -> &'static [&'static str] {
 
 /// Finds applications associated with the given file path based on its extension and MIME types.
 pub fn apps_for_file(path: &Path) -> Vec<DesktopApp> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
     let file_mimes = ext_to_mime_types(ext);
     if file_mimes.is_empty() {
         return Vec::new();
@@ -248,9 +259,10 @@ pub fn apps_for_file(path: &Path) -> Vec<DesktopApp> {
     let mut matches = Vec::new();
 
     for app in all_apps {
-        let is_match = app.mime_types.iter().any(|app_mime| {
-            file_mimes.iter().any(|target_mime| app_mime == target_mime)
-        });
+        let is_match = app
+            .mime_types
+            .iter()
+            .any(|app_mime| file_mimes.iter().any(|target_mime| app_mime == target_mime));
         if is_match {
             matches.push(app);
         }
@@ -261,11 +273,7 @@ pub fn apps_for_file(path: &Path) -> Vec<DesktopApp> {
 
 /// Formats and launches the given command template with the given file paths.
 /// Replaces `%f`/`%u` with the first file, `%F`/`%U` with all files, and strips flags.
-pub fn build_launch_command(
-    exec_template: &str,
-    files: &[PathBuf],
-    terminal: bool,
-) -> Command {
+pub fn build_launch_command(exec_template: &str, files: &[PathBuf], terminal: bool) -> Command {
     let mut tokens: Vec<String> = Vec::new();
     let mut in_quotes = false;
     let mut quote_char = ' ';
@@ -296,7 +304,10 @@ pub fn build_launch_command(
     let mut args: Vec<String> = Vec::new();
     let mut substituted = false;
 
-    let file_strs: Vec<String> = files.iter().map(|p| p.to_string_lossy().to_string()).collect();
+    let file_strs: Vec<String> = files
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
     let first_file = file_strs.first().cloned().unwrap_or_default();
 
     for token in tokens {
@@ -336,11 +347,14 @@ pub fn build_launch_command(
         }
     }
 
-    let program = if args.is_empty() { "sh".to_string() } else { args.remove(0) };
+    let program = if args.is_empty() {
+        "sh".to_string()
+    } else {
+        args.remove(0)
+    };
 
     if terminal {
-        let term = std::env::var("TERMINAL")
-            .unwrap_or_else(|_| "x-terminal-emulator".to_string());
+        let term = std::env::var("TERMINAL").unwrap_or_else(|_| "x-terminal-emulator".to_string());
         let mut cmd = Command::new(term);
         cmd.arg("-e").arg(&program).args(args);
         cmd
@@ -413,7 +427,10 @@ Exec=service
 
         let cmd = build_launch_command("audacity %F", &files, false);
         let program = cmd.get_program().to_string_lossy().to_string();
-        let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
 
         assert_eq!(program, "audacity");
         assert_eq!(args, vec!["/home/user/song.mp3", "/home/user/song2.mp3"]);

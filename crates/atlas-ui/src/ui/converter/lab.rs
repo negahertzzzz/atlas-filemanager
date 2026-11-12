@@ -256,14 +256,23 @@ fn actions_frame(
         let session = view.read(cx).converter.as_ref().unwrap();
         assert!(matches!(session.phase, super::Phase::Choosing));
         assert_eq!(session.mode, super::Mode::Convert);
-        assert!(session.actions.contains(&super::RingAction::Native(Action::Resize)));
-        assert!(session.actions.contains(&super::RingAction::Native(Action::RotateRight)));
+        assert!(session
+            .actions
+            .contains(&super::RingAction::Native(Action::Resize)));
+        assert!(session
+            .actions
+            .contains(&super::RingAction::Native(Action::RotateRight)));
         assert!(
-            !session.actions.contains(&super::RingAction::Native(Action::CompressPdf)),
+            !session
+                .actions
+                .contains(&super::RingAction::Native(Action::CompressPdf)),
             "PDF-only action must not be offered for a PNG"
         );
         window.dispatch_keystroke(gpui::Keystroke::parse("m").unwrap(), cx);
-        assert_eq!(view.read(cx).converter.as_ref().unwrap().mode, super::Mode::Actions);
+        assert_eq!(
+            view.read(cx).converter.as_ref().unwrap().mode,
+            super::Mode::Actions
+        );
     }
     if step == 16 {
         window
@@ -314,7 +323,8 @@ fn actions_frame(
         cx.quit();
         return true;
     }
-    if let Some(super::Phase::Finished(report)) = view.read(cx).converter.as_ref().map(|s| &s.phase) {
+    if let Some(super::Phase::Finished(report)) = view.read(cx).converter.as_ref().map(|s| &s.phase)
+    {
         panic!("Action failed: {:?}", report.errors());
     }
     if step >= 400 {

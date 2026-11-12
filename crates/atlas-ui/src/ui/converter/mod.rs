@@ -1,12 +1,12 @@
 //! One upstream session, disposable wheel nodes, immutable worker commands.
+#[cfg(feature = "ui-lab")]
+pub(crate) mod crash_lab;
 mod geometry;
 #[cfg(feature = "conversion-lab")]
 pub(crate) mod lab;
 mod render;
 mod wheel;
 mod wheel_view;
-#[cfg(feature = "ui-lab")]
-pub(crate) mod crash_lab;
 
 use crate::app::App;
 use atlas_core::convert::actions::{self, Action, ActionSettings};
@@ -185,7 +185,10 @@ impl App {
     }
 
     pub(crate) fn open_converter_for(&mut self, sources: Vec<PathBuf>) {
-        if sources.iter().any(|path| atlas_core::vault::live::is_private(path)) {
+        if sources
+            .iter()
+            .any(|path| atlas_core::vault::live::is_private(path))
+        {
             self.toast_error(rust_i18n::t!("vault_conversion_unavailable").to_string());
             return;
         }
@@ -207,7 +210,11 @@ impl App {
             quality: ring.compress_quality.clamp(10, 100),
             output_dir: None,
         };
-        let mode = if ring.open_actions { Mode::Actions } else { Mode::Convert };
+        let mode = if ring.open_actions {
+            Mode::Actions
+        } else {
+            Mode::Convert
+        };
         self.converter = Some(Session {
             sources,
             tools: Tools::default(),
@@ -350,13 +357,16 @@ impl App {
                         session.extra = extra;
                         session.locked = locked;
                         session.actions = actions.into_iter().map(RingAction::Native).collect();
-                        session.actions.extend(session.ring_extensions.iter().cloned());
+                        session
+                            .actions
+                            .extend(session.ring_extensions.iter().cloned());
                         if !session.mode_chosen {
                             // The preferred side, unless it has nothing to offer.
                             session.mode = match session.mode {
                                 Mode::Actions if session.actions.is_empty() => Mode::Convert,
                                 Mode::Convert
-                                    if session.catalog.is_empty() && !session.actions.is_empty() =>
+                                    if session.catalog.is_empty()
+                                        && !session.actions.is_empty() =>
                                 {
                                     Mode::Actions
                                 }
@@ -426,12 +436,11 @@ impl App {
                         let acting = session.mode == Mode::Actions;
                         if errors.is_empty() && cancelled == 0 {
                             let msg = if outputs.len() == 1 {
-                                let name = outputs[0]
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy();
+                                let name =
+                                    outputs[0].file_name().unwrap_or_default().to_string_lossy();
                                 if acting {
-                                    rust_i18n::t!("ring_toast_done_single", name = name).into_owned()
+                                    rust_i18n::t!("ring_toast_done_single", name = name)
+                                        .into_owned()
                                 } else {
                                     rust_i18n::t!("convert_toast_finished_single", name = name)
                                         .into_owned()
@@ -622,8 +631,12 @@ impl App {
             let name = sources[0].file_name().unwrap_or_default().to_string_lossy();
             rust_i18n::t!("ring_toast_starting_single", action = label, name = name).into_owned()
         } else {
-            rust_i18n::t!("ring_toast_starting_multi", action = label, count = sources.len())
-                .into_owned()
+            rust_i18n::t!(
+                "ring_toast_starting_multi",
+                action = label,
+                count = sources.len()
+            )
+            .into_owned()
         };
         self.toast_info(msg);
         self.rt.spawn_blocking(move || {
@@ -650,11 +663,18 @@ impl App {
     }
 
     fn start_conversion(&mut self) {
-        if self.converter.as_ref().is_some_and(|s| s.mode == Mode::Actions) {
+        if self
+            .converter
+            .as_ref()
+            .is_some_and(|s| s.mode == Mode::Actions)
+        {
             self.start_action();
             return;
         }
-        let count = self.converter.as_ref().map_or(0, |session| session.sources.len());
+        let count = self
+            .converter
+            .as_ref()
+            .map_or(0, |session| session.sources.len());
         if !self.allow_conversion_action(count) {
             return;
         }
@@ -686,13 +706,20 @@ impl App {
 
         let count = sources.len();
         let msg = if count == 1 {
-            let name = sources[0]
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            rust_i18n::t!("convert_toast_starting_single", name = name, ext = extension).into_owned()
+            let name = sources[0].file_name().unwrap_or_default().to_string_lossy();
+            rust_i18n::t!(
+                "convert_toast_starting_single",
+                name = name,
+                ext = extension
+            )
+            .into_owned()
         } else {
-            rust_i18n::t!("convert_toast_starting_multi", count = count, ext = extension).into_owned()
+            rust_i18n::t!(
+                "convert_toast_starting_multi",
+                count = count,
+                ext = extension
+            )
+            .into_owned()
         };
         self.toast_info(msg);
         self.rt.spawn_blocking(move || {

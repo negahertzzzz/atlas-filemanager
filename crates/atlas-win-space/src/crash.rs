@@ -109,7 +109,10 @@ fn install_at(directory: PathBuf, version: &str) -> io::Result<()> {
 /// needs no stack, allocation or thread creation of its own.
 fn spawn_writer() {
     let (request, done) = unsafe {
-        (CreateEventW(null(), 0, 0, null()), CreateEventW(null(), 0, 0, null()))
+        (
+            CreateEventW(null(), 0, 0, null()),
+            CreateEventW(null(), 0, 0, null()),
+        )
     };
     if request == 0 || done == 0 {
         return;
@@ -145,9 +148,10 @@ fn record_panic(info: &std::panic::PanicHookInfo<'_>) {
     let fatal = thread_id == MAIN_THREAD.load(Ordering::SeqCst);
     let thread = std::thread::current();
     let message = info.payload_as_str().unwrap_or("non-string panic payload");
-    let location = info
-        .location()
-        .map_or_else(|| "unknown".to_owned(), |l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+    let location = info.location().map_or_else(
+        || "unknown".to_owned(),
+        |l| format!("{}:{}:{}", l.file(), l.line(), l.column()),
+    );
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -173,7 +177,11 @@ fn append_rotating(path: &Path, text: &str) {
     if std::fs::metadata(path).is_ok_and(|m| m.len() > PANIC_LOG_LIMIT) {
         let _ = std::fs::rename(path, path.with_extension("old.log"));
     }
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = file.write_all(text.as_bytes());
     }
 }
@@ -302,8 +310,11 @@ mod tests {
 
     /// Runs `test` in a child process that crashes, then checks its report.
     fn assert_child_report(test: &str, env: &str) {
-        let directory =
-            std::env::temp_dir().join(format!("atlas-crash-test-{}-{}", std::process::id(), env.len()));
+        let directory = std::env::temp_dir().join(format!(
+            "atlas-crash-test-{}-{}",
+            std::process::id(),
+            env.len()
+        ));
         std::fs::create_dir_all(&directory).unwrap();
         struct Cleanup(PathBuf);
         impl Drop for Cleanup {
@@ -341,6 +352,9 @@ mod tests {
 
     #[test]
     fn child_stack_overflow_still_writes_a_full_report() {
-        assert_child_report("crash::tests::stack_overflow_child", "ATLAS_CRASH_TEST_OVERFLOW_DIR");
+        assert_child_report(
+            "crash::tests::stack_overflow_child",
+            "ATLAS_CRASH_TEST_OVERFLOW_DIR",
+        );
     }
 }

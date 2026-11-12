@@ -466,9 +466,16 @@ fn listings_mask_only_authorized_roots_and_direct_payload_navigation_is_denied()
         ))
         .unwrap();
     let allowed = filter_entries(entries.clone(), &p, "Protected folder");
+    // Windows can recover the original label through account-bound DPAPI;
+    // other platforms use the generic label while the vault is locked.
+    let expected_name = if cfg!(windows) {
+        "Private records"
+    } else {
+        "Protected folder"
+    };
     assert!(allowed
         .iter()
-        .any(|e| e.path() == root && e.name == "Protected folder" && !e.is_hidden()));
+        .any(|e| e.path() == root && e.name == expected_name && !e.is_hidden()));
     assert!(filter_entries(entries, &profile(), "Protected folder").is_empty());
     assert!(runtime
         .block_on(crate::fs::list::list_dir(

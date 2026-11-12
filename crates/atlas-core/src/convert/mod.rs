@@ -1,11 +1,11 @@
 //! Local, non-destructive conversion pipeline. Catalog -> immutable plan -> workers.
 //! Engines are discovered off-thread; no engine or codec is bundled by this module.
+pub mod actions;
 mod books;
 mod catalog;
 mod contacts;
 #[cfg(test)]
 mod edition_tests;
-pub mod actions;
 mod flac;
 mod native;
 mod office;
@@ -20,7 +20,10 @@ mod vector;
 #[cfg(all(test, target_os = "windows"))]
 mod video_tests;
 
-pub use catalog::{locked_engines, native_options, options, route, wheel_options, Backend, ConversionOption, Format, FORMATS};
+pub use catalog::{
+    locked_engines, native_options, options, route, wheel_options, Backend, ConversionOption,
+    Format, FORMATS,
+};
 pub use tools::{Tool, Tools};
 
 use anyhow::{bail, Context, Result};
@@ -206,7 +209,11 @@ pub fn execute(
     let edition = edition::current();
     let free = edition == edition::Edition::Free;
     let planned = plan.commands.len();
-    let used_today = if free { crate::usage::conversions_today() } else { 0 };
+    let used_today = if free {
+        crate::usage::conversions_today()
+    } else {
+        0
+    };
     let allowed = edition
         .check(Feature::BatchConversion, planned)
         .and_then(|()| edition.check(Feature::ConversionsPerDay, used_today + planned));

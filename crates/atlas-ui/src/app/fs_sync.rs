@@ -1,15 +1,23 @@
-use atlas_model::pane::FolderOrder;
 use crate::app::App;
-use atlas_core::fs::list::{entries_for_paths, list_branch_dir_with_preview, list_dir, list_dir_with_preview};
+use atlas_core::fs::list::{
+    entries_for_paths, list_branch_dir_with_preview, list_dir, list_dir_with_preview,
+};
 use atlas_model::app_state::BgResult;
 use atlas_model::layout_tree::{Tile, TileId};
 use atlas_model::location::Location;
+use atlas_model::pane::FolderOrder;
 use atlas_model::tab::LoadState;
 use atlas_model::tag_cache::TagId;
 use std::path::PathBuf;
 
-pub(super) async fn has_excluded_directory_items(path: &std::path::Path, show_hidden: bool, empty: bool) -> bool {
-    if !empty || show_hidden { return false; }
+pub(super) async fn has_excluded_directory_items(
+    path: &std::path::Path,
+    show_hidden: bool,
+    empty: bool,
+) -> bool {
+    if !empty || show_hidden {
+        return false;
+    }
     match tokio::fs::read_dir(path).await {
         Ok(mut directory) => directory.next_entry().await.ok().flatten().is_some(),
         Err(_) => false,
@@ -21,8 +29,12 @@ mod exclusion_tests {
     use super::*;
     #[tokio::test]
     async fn empty_listing_distinguishes_a_truly_empty_directory_from_excluded_items() {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-empty-view-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-empty-view-{}-{stamp}", std::process::id()));
         std::fs::create_dir(&root).unwrap();
         assert!(!has_excluded_directory_items(&root, false, true).await);
         let hidden = root.join(".hidden.txt");
@@ -40,17 +52,25 @@ impl App {
     /// compact entry only keeps its modification time, and a stat per file must
     /// never run on the UI thread.
     pub(crate) fn request_group_times(&mut self, pane: TileId) {
-        let Some(ts) = self.state.tab_states.get_mut(&pane) else { return };
-        let Some(version) = ts.entry_times_needed() else { return };
+        let Some(ts) = self.state.tab_states.get_mut(&pane) else {
+            return;
+        };
+        let Some(version) = ts.entry_times_needed() else {
+            return;
+        };
         ts.mark_entry_times_requested(version);
         let paths: Vec<Option<PathBuf>> = ts
             .entries
             .iter()
-            .map(|entry| (entry.archive_root().is_none() && entry.recycle_info().is_none()).then(|| entry.path()))
+            .map(|entry| {
+                (entry.archive_root().is_none() && entry.recycle_info().is_none())
+                    .then(|| entry.path())
+            })
             .collect();
         let tx = self.tx.clone();
         self.rt.spawn_blocking(move || {
-            #[allow(clippy::disallowed_methods)] // reason: runs on the blocking pool, off the UI thread
+            #[allow(clippy::disallowed_methods)]
+            // reason: runs on the blocking pool, off the UI thread
             let times = paths
                 .into_iter()
                 .map(|path| {
@@ -61,7 +81,11 @@ impl App {
                     )
                 })
                 .collect();
-            let _ = tx.send(BgResult::GroupTimes { tab: pane, version, times });
+            let _ = tx.send(BgResult::GroupTimes {
+                tab: pane,
+                version,
+                times,
+            });
         });
     }
 
@@ -72,9 +96,17 @@ impl App {
         sort_col: atlas_model::file_entry::SortColumn,
         sort_dir: atlas_model::file_entry::SortDir,
     ) {
-        if atlas_core::vault::live::is_private(&path) && !self.owns_native_vault_path(&path) { return; }
-        let folder_order = self.tab_data_for(tab_id).map_or_else(atlas_model::pane::FolderOrder::default, |td| td.folder_order);
-        let is_branch_view = self.tab_data_for(tab_id).is_some_and(|td| td.is_branch_view);
+        if atlas_core::vault::live::is_private(&path) && !self.owns_native_vault_path(&path) {
+            return;
+        }
+        let folder_order = self
+            .tab_data_for(tab_id)
+            .map_or_else(atlas_model::pane::FolderOrder::default, |td| {
+                td.folder_order
+            });
+        let is_branch_view = self
+            .tab_data_for(tab_id)
+            .is_some_and(|td| td.is_branch_view);
         let op_id = self.state.next_op_id();
         let ts = self.state.tab_states.entry(tab_id).or_default();
         ts.load_state = LoadState::Loading;
@@ -92,7 +124,6 @@ impl App {
                     sort_col,
                     sort_dir,
                     move |entries| {
-
                         let _ = preview_tx.send(BgResult::DirListPreview {
                             tab: tab_id,
                             op_id,
@@ -109,7 +140,6 @@ impl App {
                     sort_dir,
                     folder_order,
                     move |entries| {
-
                         let _ = preview_tx.send(BgResult::DirListPreview {
                             tab: tab_id,
                             op_id,
@@ -121,11 +151,20 @@ impl App {
             };
             match res {
                 Ok(entries) => {
-                    let _ = tx.send(BgResult::DirListTiming { tab: tab_id, op_id, elapsed: started.elapsed() });
+                    let _ = tx.send(BgResult::DirListTiming {
+                        tab: tab_id,
+                        op_id,
+                        elapsed: started.elapsed(),
+                    });
                     // Only an empty filtered listing needs this extra query. It
                     // reads a directory record, never the contents of a file.
-                    let has_excluded_items = has_excluded_directory_items(&path, show_hidden, entries.is_empty()).await;
-                    let _ = tx.send(BgResult::DirListExclusions { tab: tab_id, op_id, has_excluded_items });
+                    let has_excluded_items =
+                        has_excluded_directory_items(&path, show_hidden, entries.is_empty()).await;
+                    let _ = tx.send(BgResult::DirListExclusions {
+                        tab: tab_id,
+                        op_id,
+                        has_excluded_items,
+                    });
                     let _ = tx.send(BgResult::DirListed {
                         tab: tab_id,
                         op_id,
@@ -164,7 +203,12 @@ impl App {
                 column.set_entries(entries.into());
             }
             for children in ts.tree.children.values_mut() {
-                atlas_core::fs::list::sort_entries(std::sync::Arc::make_mut(children), sort_col, sort_dir, folder_order);
+                atlas_core::fs::list::sort_entries(
+                    std::sync::Arc::make_mut(children),
+                    sort_col,
+                    sort_dir,
+                    folder_order,
+                );
             }
         });
     }
@@ -243,7 +287,11 @@ impl App {
         let (col, dir, folder_order) = self
             .tab_data_for(tile)
             .map(|td| (td.sort_col.clone(), td.sort_dir.clone(), td.folder_order))
-            .unwrap_or((Default::default(), Default::default(), FolderOrder::default()));
+            .unwrap_or((
+                Default::default(),
+                Default::default(),
+                FolderOrder::default(),
+            ));
         if let Some(ts) = self.state.tab_states.get_mut(&tile) {
             if let Some(c) = ts
                 .miller
@@ -272,7 +320,9 @@ impl App {
                 _ => Vec::new(),
             };
             let has_excluded_items = match &location {
-                Location::Directory(path) => has_excluded_directory_items(path, show_hidden, entries.is_empty()).await,
+                Location::Directory(path) => {
+                    has_excluded_directory_items(path, show_hidden, entries.is_empty()).await
+                }
                 _ => false,
             };
             let _ = tx.send(BgResult::MillerListed {
@@ -300,18 +350,26 @@ impl App {
             ));
         let tx = self.tx.clone();
         let p = path.clone();
-        let archive = self.tab_data_for(tab_id).and_then(|tab| match &tab.location {
-            Location::Archive { archive, .. } => Some(archive.clone()),
-            _ => None,
-        });
+        let archive = self
+            .tab_data_for(tab_id)
+            .and_then(|tab| match &tab.location {
+                Location::Archive { archive, .. } => Some(archive.clone()),
+                _ => None,
+            });
         self.rt.spawn(async move {
             let entries = if let Some(archive) = archive {
                 let inner = p.clone();
                 tokio::task::spawn_blocking(move || {
-                    atlas_core::fs::archive::open(&archive).and_then(|provider| provider.list(&inner).ok()).unwrap_or_default()
-                }).await.unwrap_or_default()
+                    atlas_core::fs::archive::open(&archive)
+                        .and_then(|provider| provider.list(&inner).ok())
+                        .unwrap_or_default()
+                })
+                .await
+                .unwrap_or_default()
             } else {
-                list_dir(&p, show_hidden, col, dir, folder_order).await.unwrap_or_default()
+                list_dir(&p, show_hidden, col, dir, folder_order)
+                    .await
+                    .unwrap_or_default()
             };
 
             let _ = tx.send(BgResult::TreeListed {
@@ -354,7 +412,9 @@ impl App {
             let col = &mut ts.miller.columns[column];
             col.refresh_visibility(&ts.filter, ts.show_files, ts.show_folders);
             let visible = col.visible_indices(&ts.filter, ts.show_files, ts.show_folders);
-            if !visible.contains(&idx) { return; }
+            if !visible.contains(&idx) {
+                return;
+            }
             col.selection.select(idx, &visible, shift, ctrl);
             // Modifier selection must not navigate or discard deeper columns.
             if shift || ctrl {
@@ -405,7 +465,12 @@ impl App {
             return None;
         }
         let ts = self.state.tab_states.get(&pane)?;
-        Some(ts.selected_entries(&atlas_model::settings::ViewMode::Miller).into_iter().map(|entry| entry.path()).collect())
+        Some(
+            ts.selected_entries(&atlas_model::settings::ViewMode::Miller)
+                .into_iter()
+                .map(|entry| entry.path())
+                .collect(),
+        )
     }
 
     /// When the focused pane is in Miller view, the live selection is the focused
@@ -418,7 +483,12 @@ impl App {
     /// Keyboard cursor movement inside the focused Miller column. Returns `true`
     /// when the focused pane is in Miller view (event consumed), else `false` so
     /// the flat-list `nav_apply` runs. `target` maps `(cursor, len) → new cursor`.
-    pub(crate) fn miller_nav_apply(&mut self, target: &dyn Fn(usize, usize) -> usize, extend: bool, ctrl: bool) -> bool {
+    pub(crate) fn miller_nav_apply(
+        &mut self,
+        target: &dyn Fn(usize, usize) -> usize,
+        extend: bool,
+        ctrl: bool,
+    ) -> bool {
         let tile = self.state.focused_tile;
         let is_miller = self
             .tab_data_for(tile)
@@ -432,7 +502,10 @@ impl App {
             let visible = ts.miller_visible_indices(ci);
             Some((
                 ci,
-                col.selection.keyboard_cursor.and_then(|i| visible.iter().position(|row| *row == i)).unwrap_or(0),
+                col.selection
+                    .keyboard_cursor
+                    .and_then(|i| visible.iter().position(|row| *row == i))
+                    .unwrap_or(0),
                 visible,
             ))
         }) else {
@@ -442,7 +515,12 @@ impl App {
             return true;
         }
         let next = visible[target(cur, visible.len()).min(visible.len() - 1)];
-        if let Some(col) = self.state.tab_states.get_mut(&tile).and_then(|ts| ts.miller.columns.get_mut(column)) {
+        if let Some(col) = self
+            .state
+            .tab_states
+            .get_mut(&tile)
+            .and_then(|ts| ts.miller.columns.get_mut(column))
+        {
             col.selection.navigate(next, &visible, extend, ctrl, None);
         }
         if !extend && !ctrl {
@@ -470,7 +548,11 @@ impl App {
             if ts.miller.focused > 0 {
                 ts.miller.focused -= 1;
                 let ci = ts.miller.focused;
-                let cur = ts.miller.columns.get(ci).and_then(|col| col.selection.keyboard_cursor);
+                let cur = ts
+                    .miller
+                    .columns
+                    .get(ci)
+                    .and_then(|col| col.selection.keyboard_cursor);
                 (Some(ci), cur)
             } else {
                 (None, None)
@@ -509,7 +591,9 @@ impl App {
                 .get(ci)
                 .and_then(|c| {
                     let cur = c.selection.keyboard_cursor?;
-                    c.entries.get(cur).map(|e| e.kind() == atlas_model::file_entry::FileKind::Dir)
+                    c.entries
+                        .get(cur)
+                        .map(|e| e.kind() == atlas_model::file_entry::FileKind::Dir)
                 })
                 .unwrap_or(false);
             (next_col_exists, is_dir)
@@ -524,15 +608,32 @@ impl App {
             };
             let cursor = self.state.tab_states.get(&tile).and_then(|ts| {
                 let visible = ts.miller_visible_indices(ci);
-                ts.miller.columns.get(ci)?.selection.keyboard_cursor.filter(|i| visible.contains(i))
+                ts.miller
+                    .columns
+                    .get(ci)?
+                    .selection
+                    .keyboard_cursor
+                    .filter(|i| visible.contains(i))
                     .or_else(|| visible.first().copied())
             });
             if let Some(cursor) = cursor {
-                let visible = self.state.tab_states.get(&tile).map(|ts| ts.miller_visible_indices(ci)).unwrap_or_default();
-                if let Some(col) = self.state.tab_states.get_mut(&tile).and_then(|ts| ts.miller.columns.get_mut(ci)) {
+                let visible = self
+                    .state
+                    .tab_states
+                    .get(&tile)
+                    .map(|ts| ts.miller_visible_indices(ci))
+                    .unwrap_or_default();
+                if let Some(col) = self
+                    .state
+                    .tab_states
+                    .get_mut(&tile)
+                    .and_then(|ts| ts.miller.columns.get_mut(ci))
+                {
                     col.selection.navigate(cursor, &visible, extend, ctrl, None);
                 }
-                if !extend && !ctrl { self.miller_select(tile, ci, cursor, false, false); }
+                if !extend && !ctrl {
+                    self.miller_select(tile, ci, cursor, false, false);
+                }
                 if let Some(ts) = self.state.tab_states.get_mut(&tile) {
                     ts.selection.scroll_to_selected = true;
                 }
@@ -593,7 +694,8 @@ impl App {
         let cur = ts.selection.keyboard_cursor.unwrap_or(0);
         let np = target(cur, len).min(len - 1);
         let visible: Vec<_> = (0..len).collect();
-        ts.selection.navigate(np, &visible, extend, cursor_only, None);
+        ts.selection
+            .navigate(np, &visible, extend, cursor_only, None);
         true
     }
 
@@ -789,7 +891,11 @@ impl App {
         sort_col: atlas_model::file_entry::SortColumn,
         sort_dir: atlas_model::file_entry::SortDir,
     ) {
-        let folder_order = self.tab_data_for(tab_id).map_or_else(atlas_model::pane::FolderOrder::default, |td| td.folder_order);
+        let folder_order = self
+            .tab_data_for(tab_id)
+            .map_or_else(atlas_model::pane::FolderOrder::default, |td| {
+                td.folder_order
+            });
         let op_id = self.state.next_op_id();
         let ts = self.state.tab_states.entry(tab_id).or_default();
         ts.load_state = LoadState::Loading;
@@ -865,8 +971,7 @@ impl App {
         ts.last_nav_op_id = op_id;
         let tx = self.tx.clone();
         self.rt.spawn(async move {
-            let entries =
-                atlas_core::fs::recycle_bin::list_recycle_bin(sort_col, sort_dir).await;
+            let entries = atlas_core::fs::recycle_bin::list_recycle_bin(sort_col, sort_dir).await;
 
             let _ = tx.send(BgResult::DirListed {
                 tab: tab_id,
@@ -880,7 +985,9 @@ impl App {
         self.rt.spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 for path in paths {
-                    if atlas_core::vault::is_private_path(&path) { continue; }
+                    if atlas_core::vault::is_private_path(&path) {
+                        continue;
+                    }
                     let _ = open::that(path);
                 }
             })

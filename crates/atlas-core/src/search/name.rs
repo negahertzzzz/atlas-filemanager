@@ -50,8 +50,10 @@ fn collect_matching_paths(root: &Path, needle: &str, show_hidden: bool) -> Vec<P
         .git_ignore(true)
         .git_global(true)
         .parents(true)
-        .filter_entry(|entry| !crate::fs::scan_policy::is_scan_excluded(entry.path())
-            && !crate::fs::preview::is_cloud_placeholder(entry.path()))
+        .filter_entry(|entry| {
+            !crate::fs::scan_policy::is_scan_excluded(entry.path())
+                && !crate::fs::preview::is_cloud_placeholder(entry.path())
+        })
         .follow_links(false);
 
     let mut scored = Vec::<(PathBuf, i64)>::new();

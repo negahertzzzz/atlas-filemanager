@@ -16,19 +16,34 @@ pub(crate) enum NavKind {
 impl App {
     pub(crate) fn toggle_folder_view_recursive(&mut self) {
         use atlas_model::profiles::{FolderViewFeature, FolderViewPref};
-        let Some(tab) = self.tab_data_for(self.state.focused_tile) else { return; };
-        let Location::Directory(path) = &tab.location else { return; };
+        let Some(tab) = self.tab_data_for(self.state.focused_tile) else {
+            return;
+        };
+        let Location::Directory(path) = &tab.location else {
+            return;
+        };
         let path = path.clone();
         let mut prefs = self.state.profiles.active().scoped::<FolderViewFeature>();
         let recursive = !prefs.get_exact(&path).is_some_and(|pref| pref.recursive);
-        let pref = FolderViewPref { view_mode: tab.view_mode.clone(), sort_col: tab.sort_col.clone(),
-            sort_dir: tab.sort_dir.clone(), columns: tab.details_columns.clone(), recursive };
+        let pref = FolderViewPref {
+            view_mode: tab.view_mode.clone(),
+            sort_col: tab.sort_col.clone(),
+            sort_dir: tab.sort_dir.clone(),
+            columns: tab.details_columns.clone(),
+            recursive,
+        };
         prefs.set(path, pref);
-        self.state.profiles.active_mut().set_scoped::<FolderViewFeature>(&prefs);
+        self.state
+            .profiles
+            .active_mut()
+            .set_scoped::<FolderViewFeature>(&prefs);
         atlas_core::util::config::refresh_bookmark_volumes(&mut self.state.profiles);
         atlas_core::util::config::save_profiles(&self.state.profiles);
-        self.toast_info(if recursive { rust_i18n::t!("folder_inherit_enabled").to_string() }
-            else { rust_i18n::t!("folder_inherit_disabled").to_string() });
+        self.toast_info(if recursive {
+            rust_i18n::t!("folder_inherit_enabled").to_string()
+        } else {
+            rust_i18n::t!("folder_inherit_disabled").to_string()
+        });
     }
 
     pub(crate) fn recent_folders(&self) -> Vec<PathBuf> {
@@ -40,7 +55,9 @@ impl App {
     }
 
     pub(crate) fn push_recent_folder(&mut self, path: &std::path::Path) {
-        if atlas_core::vault::live::is_private(path) { return; }
+        if atlas_core::vault::live::is_private(path) {
+            return;
+        }
         if self.drag_hover.navigation_is_provisional() {
             return;
         }
@@ -65,18 +82,27 @@ impl App {
     /// Single entry point for all navigation. Handles history, watcher lifecycle,
     /// recent folders, begin_navigation, focused_tile, and spawn_list.
     pub(crate) fn navigate_to(&mut self, tab_id: TileId, mut loc: Location, kind: NavKind) {
-        if atlas_core::vault::live::is_private(&loc.display_path()) && !self.owns_native_vault_path(&loc.display_path()) {
-            self.toast_error(rust_i18n::t!("vault_access_denied").to_string()); return;
+        if atlas_core::vault::live::is_private(&loc.display_path())
+            && !self.owns_native_vault_path(&loc.display_path())
+        {
+            self.toast_error(rust_i18n::t!("vault_access_denied").to_string());
+            return;
         }
         if let Location::Archive { archive, .. } = &loc {
             if atlas_core::vault::live::is_private(archive) {
-                self.process_actions(vec![crate::input::action::Action::Open(vec![archive.clone()])]);
+                self.process_actions(vec![crate::input::action::Action::Open(vec![
+                    archive.clone()
+                ])]);
                 return;
             }
         }
         if let Some(path) = loc.fs_dir() {
-            if atlas_core::vault::is_private_path(path) { self.state.focused_tile = tab_id; }
-            if self.try_open_vault(path) { return; }
+            if atlas_core::vault::is_private_path(path) {
+                self.state.focused_tile = tab_id;
+            }
+            if self.try_open_vault(path) {
+                return;
+            }
         }
         let tab_id = match self.resolve_pane(tab_id) {
             Some(id) => id,
@@ -84,9 +110,13 @@ impl App {
         };
         atlas_core::fs::paths::normalize_wsl_location_path(&mut loc);
         #[cfg(feature = "provider-host")]
-        let _ = self.cloud_tx.send(atlas_core::cloud::CloudCmd::CancelList { tab: tab_id });
+        let _ = self
+            .cloud_tx
+            .send(atlas_core::cloud::CloudCmd::CancelList { tab: tab_id });
         if let Some(from) = self.tab_data_for(tab_id).map(|pane| pane.location.clone()) {
-            self.pane_view_transitions.entry(tab_id).or_default()
+            self.pane_view_transitions
+                .entry(tab_id)
+                .or_default()
                 .navigate(&from, &loc, matches!(kind, NavKind::Back));
         }
         self.file_filter_projections.remove(&tab_id);
@@ -117,22 +147,30 @@ impl App {
             None
         };
         let sticky_search = self.state.settings.filter_sticky
-            && self.tab_data_for(tab_id).is_some_and(|tab| tab.location.fs_dir().is_some())
+            && self
+                .tab_data_for(tab_id)
+                .is_some_and(|tab| tab.location.fs_dir().is_some())
             && loc.fs_dir().is_some();
 
         // ── 1. History manipulation ──────────────────────────────────────────
         if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tab_id) {
             #[cfg(feature = "provider-host")]
-            if matches!(loc, Location::Remote { .. }) && matches!(pane.view_mode,
-                atlas_model::settings::ViewMode::Tree | atlas_model::settings::ViewMode::Miller) {
+            if matches!(loc, Location::Remote { .. })
+                && matches!(
+                    pane.view_mode,
+                    atlas_model::settings::ViewMode::Tree | atlas_model::settings::ViewMode::Miller
+                )
+            {
                 pane.view_mode = atlas_model::settings::ViewMode::Details;
             }
             let old = pane.location.clone();
             pane.breadcrumb_trail = match (old.fs_dir(), loc.fs_dir()) {
-                (Some(old), Some(new)) => {
-                    pane.breadcrumb_trail.as_ref().filter(|trail| trail.starts_with(new)).cloned()
-                        .or_else(|| (old != new && old.starts_with(new)).then(|| old.to_path_buf()))
-                }
+                (Some(old), Some(new)) => pane
+                    .breadcrumb_trail
+                    .as_ref()
+                    .filter(|trail| trail.starts_with(new))
+                    .cloned()
+                    .or_else(|| (old != new && old.starts_with(new)).then(|| old.to_path_buf())),
                 _ => None,
             };
             match kind {
@@ -152,7 +190,9 @@ impl App {
             pane.location = loc.clone();
             pane.volume_serial = None;
             pane.reconcile_volume(&self.mounted_volumes);
-            pane.details_columns = restored_view_pref.as_ref().and_then(|pref| pref.columns.clone());
+            pane.details_columns = restored_view_pref
+                .as_ref()
+                .and_then(|pref| pref.columns.clone());
             if let Some(pref) = restored_view_pref {
                 pane.view_mode = pref.view_mode;
                 pane.sort_col = pref.sort_col;
@@ -248,12 +288,18 @@ impl App {
         pref: Option<(PathBuf, atlas_model::profiles::FolderViewPref)>,
     ) {
         let Some((path, mut pref)) = pref else { return };
-        if atlas_core::vault::live::is_private(&path) { return; }
+        if atlas_core::vault::live::is_private(&path) {
+            return;
+        }
         use atlas_model::profiles::FolderViewFeature;
         let mut prefs = self.state.profiles.active().scoped::<FolderViewFeature>();
-        if let Some(previous) = prefs.get_exact(&path) { pref.recursive = previous.recursive; }
+        if let Some(previous) = prefs.get_exact(&path) {
+            pref.recursive = previous.recursive;
+        }
         if pref.columns.is_none() {
-            pref.columns = self.tab_data_for(self.state.focused_tile).and_then(|tab| tab.details_columns.clone());
+            pref.columns = self
+                .tab_data_for(self.state.focused_tile)
+                .and_then(|tab| tab.details_columns.clone());
         }
         if prefs.get_exact(&path).as_ref() == Some(&pref) {
             return;
@@ -304,9 +350,14 @@ impl App {
     pub(crate) fn navigate_up(&mut self, tab_id: TileId) {
         #[cfg(windows)]
         if let Some(mount) = &self.vault_mount {
-            if self.tab_data_for(tab_id).and_then(|tab| tab.location.fs_dir()) == Some(mount.path()) {
+            if self
+                .tab_data_for(tab_id)
+                .and_then(|tab| tab.location.fs_dir())
+                == Some(mount.path())
+            {
                 if let Some(parent) = mount.root().parent() {
-                    self.navigate(tab_id, parent.to_path_buf()); return;
+                    self.navigate(tab_id, parent.to_path_buf());
+                    return;
                 }
             }
         }
@@ -340,32 +391,50 @@ impl App {
 
     /// Shared file activation for flat, Tree and Miller views. Virtual paths
     /// must be extracted before opening; local archives stay inside Atlas.
-    pub(crate) fn activate_file_path(&mut self, tile: TileId, path: PathBuf, archive_root: Option<PathBuf>) {
+    pub(crate) fn activate_file_path(
+        &mut self,
+        tile: TileId,
+        path: PathBuf,
+        archive_root: Option<PathBuf>,
+    ) {
         if let Some(archive) = archive_root {
             let open_id = self.state.next_op_id();
             self.rt.spawn(async move {
                 let _ = tokio::task::spawn_blocking(move || {
                     #[allow(clippy::disallowed_methods)] // reason: background extraction
                     let result = (|| -> anyhow::Result<()> {
-                        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
-                        let dir = std::env::temp_dir().join("atlas-open").join(format!("{}-{stamp}-{open_id}", std::process::id()));
+                        let stamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)?
+                            .as_nanos();
+                        let dir = std::env::temp_dir()
+                            .join("atlas-open")
+                            .join(format!("{}-{stamp}-{open_id}", std::process::id()));
                         std::fs::create_dir_all(&dir)?;
                         let dest = dir.join(path.file_name().unwrap_or_default());
                         let provider = atlas_core::fs::archive::open(&archive)
                             .ok_or_else(|| anyhow::anyhow!("Cannot open archive"))?;
                         // Keep the download's Mark-of-the-Web so SmartScreen and
                         // Protected View still guard what the default app opens.
-                        atlas_core::fs::archive::extract_for_export(provider.as_ref(), &path, &dest)?;
+                        atlas_core::fs::archive::extract_for_export(
+                            provider.as_ref(),
+                            &path,
+                            &dest,
+                        )?;
                         open::that(dest)?;
                         Ok(())
                     })();
-                    if let Err(error) = result { tracing::warn!(%error, "archive file activation failed"); }
-                }).await;
+                    if let Err(error) = result {
+                        tracing::warn!(%error, "archive file activation failed");
+                    }
+                })
+                .await;
             });
             return;
         }
         #[cfg(feature = "provider-host")]
-        if self.open_remote_paths_for(tile, &[path.clone()]) { return; }
+        if self.open_remote_paths_for(tile, &[path.clone()]) {
+            return;
+        }
         if atlas_core::fs::archive::is_archive_path(&path) {
             self.navigate_into_archive(tile, path, PathBuf::new());
         } else {
@@ -423,10 +492,16 @@ impl App {
 fn entry_destination(current: Option<&Location>, path: PathBuf) -> Location {
     #[cfg(feature = "provider-host")]
     if let Some(Location::Remote { id, .. }) = current {
-        return Location::Remote { id: id.clone(), path: path.to_string_lossy().into_owned() };
+        return Location::Remote {
+            id: id.clone(),
+            path: path.to_string_lossy().into_owned(),
+        };
     }
     if let Some(Location::Archive { archive, .. }) = current {
-        return Location::Archive { archive: archive.clone(), inner: path };
+        return Location::Archive {
+            archive: archive.clone(),
+            inner: path,
+        };
     }
     Location::Directory(path)
 }
@@ -437,14 +512,41 @@ mod cloud_navigation_tests {
 
     #[test]
     fn entry_destinations_keep_source_account_even_for_absolute_looking_names() {
-        let remote = Location::Remote { id: "drive-2".into(), path: "docs".into() };
+        let remote = Location::Remote {
+            id: "drive-2".into(),
+            path: "docs".into(),
+        };
         let local = std::env::temp_dir().join("Downloads");
-        assert_eq!(entry_destination(Some(&Location::Directory(local.clone())), local.clone()), Location::Directory(local));
-        assert_eq!(entry_destination(Some(&remote), "docs/sub".into()),
-            Location::Remote { id: "drive-2".into(), path: "docs/sub".into() });
-        assert_eq!(entry_destination(Some(&Location::Remote { id: "drive-1".into(), path: "".into() }), "docs/sub".into()),
-            Location::Remote { id: "drive-1".into(), path: "docs/sub".into() });
-        assert_eq!(entry_destination(Some(&remote), r"C:\Users\example".into()),
-            Location::Remote { id: "drive-2".into(), path: r"C:\Users\example".into() });
+        assert_eq!(
+            entry_destination(Some(&Location::Directory(local.clone())), local.clone()),
+            Location::Directory(local)
+        );
+        assert_eq!(
+            entry_destination(Some(&remote), "docs/sub".into()),
+            Location::Remote {
+                id: "drive-2".into(),
+                path: "docs/sub".into()
+            }
+        );
+        assert_eq!(
+            entry_destination(
+                Some(&Location::Remote {
+                    id: "drive-1".into(),
+                    path: "".into()
+                }),
+                "docs/sub".into()
+            ),
+            Location::Remote {
+                id: "drive-1".into(),
+                path: "docs/sub".into()
+            }
+        );
+        assert_eq!(
+            entry_destination(Some(&remote), r"C:\Users\example".into()),
+            Location::Remote {
+                id: "drive-2".into(),
+                path: r"C:\Users\example".into()
+            }
+        );
     }
 }

@@ -47,8 +47,8 @@ pub struct BatchRenameState {
     pub mode: RenameMode,
     pub pattern: String,
     pub replacement: String,
-    pub previews: Vec<String>, // new filenames
-    pub cursor_pos: usize,     // Character offset for the synchronized cursor
+    pub previews: Vec<String>,    // new filenames
+    pub cursor_pos: usize,        // Character offset for the synchronized cursor
     pub multi_lines: Vec<String>, // Current edited filenames for each file
     /// When set, the shared caret sits `tail` chars before the end of every line
     /// instead of `cursor_pos` chars after the start. Chosen automatically so the
@@ -81,10 +81,11 @@ pub struct Token {
 
 fn digits(chars: &[char], at: usize, n: usize) -> Option<u32> {
     let slice = chars.get(at..at + n)?;
-    slice
-        .iter()
-        .all(char::is_ascii_digit)
-        .then(|| slice.iter().fold(0, |acc, c| acc * 10 + c.to_digit(10).unwrap_or(0)))
+    slice.iter().all(char::is_ascii_digit).then(|| {
+        slice
+            .iter()
+            .fold(0, |acc, c| acc * 10 + c.to_digit(10).unwrap_or(0))
+    })
 }
 
 fn valid_date(y: u32, m: u32, d: u32) -> bool {
@@ -148,7 +149,11 @@ pub fn detect_tokens(line: &str) -> Vec<Token> {
             continue;
         }
         if let Some((len, ..)) = date_at(&chars, i).filter(|(len, ..)| i + len <= stem_end) {
-            tokens.push(Token { start: i, end: i + len, kind: TokenKind::Date });
+            tokens.push(Token {
+                start: i,
+                end: i + len,
+                kind: TokenKind::Date,
+            });
             i += len;
             continue;
         }
@@ -156,7 +161,11 @@ pub fn detect_tokens(line: &str) -> Vec<Token> {
         while i < stem_end && chars[i].is_ascii_digit() {
             i += 1;
         }
-        tokens.push(Token { start, end: i, kind: TokenKind::Number });
+        tokens.push(Token {
+            start,
+            end: i,
+            kind: TokenKind::Number,
+        });
     }
     tokens
 }
@@ -165,7 +174,13 @@ fn common_prefix_len(lines: &[String]) -> usize {
     let Some(first) = lines.first() else { return 0 };
     let mut n = first.chars().count();
     for line in &lines[1..] {
-        n = n.min(first.chars().zip(line.chars()).take_while(|(a, b)| a == b).count());
+        n = n.min(
+            first
+                .chars()
+                .zip(line.chars())
+                .take_while(|(a, b)| a == b)
+                .count(),
+        );
     }
     n
 }
@@ -339,7 +354,9 @@ impl BatchRenameState {
     }
 
     fn first_len(&self) -> usize {
-        self.multi_lines.get(self.primary).map_or(0, |l| l.chars().count())
+        self.multi_lines
+            .get(self.primary)
+            .map_or(0, |l| l.chars().count())
     }
 
     /// Place the shared caret at `pos` (a column of the first line) and pick the
@@ -367,7 +384,11 @@ impl BatchRenameState {
         let (anchor_end, tail, cursor) = (self.anchor_end, self.tail, self.cursor_pos);
         for line in &mut self.multi_lines {
             let n = line.chars().count();
-            let pos = if anchor_end { n.saturating_sub(tail) } else { cursor.min(n) };
+            let pos = if anchor_end {
+                n.saturating_sub(tail)
+            } else {
+                cursor.min(n)
+            };
             line.insert_str(char_to_byte_index(line, pos), s);
         }
         self.set_cursor(target);
@@ -382,7 +403,11 @@ impl BatchRenameState {
         let (anchor_end, tail, cursor) = (self.anchor_end, self.tail, self.cursor_pos);
         for line in &mut self.multi_lines {
             let n = line.chars().count();
-            let pos = if anchor_end { n.saturating_sub(tail) } else { cursor.min(n) };
+            let pos = if anchor_end {
+                n.saturating_sub(tail)
+            } else {
+                cursor.min(n)
+            };
             if pos > 0 {
                 let start = char_to_byte_index(line, pos - 1);
                 let end = char_to_byte_index(line, pos);
@@ -398,7 +423,11 @@ impl BatchRenameState {
         let (anchor_end, tail, cursor) = (self.anchor_end, self.tail, self.cursor_pos);
         for line in &mut self.multi_lines {
             let n = line.chars().count();
-            let pos = if anchor_end { n.saturating_sub(tail) } else { cursor.min(n) };
+            let pos = if anchor_end {
+                n.saturating_sub(tail)
+            } else {
+                cursor.min(n)
+            };
             if pos < n {
                 let start = char_to_byte_index(line, pos);
                 let end = char_to_byte_index(line, pos + 1);
@@ -447,7 +476,11 @@ impl BatchRenameState {
         for (i, line) in self.multi_lines.iter_mut().enumerate() {
             let num = format!("{:0width$}", i + 1, width = padding);
             let n = line.chars().count();
-            let pos = if anchor_end { n.saturating_sub(tail) } else { cursor.min(n) };
+            let pos = if anchor_end {
+                n.saturating_sub(tail)
+            } else {
+                cursor.min(n)
+            };
             line.insert_str(char_to_byte_index(line, pos), &num);
         }
         self.set_cursor(target);
@@ -518,13 +551,18 @@ impl BatchRenameState {
 
     /// Tokens of the reference (first) line.
     pub fn tokens(&self) -> Vec<Token> {
-        self.multi_lines.get(self.primary).map(|l| detect_tokens(l)).unwrap_or_default()
+        self.multi_lines
+            .get(self.primary)
+            .map(|l| detect_tokens(l))
+            .unwrap_or_default()
     }
 
     /// Jump the shared caret to the next/previous structural boundary of the first
     /// line: token edges, the end of the stem, the end of the name.
     pub fn jump_boundary(&mut self, forward: bool) {
-        let Some(first) = self.multi_lines.get(self.primary) else { return };
+        let Some(first) = self.multi_lines.get(self.primary) else {
+            return;
+        };
         let len = first.chars().count();
         let stem_end = first
             .chars()
@@ -557,7 +595,11 @@ impl BatchRenameState {
                 .filter(|t| t.kind == TokenKind::Number)
                 .collect()
         };
-        if !self.multi_lines.first().is_some_and(|l| !numbers(l).is_empty()) {
+        if !self
+            .multi_lines
+            .first()
+            .is_some_and(|l| !numbers(l).is_empty())
+        {
             return false;
         }
         let count = self.multi_lines.len();
@@ -592,7 +634,9 @@ impl BatchRenameState {
                 .filter(|t| t.kind == TokenKind::Date)
                 .collect();
             for t in dates {
-                let Some((_, y, m, d)) = date_at(&chars, t.start) else { continue };
+                let Some((_, y, m, d)) = date_at(&chars, t.start) else {
+                    continue;
+                };
                 out.extend(&chars[i..t.start]);
                 out.push_str(&format!("{y:04}-{m:02}-{d:02}"));
                 i = t.end;
@@ -825,10 +869,7 @@ mod tests {
 
     #[test]
     fn test_multicursor_collision_and_validation() {
-        let files = vec![
-            PathBuf::from("/test/a.txt"),
-            PathBuf::from("/test/b.txt"),
-        ];
+        let files = vec![PathBuf::from("/test/a.txt"), PathBuf::from("/test/b.txt")];
         let mut state = BatchRenameState::new(files);
         // Initially a.txt and b.txt are unchanged (no-op, Ok)
         assert_eq!(state.issues(), vec![RenameIssue::Ok, RenameIssue::Ok]);
@@ -852,15 +893,17 @@ mod tests {
         // Test invalid filename
         state.multi_lines = vec!["invalid/slash.txt".to_string(), "valid.txt".to_string()];
         state.update_previews();
-        assert_eq!(
-            state.issues(),
-            vec![RenameIssue::Invalid, RenameIssue::Ok]
-        );
+        assert_eq!(state.issues(), vec![RenameIssue::Invalid, RenameIssue::Ok]);
         assert!(state.has_blocking_issues());
     }
 
     fn state(names: &[&str]) -> BatchRenameState {
-        BatchRenameState::new(names.iter().map(|n| PathBuf::from(format!("/t/{n}"))).collect())
+        BatchRenameState::new(
+            names
+                .iter()
+                .map(|n| PathBuf::from(format!("/t/{n}")))
+                .collect(),
+        )
     }
 
     #[test]
@@ -902,7 +945,10 @@ mod tests {
         s.primary = 1;
         // Type "Trip_" at the start of the primary's input.
         assert!(s.apply_primary("Trip_IMG_22.png", 5));
-        assert_eq!(s.multi_lines, vec!["Trip_IMG_1.png", "Trip_IMG_22.png", "Trip_IMG_333.png"]);
+        assert_eq!(
+            s.multi_lines,
+            vec!["Trip_IMG_1.png", "Trip_IMG_22.png", "Trip_IMG_333.png"]
+        );
         // Replace the stem's tail: selection of "22" -> "x" lands on each name's own number.
         let mut t = state(&["a_1.txt", "a_22.txt"]);
         t.primary = 0;

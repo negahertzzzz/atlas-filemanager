@@ -248,17 +248,36 @@ mod tests {
     #[test]
     fn text_cache_identity_tracks_raw_size_date_and_file_kind() {
         use atlas_model::file_entry::{FileEntry, FileEntryData, FileKind};
-        let make = |kind, size, modified| FileEntry::from(FileEntryData {
-            name: "same.txt".into(), path: "same.txt".into(), kind, size, modified,
-            _is_hidden: false, _is_symlink: false, archive_root: None, recycle_info: None,
-        });
+        let make = |kind, size, modified| {
+            FileEntry::from(FileEntryData {
+                name: "same.txt".into(),
+                path: "same.txt".into(),
+                kind,
+                size,
+                modified,
+                _is_hidden: false,
+                _is_symlink: false,
+                archive_root: None,
+                recycle_info: None,
+            })
+        };
         let font = gpui::font("Test");
-        let key = |entry: &FileEntry| details_row_shape_key(0, entry, Some("txt"), &font, gpui::px(14.0));
+        let key =
+            |entry: &FileEntry| details_row_shape_key(0, entry, Some("txt"), &font, gpui::px(14.0));
         let original = make(FileKind::File, Some(1), Some(std::time::UNIX_EPOCH));
         assert_eq!(key(&original), key(&original.clone()));
-        assert_ne!(key(&original), key(&make(FileKind::Symlink, Some(1), original.modified)));
-        assert_ne!(key(&original), key(&make(FileKind::File, Some(2), original.modified)));
-        assert_ne!(key(&original), key(&make(FileKind::File, None, original.modified)));
+        assert_ne!(
+            key(&original),
+            key(&make(FileKind::Symlink, Some(1), original.modified))
+        );
+        assert_ne!(
+            key(&original),
+            key(&make(FileKind::File, Some(2), original.modified))
+        );
+        assert_ne!(
+            key(&original),
+            key(&make(FileKind::File, None, original.modified))
+        );
         assert_ne!(key(&original), key(&make(FileKind::File, Some(1), None)));
     }
 

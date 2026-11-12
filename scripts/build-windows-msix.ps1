@@ -6,6 +6,7 @@ param(
     # Store package: Free baseline; Premium unlocks at runtime via the Store add-on or a Polar key.
     [ValidateSet("free", "full")]
     [string]$Edition = "free",
+    [string]$ReleaseVersion,
     [switch]$SkipBuild,
     [switch]$SignForLocalTesting
 )
@@ -15,9 +16,10 @@ $repo = Split-Path $PSScriptRoot -Parent
 $target = Join-Path $repo "target\msix"
 $staging = Join-Path $target "staging"
 $manifest = Join-Path $repo "packaging\windows\msix\Package.appxmanifest"
-& python (Join-Path $repo "scripts\generate-third-party.py") --verify-release
+& python (Join-Path $repo "scripts\generate-third-party.py") --verify-release --scope desktop
 if ($LASTEXITCODE -ne 0) { throw "Third-party license verification failed." }
-$sourceVersion = ($Version.Split('.')[0..2] -join '.')
+$sourceVersion = if ($ReleaseVersion) { $ReleaseVersion } else { $Version.Split('.')[0..2] -join '.' }
+$sourceUrl = if ($env:ATLAS_SOURCE_URL) { $env:ATLAS_SOURCE_URL } else { "https://pub-89dd9e8d0b06444ca2f59e0dc245dbc9.r2.dev/source/atlas-$sourceVersion-source.zip" }
 & python (Join-Path $repo "scripts\verify-source-release.py") --version $sourceVersion
 if ($LASTEXITCODE -ne 0) { throw "Corresponding source snapshot verification failed." }
 $icon = Join-Path $repo "packaging\icons\atlas.png"
@@ -29,7 +31,7 @@ if (-not (Test-Path $unplatedIcon)) {
 # Packaging does not terminate unrelated Atlas/build processes.
 if (-not $SkipBuild) {
     $env:ATLAS_RELEASE_VERSION = $sourceVersion
-    $env:ATLAS_SOURCE_URL = "https://pub-89dd9e8d0b06444ca2f59e0dc245dbc9.r2.dev/source/atlas-$sourceVersion-source.zip"
+    $env:ATLAS_SOURCE_URL = $sourceUrl
     $featureArgs = @()
     if ($Edition -eq "free") {
         $featureArgs = @("--features", "free")
@@ -68,13 +70,15 @@ if (-not $resolvedStaging.StartsWith($allowedStaging, [System.StringComparison]:
     throw "Refusing to clean a staging path outside target/msix: $resolvedStaging"
 }
 & (Join-Path $PSScriptRoot "build-cloud-extension.ps1") -SkipBuild
+& (Join-Path $PSScriptRoot "stage-windows-runtime.ps1")
 Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
 $assets = New-Item -ItemType Directory -Force -Path (Join-Path $staging "Assets")
 Copy-Item -LiteralPath $exe -Destination (Join-Path $staging "atlas.exe")
+Get-ChildItem -LiteralPath (Join-Path $repo 'target\windows-runtime') -File |
+    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $staging }
 $serviceExe = Join-Path $repo "target\release\atlas-search-service.exe"
-if (Test-Path $serviceExe) {
-    Copy-Item -LiteralPath $serviceExe -Destination (Join-Path $staging "atlas-search-service.exe")
-}
+if (-not (Test-Path -LiteralPath $serviceExe)) { throw "Missing search service: $serviceExe" }
+Copy-Item -LiteralPath $serviceExe -Destination (Join-Path $staging "atlas-search-service.exe")
 Copy-Item -LiteralPath (Join-Path $repo "crates\atlas-core\vendor\unrar-bin\UnRAR.exe") `
     -Destination (Join-Path $staging "UnRAR.exe")
 Copy-Item -LiteralPath (Join-Path $repo "packaging\windows\msix\THIRD-PARTY-NOTICES.txt") `
@@ -83,7 +87,7 @@ Copy-Item -LiteralPath (Join-Path $repo "LICENSE") -Destination (Join-Path $stag
 $sourceNotice = @"
 Atlas $sourceVersion corresponding source and build instructions:
 https://atlasfm.modhyt.org/source-code
-https://pub-89dd9e8d0b06444ca2f59e0dc245dbc9.r2.dev/source/atlas-$sourceVersion-source.zip
+$sourceUrl
 No additional charge or private repository access is required.
 Atlas: AGPL-3.0-or-later. Third-party components retain their own licenses.
 "@
@@ -102,7 +106,12 @@ $goNotices = Join-Path $repo "packaging\windows\msix\RCLONE-THIRD-PARTY-NOTICES.
 if ((Get-FileHash -LiteralPath (Join-Path $staging "rclone.exe") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $goInventory.binarySha256) {
     throw "The bundled rclone binary changed. Audit its exact modules before packaging."
 }
-if ((Get-FileHash -LiteralPath $goNotices -Algorithm SHA256).Hash.ToLowerInvariant() -ne $goReceipt.noticeSha256) {
+$noticeText = [System.IO.File]::ReadAllText($goNotices).Replace("`r`n", "`n")
+$noticeHash = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $normalizedNoticeHash = [BitConverter]::ToString($noticeHash.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($noticeText))).Replace('-', '').ToLowerInvariant()
+} finally { $noticeHash.Dispose() }
+if ((Get-FileHash -LiteralPath $goNotices -Algorithm SHA256).Hash.ToLowerInvariant() -ne $goReceipt.noticeSha256 -and $normalizedNoticeHash -ne $goReceipt.noticeSha256) {
     throw "The rclone dependency notices changed. Regenerate their source receipt."
 }
 Copy-Item -LiteralPath $goNotices -Destination $staging
@@ -243,7 +252,9 @@ $makepri = Join-Path (Split-Path $makeAppx -Parent) "makepri.exe"
 if (Test-Path $makepri) {
     $priconfig = Join-Path $target "priconfig.xml"
     & $makepri createconfig /cf $priconfig /dq lang-en-US /pv 10.0.0 /o | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "MakePri configuration failed ($LASTEXITCODE)." }
     & $makepri new /pr $staging /cf $priconfig /of (Join-Path $staging "resources.pri") /o | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "MakePri resource indexing failed ($LASTEXITCODE)." }
     Remove-Item -LiteralPath $priconfig -Force -ErrorAction SilentlyContinue
 }
 
@@ -254,7 +265,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $signtool = Join-Path (Split-Path $makeAppx -Parent) "signtool.exe"
-if ($SignForLocalTesting -and (Test-Path $signtool)) {
+if ($SignForLocalTesting) {
+    if (-not (Test-Path $signtool)) { throw "SignTool is required for local signing." }
     try {
         $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=49A3C9B5-859D-4613-AE50-D104622E4EBC" } | Select-Object -First 1
         if (-not $cert) {
@@ -263,12 +275,13 @@ if ($SignForLocalTesting -and (Test-Path $signtool)) {
                 -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
         }
         & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint /q $package
+        if ($LASTEXITCODE -ne 0) { throw "MSIX signing failed ($LASTEXITCODE)." }
         Write-Host "Successfully signed $package with dev cert ($($cert.Thumbprint))." -ForegroundColor Green
         $cerPath = Join-Path $target "AtlasDev.cer"
         Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
         Write-Host "Exported public certificate to $cerPath" -ForegroundColor Green
     } catch {
-        Write-Warning "Failed to sign MSIX package: $_"
+        throw "Failed to sign MSIX package: $_"
     }
 }
 

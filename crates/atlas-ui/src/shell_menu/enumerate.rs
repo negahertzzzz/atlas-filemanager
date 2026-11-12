@@ -34,12 +34,25 @@ fn command_offset(wid: u32, id_first: u32) -> Option<u32> {
 /// Verbs that Atlas already provides in its own section; the native duplicates
 /// are dropped so the menu shows each action once.
 const DEDUPE_VERBS: &[&str] = &[
-    "pintohome", "windows.share", "newfolder", "delete", "rename", "cut", "copy",
-    "paste", "pastelink", "refresh", "open",
+    "pintohome",
+    "windows.share",
+    "newfolder",
+    "delete",
+    "rename",
+    "cut",
+    "copy",
+    "paste",
+    "pastelink",
+    "refresh",
+    "open",
 ];
 
 fn redundant_verb(verb: Option<&str>) -> bool {
-    verb.is_some_and(|verb| DEDUPE_VERBS.iter().any(|candidate| verb.eq_ignore_ascii_case(candidate)))
+    verb.is_some_and(|verb| {
+        DEDUPE_VERBS
+            .iter()
+            .any(|candidate| verb.eq_ignore_ascii_case(candidate))
+    })
 }
 
 fn trim_separators(items: &mut Vec<NativeMenuItem>) {
@@ -50,7 +63,10 @@ fn trim_separators(items: &mut Vec<NativeMenuItem>) {
         previous_separator = separator;
         retain
     });
-    if items.last().is_some_and(|item| matches!(item.kind, NativeItemKind::Separator)) {
+    if items
+        .last()
+        .is_some_and(|item| matches!(item.kind, NativeItemKind::Separator))
+    {
         items.pop();
     }
 }
@@ -168,11 +184,30 @@ mod tests {
 
     #[test]
     fn native_duplicates_are_filtered_by_canonical_verb_only() {
-        for verb in ["pintohome", "windows.share", "newfolder", "delete", "rename",
-            "cut", "copy", "paste", "pastelink", "refresh", "DELETE"] {
+        for verb in [
+            "pintohome",
+            "windows.share",
+            "newfolder",
+            "delete",
+            "rename",
+            "cut",
+            "copy",
+            "paste",
+            "pastelink",
+            "refresh",
+            "DELETE",
+        ] {
             assert!(redundant_verb(Some(verb)), "{verb}");
         }
-        for verb in ["openwith", "runas", "properties", "7zip", "VSCode", "git_shell", "VLC.AddToPlaylist"] {
+        for verb in [
+            "openwith",
+            "runas",
+            "properties",
+            "7zip",
+            "VSCode",
+            "git_shell",
+            "VLC.AddToPlaylist",
+        ] {
             assert!(!redundant_verb(Some(verb)), "{verb}");
         }
         assert!(!redundant_verb(None));
@@ -190,11 +225,23 @@ mod tests {
 
     #[test]
     fn filtering_does_not_leave_empty_sections() {
-        let item = |kind| NativeMenuItem { id: 42, title: "Third party".into(),
-            verb: None, icon: None, kind, disabled: false, is_default: false };
-        let mut items = vec![item(NativeItemKind::Separator), item(NativeItemKind::Normal),
-            item(NativeItemKind::Separator), item(NativeItemKind::Separator),
-            item(NativeItemKind::Normal), item(NativeItemKind::Separator)];
+        let item = |kind| NativeMenuItem {
+            id: 42,
+            title: "Third party".into(),
+            verb: None,
+            icon: None,
+            kind,
+            disabled: false,
+            is_default: false,
+        };
+        let mut items = vec![
+            item(NativeItemKind::Separator),
+            item(NativeItemKind::Normal),
+            item(NativeItemKind::Separator),
+            item(NativeItemKind::Separator),
+            item(NativeItemKind::Normal),
+            item(NativeItemKind::Separator),
+        ];
         trim_separators(&mut items);
         assert_eq!(items.len(), 3);
         assert!(matches!(items[0].kind, NativeItemKind::Normal));

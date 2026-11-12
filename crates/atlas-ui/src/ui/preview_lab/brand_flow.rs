@@ -10,10 +10,17 @@ fn present(window: &mut Window, cx: &mut gpui::App) {
     window.draw(cx).clear(cx);
 }
 
-fn shot(window: &mut Window, cx: &mut gpui::App, directory: &std::path::Path, name: &str) -> anyhow::Result<()> {
+fn shot(
+    window: &mut Window,
+    cx: &mut gpui::App,
+    directory: &std::path::Path,
+    name: &str,
+) -> anyhow::Result<()> {
     present(window, cx);
     present(window, cx);
-    window.render_to_image()?.save(directory.join(format!("{name}.png")))?;
+    window
+        .render_to_image()?
+        .save(directory.join(format!("{name}.png")))?;
     Ok(())
 }
 
@@ -24,7 +31,12 @@ fn act(view: &Entity<App>, cx: &mut gpui::App, f: impl FnOnce(&mut App)) {
     });
 }
 
-pub(super) fn install(view: &Entity<App>, window: &mut Window, cx: &mut gpui::App, directory: PathBuf) {
+pub(super) fn install(
+    view: &Entity<App>,
+    window: &mut Window,
+    cx: &mut gpui::App,
+    directory: PathBuf,
+) {
     rust_i18n::set_locale("es");
     let handle = window.window_handle();
     let view = view.clone();
@@ -41,7 +53,9 @@ pub(super) fn install(view: &Entity<App>, window: &mut Window, cx: &mut gpui::Ap
                 });
                 present(window, cx);
             })?;
-            cx.background_executor().timer(Duration::from_millis(400)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(400))
+                .await;
             handle.update(cx, |_, window, cx| -> anyhow::Result<()> {
                 shot(window, cx, &directory, "01-ember-panes-20")?;
                 act(&view, cx, |app| {
@@ -59,9 +73,13 @@ pub(super) fn install(view: &Entity<App>, window: &mut Window, cx: &mut gpui::Ap
                 shot(window, cx, &directory, "04-setup-theme")?;
                 act(&view, cx, |app| app.state.overlay.getting_started_step = 2);
                 shot(window, cx, &directory, "05-setup-workspace")?;
-                act(&view, cx, |app| app.process_actions([Action::CloseGettingStarted, Action::OpenGuide(2)]));
+                act(&view, cx, |app| {
+                    app.process_actions([Action::CloseGettingStarted, Action::OpenGuide(2)])
+                });
                 shot(window, cx, &directory, "06-guide")?;
-                act(&view, cx, |app| app.process_actions([Action::StartGuideCoach(2)]));
+                act(&view, cx, |app| {
+                    app.process_actions([Action::StartGuideCoach(2)])
+                });
                 shot(window, cx, &directory, "07-coach")?;
                 Ok(())
             })??;

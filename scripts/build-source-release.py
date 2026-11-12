@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = {".git", ".github", "target", "node_modules", "__pycache__", ".wrangler", ".playwright-cli", "artifacts", "perf-logs"}
 ROOT_FILES = ["Cargo.toml", "Cargo.lock", "LICENSE", "README.md", "ARCHITECTURE.md", "CONTRIBUTING.md", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml"]
-SCRIPTS = ["winfsp-build.rs", "build-windows-msix.ps1", "build-windows-installer.ps1", "build-cloud-extension.ps1", "recover-licensed-artwork.py", "generate-third-party.py", "build-source-release.py", "verify-source-release.py", "audit-rclone-notices.py"]
+SCRIPTS = ["winfsp-build.rs", "stage-windows-runtime.ps1", "archive-symbols.ps1", "build-windows-msix.ps1", "build-windows-installer.ps1", "build-cloud-extension.ps1", "recover-licensed-artwork.py", "generate-third-party.py", "build-source-release.py", "verify-source-release.py", "audit-rclone-notices.py", "linux_release.py", "linux_repository.py", "linux-smoke.sh", "linux-container-test.sh", "linux-store-packages.sh", "install-linux.sh", "test-linux-search-service.py", "verify-windows-search-service.ps1", "restore-windows-binaries.py"]
 
 
 def eligible(path: Path, parent: Path) -> bool:
@@ -35,9 +35,12 @@ def eligible(path: Path, parent: Path) -> bool:
     return path.is_file()
 
 
-def build(version: str):
-    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
-        raise ValueError("Use a three-part semantic release version")
+def build(version: str, source_url: str | None = None):
+    from linux_release import validate_version
+    validate_version(version)
+    msix_version = version.split("-", 1)[0] + ".0"
+    if source_url is not None and (not source_url.startswith("https://") or any(c in source_url for c in "\r\n")):
+        raise ValueError("Corresponding source URL must be HTTPS")
     staging = ROOT / f"target/source-release-{version}"
     vendor = staging / "vendor-registry"
     if not vendor.is_dir() or not any(vendor.iterdir()):
@@ -50,7 +53,7 @@ def build(version: str):
     inputs = {}
     for name in ROOT_FILES:
         inputs[name] = ROOT / name
-    for directory in ["src", "crates", "extensions", "vendor/gpui-ce", "vendor/gpui-component-fork", "legal", "packaging/windows", "packaging/icons"]:
+    for directory in ["src", "crates", "extensions", "vendor/gpui-ce", "vendor/gpui-component-fork", "legal", "packaging/windows", "packaging/linux", "packaging/icons"]:
         parent = ROOT / directory
         for path in sorted(parent.rglob("*")):
             if eligible(path, parent):
@@ -65,7 +68,7 @@ def build(version: str):
     # Explicit known-safe build config only: never include Cargo credentials.
     local_config = (ROOT / ".cargo/config.toml").read_text(encoding="utf-8")
     generated = {".cargo/config.toml": (local_config + "\n" + config).encode()}
-    source_url = f"https://pub-89dd9e8d0b06444ca2f59e0dc245dbc9.r2.dev/source/atlas-{version}-source.zip"
+    source_url = source_url or f"https://pub-89dd9e8d0b06444ca2f59e0dc245dbc9.r2.dev/source/atlas-{version}-source.zip"
     generated["SOURCE-README.txt"] = f"""Atlas {version} — corresponding Windows release source
 
 This snapshot includes uncommitted/local changes used for this release. Atlas
@@ -91,7 +94,7 @@ In PowerShell, set the release identifiers and build:
   $env:ATLAS_SOURCE_URL = '{source_url}'
   cargo build --release --locked --offline -p atlas -p atlas-search-service -p atlas-cloud-extension -p atlas-icon-extension
 
-The MSIX manifest version for this release is {version}.0. Packaging uses the
+The MSIX manifest version for this release is {msix_version}. Packaging uses the
 official rclone archive pinned by scripts/build-cloud-extension.ps1. That tool
 is an independent program and is not relicensed as Atlas. UnRAR.exe is likewise
 an unmodified independent tool with its own notices.
@@ -120,7 +123,7 @@ Contact: support@modhyt.org
         for name, content in sorted(generated.items()):
             info=zipfile.ZipInfo(name,(2026,10,31,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=(0o100644 << 16)
             archive.writestr(info,content)
-    receipt={"version":version,"msixVersion":version+".0","url":source_url,"sha256":hashlib.sha256(archive_path.read_bytes()).hexdigest(),"bytes":archive_path.stat().st_size,"workspaceFiles":len(inputs),"vendoredFiles":len(registry),"workspaceHashes":hashes,"excluded":"Private configuration, git metadata, build outputs and standalone Icons8 PNGs. The included recovery helper reconstructs exact artwork inputs from the recipient's binary."}
+    receipt={"version":version,"msixVersion":msix_version,"url":source_url,"sha256":hashlib.sha256(archive_path.read_bytes()).hexdigest(),"bytes":archive_path.stat().st_size,"workspaceFiles":len(inputs),"vendoredFiles":len(registry),"workspaceHashes":hashes,"excluded":"Private configuration, git metadata, build outputs and standalone Icons8 PNGs. The included recovery helper reconstructs exact artwork inputs from the recipient's binary."}
     receipt_path=output/f"atlas-{version}-source.json"
     receipt_path.write_text(json.dumps(receipt,indent=2)+"\n",encoding="utf-8")
     print(f"Prepared {archive_path.name}: {receipt['bytes']} bytes; {len(inputs)} workspace files and {len(registry)} vendor files.")
@@ -129,4 +132,6 @@ Contact: support@modhyt.org
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--version",required=True)
-    build(parser.parse_args().version)
+    parser.add_argument("--source-url")
+    args = parser.parse_args()
+    build(args.version, args.source_url)

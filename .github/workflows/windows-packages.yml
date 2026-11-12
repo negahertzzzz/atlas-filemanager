@@ -1,0 +1,180 @@
+name: Windows packages
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      edition:
+        type: string
+        default: full
+      source-url:
+        type: string
+        default: ''
+      reuse-run-id:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    name: EXE installer and MSIX x64
+    runs-on: windows-latest
+    env:
+      ATLAS_VERSION: ${{ inputs.version }}
+      ATLAS_RELEASE_VERSION: ${{ inputs.version }}
+      ATLAS_EDITION: ${{ inputs.edition }}
+      ATLAS_POLAR_ORG_ID: eec2eec8-cbfd-4967-ba65-ca98e824cce0
+      INPUT_SOURCE_URL: ${{ inputs.source-url }}
+      REUSE_WINDOWS_RUN: ${{ inputs.reuse-run-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Validate package inputs and notices
+        shell: pwsh
+        run: |
+          python -c "import os,sys; sys.path.insert(0,'scripts'); from linux_release import validate_version; v=validate_version(os.environ['ATLAS_VERSION']); parts=v.split('-')[0].split('.'); assert all(int(x)<=65535 for x in parts), 'MSIX version exceeds 65535'; assert os.environ['ATLAS_EDITION'] in ('free','full'); open(os.environ['GITHUB_ENV'],'a').write('ATLAS_MSIX_VERSION='+'.'.join(parts)+'.0'+chr(10))"
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid package inputs' }
+          if (-not $env:INPUT_SOURCE_URL) { $env:INPUT_SOURCE_URL = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" }
+          "ATLAS_SOURCE_URL=$env:INPUT_SOURCE_URL" >> $env:GITHUB_ENV
+          python scripts/generate-third-party.py --verify-release --scope desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop notice verification failed' }
+      - name: Prepare matching corresponding source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target/source | Out-Null
+          cargo vendor --locked --versioned-dirs "target/source-release-$env:ATLAS_VERSION/vendor-registry" | Set-Content -Encoding utf8 target/source-vendor-config.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo vendoring failed' }
+          python scripts/build-source-release.py --version "$env:ATLAS_VERSION" --source-url "$env:ATLAS_SOURCE_URL"
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive preparation failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-source
+          path: target/source/*
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/download-artifact@v4
+        if: inputs.reuse-run-id != ''
+        with:
+          name: debug-symbols-windows
+          path: target/previous-windows-build
+          run-id: ${{ inputs.reuse-run-id }}
+          github-token: ${{ github.token }}
+      - name: Verify reusable application binaries
+        if: inputs.reuse-run-id != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RUN: ${{ inputs.reuse-run-id }}
+        run: |
+          python scripts/restore-windows-binaries.py "$env:PREVIOUS_RUN" target/previous-windows-build
+          if ($LASTEXITCODE -ne 0) { throw 'The previous application binaries cannot be reused' }
+      - name: Build optimized binaries once
+        shell: pwsh
+        run: |
+          $features = @()
+          if ($env:ATLAS_EDITION -eq 'free') { $features = @('--features', 'free') }
+          if ($env:REUSE_WINDOWS_RUN) {
+            cargo build --release --locked -p atlas-search-service
+          } else {
+            cargo build --release --locked -p atlas -p atlas-search-service -p atlas-cloud-extension -p atlas-icon-extension @features
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release build failed' }
+          python -c "import os,subprocess; r=subprocess.run(['target/release/atlas.exe','--version'],capture_output=True,text=True,timeout=30,check=True); print(r.stdout); assert r.stdout.strip()=='Atlas '+os.environ['ATLAS_VERSION']"
+          if ($LASTEXITCODE -ne 0) { throw 'Release binary startup/version verification failed' }
+      - name: Install packaging compiler
+        run: choco install innosetup --no-progress -y
+      - name: Build direct-download installer
+        shell: pwsh
+        run: |
+          ./scripts/build-windows-installer.ps1 -Version "$env:ATLAS_VERSION" -SkipBuild
+          New-Item -ItemType Directory -Force target/windows-dist/installer | Out-Null
+          Copy-Item "target/installer/AtlasSetup-$env:ATLAS_VERSION.exe" target/windows-dist/installer/
+      - name: Build unsigned MSIX for Store submission or external signing
+        shell: pwsh
+        run: |
+          ./scripts/build-windows-msix.ps1 -Version "$env:ATLAS_MSIX_VERSION" -ReleaseVersion "$env:ATLAS_VERSION" -Edition "$env:ATLAS_EDITION" -SkipBuild
+          New-Item -ItemType Directory -Force target/windows-dist/msix-unsigned | Out-Null
+          Copy-Item "target/msix/Atlas_$($env:ATLAS_MSIX_VERSION)_x64.msix" "target/windows-dist/msix-unsigned/Atlas_$($env:ATLAS_MSIX_VERSION)_x64_store-unsigned.msix"
+      - name: Build test-signed MSIX and export only its public certificate
+        shell: pwsh
+        run: |
+          ./scripts/build-windows-msix.ps1 -Version "$env:ATLAS_MSIX_VERSION" -ReleaseVersion "$env:ATLAS_VERSION" -Edition "$env:ATLAS_EDITION" -SkipBuild -SignForLocalTesting
+          New-Item -ItemType Directory -Force target/windows-dist/msix-test | Out-Null
+          Copy-Item "target/msix/Atlas_$($env:ATLAS_MSIX_VERSION)_x64.msix" "target/windows-dist/msix-test/Atlas_$($env:ATLAS_MSIX_VERSION)_x64_test-signed.msix"
+          Copy-Item target/msix/AtlasDev.cer target/windows-dist/msix-test/
+          Copy-Item docs/install-test-msix.ps1 target/windows-dist/msix-test/Install-TestPackage.ps1
+      - name: Verify installer in isolated runner directory
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'atlas-installer-test'
+          $setup = Resolve-Path "target/installer/AtlasSetup-$env:ATLAS_VERSION.exe"
+          $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS="searchservice"', "/DIR=`"$installDir`"" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          python -c "import os,subprocess,sys; r=subprocess.run([sys.argv[1],'--version'],capture_output=True,text=True,timeout=30,check=True); print(r.stdout); assert r.stdout.strip()=='Atlas '+os.environ['ATLAS_VERSION']" (Join-Path $installDir 'atlas.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Installed executable startup/version verification failed' }
+          foreach ($name in @('atlas.ico','atlas-search-service.exe','atlas-cloud-extension.exe','atlas-icon-extension.exe','rclone.exe','UnRAR.exe','vcruntime140.dll','THIRD-PARTY-NOTICES.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDir $name))) { throw "Installed payload is incomplete: $name" }
+          }
+          $shortcutPath = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Atlas.lnk'
+          if (-not (Test-Path -LiteralPath $shortcutPath)) { throw 'Installer did not create the Start menu shortcut' }
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+          if ($shortcut.TargetPath -ne (Join-Path $installDir 'atlas.exe')) { throw 'Start menu shortcut points at the wrong program' }
+          if ($shortcut.IconLocation -notlike "$(Join-Path $installDir 'atlas.ico')*") { throw 'Start menu shortcut does not use the Atlas logo' }
+          ./scripts/verify-windows-search-service.ps1 -ExpectedDirectory $installDir
+          $process = Start-Process -FilePath (Join-Path $installDir 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Uninstaller failed: $($process.ExitCode)" }
+          if (Get-Service -Name AtlasSearchService -ErrorAction SilentlyContinue) { throw 'Uninstaller left the Windows search service registered' }
+      - name: Package instructions and checksums
+        shell: pwsh
+        run: |
+          Copy-Item docs/package-downloads.md target/windows-dist/installer/README.md
+          Copy-Item docs/package-downloads.md target/windows-dist/msix-unsigned/README.md
+          Copy-Item docs/package-downloads.md target/windows-dist/msix-test/README.md
+          if (Test-Path target/reused-binaries.json) {
+            foreach ($folder in Get-ChildItem target/windows-dist -Directory) {
+              Copy-Item target/reused-binaries.json (Join-Path $folder.FullName 'BINARY-PROVENANCE.json')
+            }
+          }
+          python -c "import sys; from pathlib import Path; sys.path.insert(0,'scripts'); from linux_release import write_checksums; [write_checksums(p) for p in Path('target/windows-dist').iterdir() if p.is_dir()]"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-windows-installer-x86_64
+          path: target/windows-dist/installer/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-windows-msix-store-unsigned-x86_64
+          path: target/windows-dist/msix-unsigned/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-msix-windows-x86_64
+          path: target/windows-dist/msix-test/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug-symbols-windows
+          path: symbols/
+          if-no-files-found: ignore
+      - name: Keep generated packages out of the Rust dependency cache
+        if: always()
+        shell: pwsh
+        run: |
+          $targetRoot = [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'target'))
+          $allowed = $targetRoot + [System.IO.Path]::DirectorySeparatorChar
+          foreach ($relative in @("source-release-$env:ATLAS_VERSION", 'source', 'msix', 'installer', 'windows-dist', 'extensions', 'windows-runtime', 'previous-windows-build', 'reused-binaries.json')) {
+            $path = [System.IO.Path]::GetFullPath((Join-Path $targetRoot $relative))
+            if (-not $path.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Staging cleanup escaped target: $path" }
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+          }

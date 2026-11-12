@@ -14,22 +14,7 @@ on:
       version:
         description: Version with an entry in CHANGELOG.md (without v)
         required: true
-        default: '0.1.0'
-  pull_request:
-    paths:
-      - '.github/workflows/linux-*'
-      - '.github/workflows/release.yml'
-      - 'packaging/**'
-      - 'scripts/linux*'
-      - 'scripts/test-linux-local.py'
-      - 'scripts/install-linux.sh'
-      - 'scripts/tests/test_linux*'
-      - 'CHANGELOG.md'
-      - 'Cargo.*'
-      - 'rust-toolchain.toml'
-      - 'src/**'
-      - 'crates/**'
-      - 'vendor/**'
+        default: '0.1.5'
 
 permissions:
   contents: read
@@ -47,13 +32,15 @@ jobs:
         with:
           toolchain: '1.97.1'
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: System dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang g++ pkg-config \
-            libasound2-dev libfontconfig-dev libssl-dev libvulkan1 libxcb1-dev \
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o APT::Update::Error-Mode=any update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends clang g++ pkg-config \
+            libasound2-dev libfontconfig-dev libssl-dev libvulkan-dev libxcb1-dev \
             libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libbz2-dev liblzma-dev \
-            desktop-file-utils appstream squashfs-tools librsvg2-bin
+            desktop-file-utils appstream squashfs-tools librsvg2-bin python3-pil
       - name: Release metadata
         id: metadata
         env:
@@ -72,8 +59,10 @@ jobs:
           echo "ATLAS_RELEASES_URL=https://github.com/$GITHUB_REPOSITORY/releases" >> "$GITHUB_ENV"
       - name: Packaging and installer tests
         run: python3 -m unittest discover -s scripts/tests -p 'test_linux*.py' -v
+      - name: Verify desktop notices
+        run: python3 scripts/generate-third-party.py --verify-release --scope desktop
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --release --locked -p atlas -p atlas-search-service -p atlas-cloud-extension -p atlas-icon-extension
       - name: Check ELF portability
         run: |
           target/release/atlas --version
@@ -153,6 +142,7 @@ jobs:
         run: |
           (cd artifacts && sha256sum --check SHA256SUMS)
           tar -xzf "artifacts/atlas-$ATLAS_VERSION-linux-x86_64.tar.gz" -C /tmp
+          python3 scripts/test-linux-search-service.py "/tmp/atlas-$ATLAS_VERSION-linux-x86_64/bin/atlas-search-service"
           ATLAS_SMOKE_LOG_DIR="$PWD/logs/tarball" xvfb-run -a bash scripts/linux-smoke.sh "/tmp/atlas-$ATLAS_VERSION-linux-x86_64/bin/atlas"
           chmod +x artifacts/*.AppImage
           APPIMAGE_EXTRACT_AND_RUN=1 ATLAS_SMOKE_LOG_DIR="$PWD/logs/appimage" xvfb-run -a bash scripts/linux-smoke.sh "$PWD/artifacts/Atlas-$ATLAS_VERSION-x86_64.AppImage"

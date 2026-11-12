@@ -44,7 +44,9 @@ pub enum Purchase {
 /// from a worker thread. Only works in the packaged (Store) build.
 pub fn purchase_premium(owner: isize) -> Purchase {
     match request_purchase(owner) {
-        Ok(StorePurchaseStatus::Succeeded | StorePurchaseStatus::AlreadyPurchased) => Purchase::Owned,
+        Ok(StorePurchaseStatus::Succeeded | StorePurchaseStatus::AlreadyPurchased) => {
+            Purchase::Owned
+        }
         Ok(StorePurchaseStatus::NotPurchased) => Purchase::Cancelled,
         Ok(other) => Purchase::Failed(format!("{other:?}")),
         Err(error) => Purchase::Failed(error.message()),
@@ -63,7 +65,10 @@ fn request_purchase(owner: isize) -> windows::core::Result<StorePurchaseStatus> 
         .RequestPurchaseAsync(&HSTRING::from(PREMIUM_STORE_ID))?
         .get()?;
     let status = result.Status()?;
-    if matches!(status, StorePurchaseStatus::NetworkError | StorePurchaseStatus::ServerError) {
+    if matches!(
+        status,
+        StorePurchaseStatus::NetworkError | StorePurchaseStatus::ServerError
+    ) {
         let code = result.ExtendedError()?;
         if code.is_err() {
             return Err(code.into());

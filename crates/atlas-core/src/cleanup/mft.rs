@@ -25,7 +25,10 @@ pub(super) fn scan(
     mut progress: impl FnMut(u64, u64),
 ) -> io::Result<SpaceTree> {
     if !policy::is_drive_root(root) {
-        return Err(io::Error::new(io::ErrorKind::Unsupported, "No volume index"));
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "No volume index",
+        ));
     }
     let index = if elevated {
         atlas_win_space::mft_space::helper::scan(root, &mut control, &mut progress)?

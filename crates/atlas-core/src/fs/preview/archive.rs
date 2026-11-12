@@ -77,7 +77,11 @@ fn bytes_to_preview(bytes: Vec<u8>, ext: &str) -> PreviewResult {
     if ext == "docx" {
         super::document::preview_docx_reader(std::io::Cursor::new(bytes), "")
     } else if matches!(ext, "csv" | "tsv") {
-        crate::ext::runner::delimited_bytes(&bytes, if ext == "tsv" { b'\t' } else { b',' }, bytes.len() >= 2 * 1024 * 1024)
+        crate::ext::runner::delimited_bytes(
+            &bytes,
+            if ext == "tsv" { b'\t' } else { b',' },
+            bytes.len() >= 2 * 1024 * 1024,
+        )
     } else if is_image_ext(ext) {
         match image::load_from_memory(&bytes) {
             Ok(img) => {
@@ -184,7 +188,11 @@ pub(crate) fn preview_archive_listing(archive: &std::path::Path) -> PreviewResul
             extension: entry.extension().map(|e| e.to_lowercase().to_string()),
         })
         .collect();
-    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
     entries.truncate(DIR_PREVIEW_LIMIT);
     PreviewResult::Dir {
         entries,

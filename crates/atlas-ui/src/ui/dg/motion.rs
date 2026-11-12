@@ -281,7 +281,12 @@ impl<K: Eq + Hash + Clone> GridMotion<K> {
                             || (existing.target.w - target.w).abs() > 0.5
                             || (existing.target.h - target.h).abs() > 0.5;
 
-                        if target_changed && (dx.abs() > 0.5 || dy.abs() > 0.5 || dw.abs() > 0.5 || dh.abs() > 0.5) {
+                        if target_changed
+                            && (dx.abs() > 0.5
+                                || dy.abs() > 0.5
+                                || dw.abs() > 0.5
+                                || dh.abs() > 0.5)
+                        {
                             existing.start_delta = GridItemBounds {
                                 x: dx,
                                 y: dy,
@@ -295,13 +300,16 @@ impl<K: Eq + Hash + Clone> GridMotion<K> {
                         } else if existing.animating {
                             let elapsed = now.saturating_duration_since(existing.start_time);
                             if elapsed < Self::DURATION {
-                                let t = (elapsed.as_secs_f32() / Self::DURATION.as_secs_f32()).clamp(0.0, 1.0);
+                                let t = (elapsed.as_secs_f32() / Self::DURATION.as_secs_f32())
+                                    .clamp(0.0, 1.0);
                                 let factor = 1.0 - crate::ui::motion::ease_out_quart(t);
                                 existing.visual = GridItemBounds {
                                     x: existing.target.x + existing.start_delta.x * factor,
                                     y: existing.target.y + existing.start_delta.y * factor,
-                                    w: (existing.target.w + existing.start_delta.w * factor).max(1.0),
-                                    h: (existing.target.h + existing.start_delta.h * factor).max(1.0),
+                                    w: (existing.target.w + existing.start_delta.w * factor)
+                                        .max(1.0),
+                                    h: (existing.target.h + existing.start_delta.h * factor)
+                                        .max(1.0),
                                 };
                                 existing.animating = true;
                                 active = true;
@@ -388,9 +396,17 @@ impl<K: Eq + Hash + Clone, V: Clone> PresenceMotion<K, V> {
         if values.iter().any(|(key, _)| !identities.insert(key)) {
             self.items.clear();
             self.epoch = epoch;
-            return (values.into_iter().map(|(_, value)| PresenceSample {
-                value, opacity: 1.0, interactive: true,
-            }).collect(), false);
+            return (
+                values
+                    .into_iter()
+                    .map(|(_, value)| PresenceSample {
+                        value,
+                        opacity: 1.0,
+                        interactive: true,
+                    })
+                    .collect(),
+                false,
+            );
         }
         let reset = instant || epoch != self.epoch;
         if reset {
@@ -523,7 +539,13 @@ impl<K: Eq + Hash + Clone> RowMotion<K> {
             self.rows.clear();
             self.epoch = epoch;
             self.viewport = viewport;
-            return (targets.iter().map(|(_, index, y)| (*index, *y, 1.0)).collect(), false);
+            return (
+                targets
+                    .iter()
+                    .map(|(_, index, y)| (*index, *y, 1.0))
+                    .collect(),
+                false,
+            );
         }
         let scroll_changed = (viewport[0] - self.viewport[0]).abs() > 1.0;
         let size_changed = (viewport[1] - self.viewport[1]).abs() > 0.01
@@ -688,12 +710,24 @@ mod tests {
         let viewport = [0.0, 26.0, 800.0];
         let mut motion = RowMotion::new(1, viewport);
         motion.sample(&[("other", 0, 0.0)], 1, viewport, false, now);
-        let targets = [("duplicate", 0, 0.0), ("duplicate", 1, 26.0), ("other", 2, 52.0)];
+        let targets = [
+            ("duplicate", 0, 0.0),
+            ("duplicate", 1, 26.0),
+            ("other", 2, 52.0),
+        ];
         for frame in 0..120 {
-            let (positions, active) = motion.sample(&targets, 1, viewport, frame == 60,
-                now + Duration::from_millis(frame * 16));
+            let (positions, active) = motion.sample(
+                &targets,
+                1,
+                viewport,
+                frame == 60,
+                now + Duration::from_millis(frame * 16),
+            );
             assert_eq!(positions, [(0, 0.0, 1.0), (1, 26.0, 1.0), (2, 52.0, 1.0)]);
-            assert!(!active, "duplicate names must not drive an endless animation");
+            assert!(
+                !active,
+                "duplicate names must not drive an endless animation"
+            );
         }
     }
 
@@ -702,11 +736,20 @@ mod tests {
         let now = Instant::now();
         let mut presence = PresenceMotion::new();
         presence.sample(vec![("existing", 0)], 1, false, now);
-        let (samples, active) = presence.sample(vec![("duplicate", 1), ("duplicate", 2)], 1, false, now);
+        let (samples, active) =
+            presence.sample(vec![("duplicate", 1), ("duplicate", 2)], 1, false, now);
         assert!(!active);
         assert_eq!(samples.len(), 2);
-        assert_eq!(samples.iter().map(|sample| sample.value).collect::<Vec<_>>(), [1, 2]);
-        assert!(samples.iter().all(|sample| sample.interactive && sample.opacity == 1.0));
+        assert_eq!(
+            samples
+                .iter()
+                .map(|sample| sample.value)
+                .collect::<Vec<_>>(),
+            [1, 2]
+        );
+        assert!(samples
+            .iter()
+            .all(|sample| sample.interactive && sample.opacity == 1.0));
     }
 
     #[test]
@@ -725,8 +768,18 @@ mod tests {
     #[test]
     fn grid_cells_reentering_after_a_zoom_snap_instead_of_animating() {
         let now = Instant::now();
-        let small = GridItemBounds { x: 0.0, y: 0.0, w: 80.0, h: 100.0 };
-        let big = GridItemBounds { x: 0.0, y: 400.0, w: 160.0, h: 200.0 };
+        let small = GridItemBounds {
+            x: 0.0,
+            y: 0.0,
+            w: 80.0,
+            h: 100.0,
+        };
+        let big = GridItemBounds {
+            x: 0.0,
+            y: 400.0,
+            w: 160.0,
+            h: 200.0,
+        };
         let mut motion = GridMotion::new(1);
         motion.sample(&[("a", 0, small), ("b", 1, small)], 1, false, now);
         // Scrolled away: only "b" is realised while the zoom changes.
@@ -885,11 +938,9 @@ mod tests {
         let mut motion = PresenceMotion::new();
         let (initial, active) = motion.sample(vec![("a", 10), ("b", 20)], 1, false, now);
         assert!(!active);
-        assert!(
-            initial
-                .iter()
-                .all(|item| item.interactive && item.opacity == 1.0)
-        );
+        assert!(initial
+            .iter()
+            .all(|item| item.interactive && item.opacity == 1.0));
         let (leaving, active) = motion.sample(vec![("a", 11)], 1, false, now);
         assert!(active);
         assert_eq!(leaving[0].value, 20);

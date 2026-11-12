@@ -63,10 +63,7 @@ pub(crate) fn build_thumb_argv(run: &str, input: &Path, output: &Path) -> Vec<St
         .extension()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let output_prefix = output
-        .with_extension("")
-        .to_string_lossy()
-        .into_owned();
+    let output_prefix = output.with_extension("").to_string_lossy().into_owned();
     run.split_whitespace()
         .map(|token| {
             token

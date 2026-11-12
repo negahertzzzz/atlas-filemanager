@@ -211,7 +211,11 @@ fn execute_one(
     if cancel.load(Ordering::Relaxed) {
         bail!("Cancelled");
     }
-    let stem = source.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let stem = source
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     let suffix = action.suffix(settings);
     publish(output, |index| {
         let mut name = format!("{stem}{suffix}");
@@ -348,7 +352,8 @@ pub(crate) fn strip_png(bytes: &[u8]) -> Result<Vec<u8>> {
     out.extend_from_slice(&SIGNATURE);
     let mut i = 8;
     while i + 12 <= bytes.len() {
-        let length = u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
+        let length =
+            u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
         let kind = &bytes[i + 4..i + 8];
         let end = i
             .checked_add(12)
@@ -369,7 +374,14 @@ pub(crate) fn strip_png(bytes: &[u8]) -> Result<Vec<u8>> {
 fn compress_image(source: &Path, extension: &str, quality: u8, output: &Path) -> Result<()> {
     let image = native::decode_oriented(source)?;
     match extension {
-        "jpg" => write_same_format(image, source, extension, quality.clamp(1, 100), None, output),
+        "jpg" => write_same_format(
+            image,
+            source,
+            extension,
+            quality.clamp(1, 100),
+            None,
+            output,
+        ),
         "png" => {
             use image::codecs::png::{CompressionType, FilterType, PngEncoder};
             use image::ImageEncoder;
@@ -485,18 +497,44 @@ mod tests {
             ..ActionSettings::default()
         };
         let cancel = AtomicBool::new(false);
-        let report = execute(Action::Resize, &[source.clone()], &settings, &Tools::default(), &cancel, |_, _, _| {});
+        let report = execute(
+            Action::Resize,
+            &[source.clone()],
+            &settings,
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         let outputs = report.outputs();
-        assert_eq!(outputs, [dir.path().join("wide-100px.png")], "{:?}", report.errors());
+        assert_eq!(
+            outputs,
+            [dir.path().join("wide-100px.png")],
+            "{:?}",
+            report.errors()
+        );
         let resized = image::open(&outputs[0]).unwrap();
         assert_eq!((resized.width(), resized.height()), (100, 50));
         assert_eq!(image::open(&source).unwrap().width(), 400);
         // A second run never overwrites the first output.
-        let again = execute(Action::Resize, &[source.clone()], &settings, &Tools::default(), &cancel, |_, _, _| {});
+        let again = execute(
+            Action::Resize,
+            &[source.clone()],
+            &settings,
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         assert_eq!(again.outputs(), [dir.path().join("wide-100px (1).png")]);
         // Smaller images are reported, not upscaled.
         let small = png(dir.path(), "small.png", 40, 20);
-        let skipped = execute(Action::Resize, &[small], &settings, &Tools::default(), &cancel, |_, _, _| {});
+        let skipped = execute(
+            Action::Resize,
+            &[small],
+            &settings,
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         assert!(skipped.outputs().is_empty());
         assert_eq!(skipped.errors().len(), 1);
     }
@@ -507,7 +545,14 @@ mod tests {
         let source = png(dir.path(), "tall.png", 30, 10);
         let cancel = AtomicBool::new(false);
         for action in [Action::RotateRight, Action::RotateLeft] {
-            let report = execute(action, &[source.clone()], &ActionSettings::default(), &Tools::default(), &cancel, |_, _, _| {});
+            let report = execute(
+                action,
+                &[source.clone()],
+                &ActionSettings::default(),
+                &Tools::default(),
+                &cancel,
+                |_, _, _| {},
+            );
             let rotated = image::open(&report.outputs()[0]).unwrap();
             assert_eq!((rotated.width(), rotated.height()), (10, 30));
         }
@@ -522,10 +567,21 @@ mod tests {
         assert!(!stripped.windows(4).any(|w| w == b"Exif"));
         assert!(!stripped.windows(5).any(|w| w == b"hello"));
         // Scan data is byte-identical.
-        let scan = |b: &[u8]| b.windows(2).position(|w| w == [0xFF, 0xDA]).map(|p| b[p..].to_vec());
+        let scan = |b: &[u8]| {
+            b.windows(2)
+                .position(|w| w == [0xFF, 0xDA])
+                .map(|p| b[p..].to_vec())
+        };
         assert_eq!(scan(&original), scan(&stripped));
         let cancel = AtomicBool::new(false);
-        let report = execute(Action::StripMetadata, &[source], &ActionSettings::default(), &Tools::default(), &cancel, |_, _, _| {});
+        let report = execute(
+            Action::StripMetadata,
+            &[source],
+            &ActionSettings::default(),
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         let output = &report.outputs()[0];
         assert_eq!(output, &dir.path().join("photo-clean.jpg"));
         assert_eq!(image::open(output).unwrap().width(), 16);
@@ -556,29 +612,59 @@ mod tests {
     fn compress_never_publishes_a_bigger_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("noisy.jpg");
-        image::RgbImage::from_fn(64, 64, |x, y| image::Rgb([(x * 31 ^ y * 17) as u8, (x * y) as u8, (x + y) as u8]))
-            .save(&path)
-            .unwrap();
+        image::RgbImage::from_fn(64, 64, |x, y| {
+            image::Rgb([(x * 31 ^ y * 17) as u8, (x * y) as u8, (x + y) as u8])
+        })
+        .save(&path)
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let settings = ActionSettings {
             quality: 40,
             ..ActionSettings::default()
         };
-        let report = execute(Action::Compress, &[path.clone()], &settings, &Tools::default(), &cancel, |_, _, _| {});
+        let report = execute(
+            Action::Compress,
+            &[path.clone()],
+            &settings,
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         let output = &report.outputs()[0];
         assert!(std::fs::metadata(output).unwrap().len() < std::fs::metadata(&path).unwrap().len());
         // Recompressing Atlas's own best-effort PNG cannot shrink it: reported,
         // nothing published and no leftover temporaries.
         let flat = png(dir.path(), "flat.png", 32, 32);
-        let first = execute(Action::Compress, &[flat], &settings, &Tools::default(), &cancel, |_, _, _| {});
-        let optimized = first.outputs().first().cloned().unwrap_or_else(|| dir.path().join("flat.png"));
-        let report = execute(Action::Compress, &[optimized], &settings, &Tools::default(), &cancel, |_, _, _| {});
+        let first = execute(
+            Action::Compress,
+            &[flat],
+            &settings,
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
+        let optimized = first
+            .outputs()
+            .first()
+            .cloned()
+            .unwrap_or_else(|| dir.path().join("flat.png"));
+        let report = execute(
+            Action::Compress,
+            &[optimized],
+            &settings,
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         assert!(report.outputs().is_empty());
         assert!(report.errors()[0].contains("Already optimized"));
         assert!(std::fs::read_dir(dir.path())
             .unwrap()
             .flatten()
-            .all(|entry| !entry.file_name().to_string_lossy().starts_with(".atlas-action-")));
+            .all(|entry| !entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".atlas-action-")));
     }
 
     #[test]
@@ -587,7 +673,14 @@ mod tests {
         let path = dir.path().join("doc.pdf");
         std::fs::write(&path, b"%PDF-1.4\n").unwrap();
         let cancel = AtomicBool::new(false);
-        let report = execute(Action::CompressPdf, &[path], &ActionSettings::default(), &Tools::default(), &cancel, |_, _, _| {});
+        let report = execute(
+            Action::CompressPdf,
+            &[path],
+            &ActionSettings::default(),
+            &Tools::default(),
+            &cancel,
+            |_, _, _| {},
+        );
         assert!(report.errors()[0].contains("Ghostscript"));
     }
 }

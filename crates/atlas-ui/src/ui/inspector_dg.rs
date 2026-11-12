@@ -23,32 +23,57 @@ use atlas_core::util::display::{format_date, format_size};
 use atlas_model::file_entry::FileKind;
 use atlas_model::pane::TabId;
 use atlas_model::preview_cache::PreviewResult;
+use gpui::ColorExt as _;
 use gpui::{
-    hsla, point, px, size, transparent_black, Bounds, Corners, CursorStyle, DispatchPhase,
-    Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
-    IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ScrollWheelEvent, Pixels, Refineable, RenderImage,
-    ShapedLine, SharedString, Style, StyleRefinement, Styled, TextAlign, TextRun, WeakEntity,
-    Window,
+    hsla, point, px, size, transparent_black, Bounds, Corners, CursorStyle, DispatchPhase, Element,
+    ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement,
+    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Refineable,
+    RenderImage, ScrollWheelEvent, ShapedLine, SharedString, Style, StyleRefinement, Styled,
+    TextAlign, TextRun, WeakEntity, Window,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
-use gpui::ColorExt as _;
 
 #[derive(Clone, Copy)]
-struct ImageRadar { frame: Bounds<Pixels>, visible: Bounds<Pixels> }
+struct ImageRadar {
+    frame: Bounds<Pixels>,
+    visible: Bounds<Pixels>,
+}
 
 fn image_radar(viewport: Bounds<Pixels>, image: Bounds<Pixels>, zoom: f32) -> Option<ImageRadar> {
-    let (vw, vh, iw, ih) = (f32::from(viewport.size.width), f32::from(viewport.size.height),
-        f32::from(image.size.width), f32::from(image.size.height));
-    if iw <= 0.0 || ih <= 0.0 || vw < 100.0 * zoom || vh < 80.0 * zoom { return None; }
-    let (w, h) = aspect_ratio_fit(iw, ih, (128.0 * zoom).min(vw * 0.3), (96.0 * zoom).min(vh * 0.3));
-    let frame = Bounds { origin: point(viewport.right() - px(w + 8.0 * zoom), viewport.bottom() - px(h + 8.0 * zoom)), size: size(px(w), px(h)) };
+    let (vw, vh, iw, ih) = (
+        f32::from(viewport.size.width),
+        f32::from(viewport.size.height),
+        f32::from(image.size.width),
+        f32::from(image.size.height),
+    );
+    if iw <= 0.0 || ih <= 0.0 || vw < 100.0 * zoom || vh < 80.0 * zoom {
+        return None;
+    }
+    let (w, h) = aspect_ratio_fit(
+        iw,
+        ih,
+        (128.0 * zoom).min(vw * 0.3),
+        (96.0 * zoom).min(vh * 0.3),
+    );
+    let frame = Bounds {
+        origin: point(
+            viewport.right() - px(w + 8.0 * zoom),
+            viewport.bottom() - px(h + 8.0 * zoom),
+        ),
+        size: size(px(w), px(h)),
+    };
     let x0 = (f32::from(viewport.left() - image.left()) / iw).clamp(0.0, 1.0);
     let y0 = (f32::from(viewport.top() - image.top()) / ih).clamp(0.0, 1.0);
     let x1 = (f32::from(viewport.right() - image.left()) / iw).clamp(0.0, 1.0);
     let y1 = (f32::from(viewport.bottom() - image.top()) / ih).clamp(0.0, 1.0);
-    Some(ImageRadar { frame, visible: Bounds { origin: frame.origin + point(px(x0 * w), px(y0 * h)),
-        size: size(px((x1 - x0).max(0.0) * w), px((y1 - y0).max(0.0) * h)) } })
+    Some(ImageRadar {
+        frame,
+        visible: Bounds {
+            origin: frame.origin + point(px(x0 * w), px(y0 * h)),
+            size: size(px((x1 - x0).max(0.0) * w), px((y1 - y0).max(0.0) * h)),
+        },
+    })
 }
 
 fn paint_checkerboard(window: &mut Window, bounds: Bounds<Pixels>, zoom: f32) {
@@ -58,11 +83,18 @@ fn paint_checkerboard(window: &mut Window, bounds: Bounds<Pixels>, zoom: f32) {
     let rows = (f32::from(bounds.size.height) / tile).ceil() as usize;
     for y in 0..rows {
         for x in 0..cols {
-            if (x + y) % 2 == 0 { continue; }
+            if (x + y) % 2 == 0 {
+                continue;
+            }
             let width = tile.min(f32::from(bounds.size.width) - x as f32 * tile);
             let height = tile.min(f32::from(bounds.size.height) - y as f32 * tile);
-            window.paint_quad(gpui::fill(Bounds { origin: bounds.origin + point(px(x as f32 * tile), px(y as f32 * tile)),
-                size: size(px(width), px(height)) }, gpui::rgb(0xd4d4d4)));
+            window.paint_quad(gpui::fill(
+                Bounds {
+                    origin: bounds.origin + point(px(x as f32 * tile), px(y as f32 * tile)),
+                    size: size(px(width), px(height)),
+                },
+                gpui::rgb(0xd4d4d4),
+            ));
         }
     }
 }
@@ -323,7 +355,8 @@ pub fn project_inspector_layout(
     }
 
     let row_h = 22.0 * zoom;
-    let desired_meta_h = (metadata_row_count as f32 * row_h + 10.0 * zoom).min((cut.h * 0.45).max(40.0));
+    let desired_meta_h =
+        (metadata_row_count as f32 * row_h + 10.0 * zoom).min((cut.h * 0.45).max(40.0));
     let meta_h = if is_multi {
         (cut.h * 0.35).min(90.0 * zoom)
     } else {
@@ -500,8 +533,16 @@ impl InspectorDgElement {
                         exif,
                         ..
                     } => {
-                        let w = if *original_width > 0 { *original_width } else { *width };
-                        let h = if *original_height > 0 { *original_height } else { *height };
+                        let w = if *original_width > 0 {
+                            *original_width
+                        } else {
+                            *width
+                        };
+                        let h = if *original_height > 0 {
+                            *original_height
+                        } else {
+                            *height
+                        };
                         let dim_str = format!("{} × {} px", w, h);
                         items.push(DgMetadataItem {
                             key: "Dimensions".into(),
@@ -633,8 +674,10 @@ impl Element for InspectorDgElement {
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
         style.refine(&self.style);
-        style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Relative(gpui::relative(1.0)));
-        style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Relative(gpui::relative(1.0)));
+        style.size.width =
+            gpui::Length::Definite(gpui::DefiniteLength::Relative(gpui::relative(1.0)));
+        style.size.height =
+            gpui::Length::Definite(gpui::DefiniteLength::Relative(gpui::relative(1.0)));
         (window.request_layout(style.clone(), [], cx), style)
     }
 
@@ -720,7 +763,10 @@ impl Element for InspectorDgElement {
                 layout.external_btn_slot,
                 InspectorDgHitAction::OpenExternal(entry.path.clone()),
             ));
-            tooltips.push((layout.external_btn_slot, "Open in Default Application".into()));
+            tooltips.push((
+                layout.external_btn_slot,
+                "Open in Default Application".into(),
+            ));
         }
 
         // 2. Header text shaping
@@ -749,7 +795,8 @@ impl Element for InspectorDgElement {
 
         // 3. Metadata table slicing & hits
         let row_h = 22.0 * zoom;
-        let metadata_rows = slice_metadata_table(layout.metadata_slot, &metadata_items, row_h, zoom);
+        let metadata_rows =
+            slice_metadata_table(layout.metadata_slot, &metadata_items, row_h, zoom);
         for row in &metadata_rows {
             all_hits.push((
                 row.copy_btn_slot,
@@ -791,7 +838,13 @@ impl Element for InspectorDgElement {
             }
 
             let title_text = format!("{} items selected", self.summary.count);
-            multi_title_line = Some(shape_text(title_text, &font, font_size, self.colors.fg, window));
+            multi_title_line = Some(shape_text(
+                title_text,
+                &font,
+                font_size,
+                self.colors.fg,
+                window,
+            ));
 
             let subtitle_text = format!(
                 "{} files, {} folders · {}",
@@ -818,18 +871,34 @@ impl Element for InspectorDgElement {
             );
             let path = self.entry.as_ref().map(|entry| entry.path.clone());
             let state = window.use_keyed_state("inspector-image-zoom", _cx, |_, _| {
-                (path.clone(), crate::ui::dg::motion::RetainedSpring::new(self.image_view.zoom, std::time::Instant::now()))
+                (
+                    path.clone(),
+                    crate::ui::dg::motion::RetainedSpring::new(
+                        self.image_view.zoom,
+                        std::time::Instant::now(),
+                    ),
+                )
             });
             let instant = self.disable_animations || _cx.reduce_motion();
             let (image_zoom, active) = state.update(_cx, |state, _| {
                 let reset = state.0 != path;
                 state.0 = path;
-                state.1.sample_unit(self.image_view.zoom, instant || reset, std::time::Instant::now())
+                state.1.sample_unit(
+                    self.image_view.zoom,
+                    instant || reset,
+                    std::time::Instant::now(),
+                )
             });
-            if active { window.request_animation_frame(); }
+            if active {
+                window.request_animation_frame();
+            }
             let (fit_w, fit_h) = (fit_w * image_zoom, fit_h * image_zoom);
-            let img_x = layout.preview_slot.x + (layout.preview_slot.w - fit_w) * 0.5 + self.image_view.pan_x;
-            let img_y = layout.preview_slot.y + (layout.preview_slot.h - fit_h) * 0.5 + self.image_view.pan_y;
+            let img_x = layout.preview_slot.x
+                + (layout.preview_slot.w - fit_w) * 0.5
+                + self.image_view.pan_x;
+            let img_y = layout.preview_slot.y
+                + (layout.preview_slot.h - fit_h) * 0.5
+                + self.image_view.pan_y;
             preview_texture_bounds = Some(Bounds {
                 origin: point(origin.x + px(img_x), origin.y + px(img_y)),
                 size: size(px(fit_w), px(fit_h)),
@@ -844,7 +913,8 @@ impl Element for InspectorDgElement {
                         .and_then(|e| e.extension.clone())
                         .unwrap_or_else(|| "txt".into());
                     let mut in_block_comment = false;
-                    let max_visible_lines = ((layout.preview_slot.h / (18.0 * zoom)) as usize).min(80);
+                    let max_visible_lines =
+                        ((layout.preview_slot.h / (18.0 * zoom)) as usize).min(80);
 
                     for (idx, raw_line) in text.lines().take(max_visible_lines).enumerate() {
                         let line_no_str = format!("{:3} ", idx + 1);
@@ -863,11 +933,19 @@ impl Element for InspectorDgElement {
                             .iter()
                             .map(|tok| {
                                 let color = match tok.kind {
-                                    TokenKind::Keyword | TokenKind::DiffHeader => self.colors.keyword,
+                                    TokenKind::Keyword | TokenKind::DiffHeader => {
+                                        self.colors.keyword
+                                    }
                                     TokenKind::Type => self.colors.type_color,
-                                    TokenKind::String | TokenKind::DiffAdd => self.colors.string_color,
-                                    TokenKind::Number | TokenKind::LogWarn => self.colors.number_color,
-                                    TokenKind::Comment | TokenKind::LogInfo => self.colors.comment_color,
+                                    TokenKind::String | TokenKind::DiffAdd => {
+                                        self.colors.string_color
+                                    }
+                                    TokenKind::Number | TokenKind::LogWarn => {
+                                        self.colors.number_color
+                                    }
+                                    TokenKind::Comment | TokenKind::LogInfo => {
+                                        self.colors.comment_color
+                                    }
                                     TokenKind::Preprocessor
                                     | TokenKind::DiffRemove
                                     | TokenKind::LogError => self.colors.danger,
@@ -903,9 +981,27 @@ impl Element for InspectorDgElement {
                     }
                     let formatted_hex = format_hex_dump(&sample_bytes, 16);
                     for hx in formatted_hex {
-                        let off = shape_text(hx.offset_str, &font, font_size_code, self.colors.muted, window);
-                        let bytes = shape_text(hx.hex_bytes_str, &font, font_size_code, self.colors.fg, window);
-                        let asc = shape_text(hx.ascii_str, &font, font_size_code, self.colors.string_color, window);
+                        let off = shape_text(
+                            hx.offset_str,
+                            &font,
+                            font_size_code,
+                            self.colors.muted,
+                            window,
+                        );
+                        let bytes = shape_text(
+                            hx.hex_bytes_str,
+                            &font,
+                            font_size_code,
+                            self.colors.fg,
+                            window,
+                        );
+                        let asc = shape_text(
+                            hx.ascii_str,
+                            &font,
+                            font_size_code,
+                            self.colors.string_color,
+                            window,
+                        );
                         hex_lines.push((off, bytes, asc));
                     }
                 }
@@ -1112,18 +1208,30 @@ impl Element for InspectorDgElement {
         paint_fill(window, sep_bounds, self.colors.border);
 
         // 3. Paint Preview Viewport with Hardware GPU Clipping Layer
-        let fade = window.use_keyed_state("inspector-preview-resource-fade", cx,
-            |_, _| crate::ui::dg::motion::ResourceFade::<Option<PathBuf>>::new());
+        let fade = window.use_keyed_state("inspector-preview-resource-fade", cx, |_, _| {
+            crate::ui::dg::motion::ResourceFade::<Option<PathBuf>>::new()
+        });
         let instant = self.disable_animations || cx.reduce_motion();
         let path = self.entry.as_ref().map(|entry| entry.path.clone());
-        let (opacity, active) = fade.update(cx, |s, _| s.sample(&[(path, self.texture.as_ref().map(|tex| tex.id))], instant, std::time::Instant::now()));
-        if active { window.request_animation_frame(); }
+        let (opacity, active) = fade.update(cx, |s, _| {
+            s.sample(
+                &[(path, self.texture.as_ref().map(|tex| tex.id))],
+                instant,
+                std::time::Instant::now(),
+            )
+        });
+        if active {
+            window.request_animation_frame();
+        }
         let viewport_bounds = layout.preview_slot.to_bounds(origin);
         if viewport_bounds.size.width > px(4.0) && viewport_bounds.size.height > px(4.0) {
             window.paint_layer(viewport_bounds, |window| {
                 // Background well
                 paint_rounded(window, viewport_bounds, radius, self.colors.surface);
-                if matches!(self.preview_result.as_deref(), Some(PreviewResult::Image { .. })) {
+                if matches!(
+                    self.preview_result.as_deref(),
+                    Some(PreviewResult::Image { .. })
+                ) {
                     paint_checkerboard(window, viewport_bounds, zoom);
                 }
 
@@ -1132,21 +1240,34 @@ impl Element for InspectorDgElement {
                     (&prepaint.preview_texture_bounds, &self.texture)
                 {
                     window.with_element_opacity(opacity.first().copied(), |window| {
-                    let _ = window.paint_image(
-                        *tex_bounds,
-                        *tex_bounds,
-                        Corners::all(px(4.0 * zoom)),
-                        tex.clone(),
-                        0,
-                        false,
-                    );
+                        let _ = window.paint_image(
+                            *tex_bounds,
+                            *tex_bounds,
+                            Corners::all(px(4.0 * zoom)),
+                            tex.clone(),
+                            0,
+                            false,
+                        );
                     });
                     if self.image_view.zoom > 1.0 {
                         if let Some(radar) = image_radar(viewport_bounds, *tex_bounds, zoom) {
                             paint_rounded(window, radar.frame, 3.0 * zoom, self.colors.bg);
-                            let _ = window.paint_image(radar.frame, radar.frame, Corners::all(px(2.0 * zoom)), tex.clone(), 0, false);
-                            window.paint_quad(gpui::quad(radar.visible, px(0.0), self.colors.accent.opacity(0.16),
-                                px(1.5 * zoom), self.colors.accent, Default::default()));
+                            let _ = window.paint_image(
+                                radar.frame,
+                                radar.frame,
+                                Corners::all(px(2.0 * zoom)),
+                                tex.clone(),
+                                0,
+                                false,
+                            );
+                            window.paint_quad(gpui::quad(
+                                radar.visible,
+                                px(0.0),
+                                self.colors.accent.opacity(0.16),
+                                px(1.5 * zoom),
+                                self.colors.accent,
+                                Default::default(),
+                            ));
                         }
                     }
                 }
@@ -1265,12 +1386,26 @@ impl Element for InspectorDgElement {
                     if let Some(ref title) = prepaint.multi_title_line {
                         let y = viewport_bounds.origin.y + px(130.0 * zoom);
                         let x = viewport_bounds.origin.x + px(16.0 * zoom);
-                        let _ = title.paint(point(x, y), px(20.0 * zoom), TextAlign::Left, None, window, cx);
+                        let _ = title.paint(
+                            point(x, y),
+                            px(20.0 * zoom),
+                            TextAlign::Left,
+                            None,
+                            window,
+                            cx,
+                        );
                     }
                     if let Some(ref subtitle) = prepaint.multi_subtitle_line {
                         let y = viewport_bounds.origin.y + px(154.0 * zoom);
                         let x = viewport_bounds.origin.x + px(16.0 * zoom);
-                        let _ = subtitle.paint(point(x, y), px(18.0 * zoom), TextAlign::Left, None, window, cx);
+                        let _ = subtitle.paint(
+                            point(x, y),
+                            px(18.0 * zoom),
+                            TextAlign::Left,
+                            None,
+                            window,
+                            cx,
+                        );
                     }
                 }
 
@@ -1281,7 +1416,14 @@ impl Element for InspectorDgElement {
                         + px((f32::from(viewport_bounds.size.width) - w).max(0.0) * 0.5);
                     let y = viewport_bounds.origin.y
                         + px((f32::from(viewport_bounds.size.height) - 18.0 * zoom).max(0.0) * 0.5);
-                    let _ = empty_line.paint(point(x, y), px(18.0 * zoom), TextAlign::Left, None, window, cx);
+                    let _ = empty_line.paint(
+                        point(x, y),
+                        px(18.0 * zoom),
+                        TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    );
                 }
             });
         }
@@ -1317,7 +1459,14 @@ impl Element for InspectorDgElement {
                 );
                 let ky = origin.y + px(row.key_slot.y);
                 let kx = origin.x + px(row.key_slot.x);
-                let _ = key_line.paint(point(kx, ky), px(row.key_slot.h), TextAlign::Left, None, window, cx);
+                let _ = key_line.paint(
+                    point(kx, ky),
+                    px(row.key_slot.h),
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
 
                 // Value label (right column)
                 let val_line = shape_text_truncated(
@@ -1330,7 +1479,14 @@ impl Element for InspectorDgElement {
                 );
                 let vy = origin.y + px(row.val_slot.y);
                 let vx = origin.x + px(row.val_slot.x);
-                let _ = val_line.paint(point(vx, vy), px(row.val_slot.h), TextAlign::Left, None, window, cx);
+                let _ = val_line.paint(
+                    point(vx, vy),
+                    px(row.val_slot.h),
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
 
                 // Copy button slot (visible on hover)
                 if is_row_hovered {
@@ -1370,7 +1526,8 @@ impl Element for InspectorDgElement {
                 let tip_x = (slot.x + slot.w * 0.5 - tip_w * 0.5)
                     .max(8.0 * zoom)
                     .min(f32::from(bounds.size.width) - tip_w - 8.0 * zoom);
-                let tip_y = if slot.y + slot.h + tip_h + 8.0 * zoom < f32::from(bounds.size.height) {
+                let tip_y = if slot.y + slot.h + tip_h + 8.0 * zoom < f32::from(bounds.size.height)
+                {
                     slot.y + slot.h + 4.0 * zoom
                 } else {
                     slot.y - tip_h - 4.0 * zoom
@@ -1410,13 +1567,24 @@ impl Element for InspectorDgElement {
                 let scroll_view = app_entity.clone();
                 let scroll_hitbox = prepaint.hitbox.clone();
                 window.on_mouse_event::<ScrollWheelEvent>(move |ev, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble || !scroll_hitbox.is_hovered(window) || !viewport.contains(&ev.position) { return; }
-                    let dy = match ev.delta { gpui::ScrollDelta::Pixels(p) => f32::from(p.y), gpui::ScrollDelta::Lines(p) | gpui::ScrollDelta::PreciseLines(p) => p.y };
+                    if phase != DispatchPhase::Bubble
+                        || !scroll_hitbox.is_hovered(window)
+                        || !viewport.contains(&ev.position)
+                    {
+                        return;
+                    }
+                    let dy = match ev.delta {
+                        gpui::ScrollDelta::Pixels(p) => f32::from(p.y),
+                        gpui::ScrollDelta::Lines(p) | gpui::ScrollDelta::PreciseLines(p) => p.y,
+                    };
                     if dy != 0.0 {
                         scroll_view.update(cx, |this, cx| {
-                            if this.state.focused_tile != pane { return; }
+                            if this.state.focused_tile != pane {
+                                return;
+                            }
                             let view = this.preview_view.entry(pane).or_default();
-                            view.zoom = (view.zoom * if dy > 0.0 { 1.1 } else { 1.0 / 1.1 }).clamp(0.1, 48.0);
+                            view.zoom = (view.zoom * if dy > 0.0 { 1.1 } else { 1.0 / 1.1 })
+                                .clamp(0.1, 48.0);
                             cx.notify();
                         });
                     }
@@ -1425,15 +1593,27 @@ impl Element for InspectorDgElement {
                 let down_view = app_entity.clone();
                 let down_hitbox = prepaint.hitbox.clone();
                 let image_bounds = prepaint.preview_texture_bounds;
-                let radar = image_bounds.filter(|_| self.image_view.zoom > 1.0).and_then(|image| image_radar(viewport, image, zoom));
+                let radar = image_bounds
+                    .filter(|_| self.image_view.zoom > 1.0)
+                    .and_then(|image| image_radar(viewport, image, zoom));
                 window.on_mouse_event::<MouseDownEvent>(move |ev, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble || ev.button != MouseButton::Left || !down_hitbox.is_hovered(window) || !viewport.contains(&ev.position) { return; }
+                    if phase != DispatchPhase::Bubble
+                        || ev.button != MouseButton::Left
+                        || !down_hitbox.is_hovered(window)
+                        || !viewport.contains(&ev.position)
+                    {
+                        return;
+                    }
                     down_view.update(cx, |this, cx| {
-                        if this.state.focused_tile != pane { return; }
+                        if this.state.focused_tile != pane {
+                            return;
+                        }
                         if let (Some(radar), Some(image)) = (radar, image_bounds) {
                             if radar.frame.contains(&ev.position) {
-                                let x = f32::from(ev.position.x - radar.frame.origin.x) / f32::from(radar.frame.size.width);
-                                let y = f32::from(ev.position.y - radar.frame.origin.y) / f32::from(radar.frame.size.height);
+                                let x = f32::from(ev.position.x - radar.frame.origin.x)
+                                    / f32::from(radar.frame.size.width);
+                                let y = f32::from(ev.position.y - radar.frame.origin.y)
+                                    / f32::from(radar.frame.size.height);
                                 let view = this.preview_view.entry(pane).or_default();
                                 view.pan_x = (0.5 - x) * f32::from(image.size.width);
                                 view.pan_y = (0.5 - y) * f32::from(image.size.height);
@@ -1444,21 +1624,34 @@ impl Element for InspectorDgElement {
                         }
                         if ev.click_count >= 2 {
                             let view = this.preview_view.entry(pane).or_default();
-                            view.zoom = if (view.zoom - 1.0).abs() < 0.01 { 2.0 } else { 1.0 };
+                            view.zoom = if (view.zoom - 1.0).abs() < 0.01 {
+                                2.0
+                            } else {
+                                1.0
+                            };
                             view.pan_x = 0.0;
                             view.pan_y = 0.0;
                             this.preview_drag = None;
-                        } else { this.preview_drag = Some(ev.position); }
+                        } else {
+                            this.preview_drag = Some(ev.position);
+                        }
                         cx.notify();
                     });
                     cx.stop_propagation();
                 });
                 let move_view = app_entity.clone();
                 window.on_mouse_event::<MouseMoveEvent>(move |ev, phase, _window, cx| {
-                    if phase != DispatchPhase::Bubble { return; }
+                    if phase != DispatchPhase::Bubble {
+                        return;
+                    }
                     move_view.update(cx, |this, cx| {
-                        if this.state.focused_tile != pane { return; }
-                        if ev.pressed_button != Some(MouseButton::Left) { this.preview_drag = None; return; }
+                        if this.state.focused_tile != pane {
+                            return;
+                        }
+                        if ev.pressed_button != Some(MouseButton::Left) {
+                            this.preview_drag = None;
+                            return;
+                        }
                         if let Some(previous) = this.preview_drag {
                             let view = this.preview_view.entry(pane).or_default();
                             view.pan_x += f32::from(ev.position.x - previous.x);
@@ -1474,7 +1667,8 @@ impl Element for InspectorDgElement {
                         up_view.update(cx, |this, _| this.preview_drag = None);
                     }
                 });
-                if viewport.contains(&window.mouse_position()) && prepaint.hitbox.is_hovered(window) {
+                if viewport.contains(&window.mouse_position()) && prepaint.hitbox.is_hovered(window)
+                {
                     window.set_cursor_style(CursorStyle::OpenHand, &prepaint.hitbox);
                 }
             }
@@ -1523,11 +1717,27 @@ impl Element for InspectorDgElement {
 mod tests {
     #[test]
     fn radar_projects_the_visible_part_of_a_panned_image() {
-        let viewport = gpui::Bounds { origin: gpui::point(gpui::px(0.0), gpui::px(0.0)), size: gpui::size(gpui::px(400.0), gpui::px(300.0)) };
-        let image = gpui::Bounds { origin: gpui::point(gpui::px(-200.0), gpui::px(-150.0)), size: gpui::size(gpui::px(800.0), gpui::px(600.0)) };
+        let viewport = gpui::Bounds {
+            origin: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+            size: gpui::size(gpui::px(400.0), gpui::px(300.0)),
+        };
+        let image = gpui::Bounds {
+            origin: gpui::point(gpui::px(-200.0), gpui::px(-150.0)),
+            size: gpui::size(gpui::px(800.0), gpui::px(600.0)),
+        };
         let radar = super::image_radar(viewport, image, 1.0).unwrap();
-        assert_eq!(radar.visible.size, gpui::size(radar.frame.size.width * 0.5, radar.frame.size.height * 0.5));
-        assert_eq!(radar.visible.origin, radar.frame.origin + gpui::point(radar.frame.size.width * 0.25, radar.frame.size.height * 0.25));
+        assert_eq!(
+            radar.visible.size,
+            gpui::size(radar.frame.size.width * 0.5, radar.frame.size.height * 0.5)
+        );
+        assert_eq!(
+            radar.visible.origin,
+            radar.frame.origin
+                + gpui::point(
+                    radar.frame.size.width * 0.25,
+                    radar.frame.size.height * 0.25
+                )
+        );
         assert!(radar.frame.right() < viewport.right());
         assert!(radar.frame.bottom() < viewport.bottom());
         let fitted = super::image_radar(viewport, viewport, 1.0).unwrap();
@@ -1605,8 +1815,14 @@ mod tests {
             let painted = slot.to_bounds(bounds.origin);
             assert!(painted.left() >= bounds.left());
             assert!(painted.top() >= bounds.top());
-            assert!(painted.right() <= bounds.right(), "off-panel slot: {slot:?}");
-            assert!(painted.bottom() <= bounds.bottom(), "off-panel slot: {slot:?}");
+            assert!(
+                painted.right() <= bounds.right(),
+                "off-panel slot: {slot:?}"
+            );
+            assert!(
+                painted.bottom() <= bounds.bottom(),
+                "off-panel slot: {slot:?}"
+            );
             assert!(slot.contains(
                 f32::from(painted.center().x - bounds.origin.x),
                 f32::from(painted.center().y - bounds.origin.y),

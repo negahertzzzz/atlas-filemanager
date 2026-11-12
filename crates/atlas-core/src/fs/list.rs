@@ -1,5 +1,5 @@
-use atlas_model::pane::FolderOrder;
 use atlas_model::file_entry::{FileEntry, FileKind, SortColumn, SortDir};
+use atlas_model::pane::FolderOrder;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use unicode_casefold::UnicodeCaseFold;
@@ -101,7 +101,10 @@ pub async fn list_branch_dir_with_preview(
 
         while let Some(current_dir) = queue.pop_front() {
             if super::scan_policy::is_scan_excluded(&current_dir)
-                || super::preview::is_cloud_placeholder(&current_dir) { continue; }
+                || super::preview::is_cloud_placeholder(&current_dir)
+            {
+                continue;
+            }
             let directory = atlas_model::file_entry::EntryDirectory::new(current_dir.clone());
             let read_dir = match std::fs::read_dir(&current_dir) {
                 Ok(rd) => rd,
@@ -143,17 +146,23 @@ pub async fn list_branch_dir_with_preview(
                 );
 
                 let is_hidden = crate::util::display::is_hidden(&path);
-                entries.push(FileEntry::in_directory(atlas_model::file_entry::FileEntryData {
-                    name: name.into(),
-                    path,
-                    kind,
-                    size,
-                    modified,
-                    _is_hidden: is_hidden,
-                    _is_symlink: is_symlink,
-                    archive_root: None,
-                    recycle_info: None,
-                }, directory.clone()).with_native_metadata(cached_attributes(meta.as_ref()), 0));
+                entries.push(
+                    FileEntry::in_directory(
+                        atlas_model::file_entry::FileEntryData {
+                            name: name.into(),
+                            path,
+                            kind,
+                            size,
+                            modified,
+                            _is_hidden: is_hidden,
+                            _is_symlink: is_symlink,
+                            archive_root: None,
+                            recycle_info: None,
+                        },
+                        directory.clone(),
+                    )
+                    .with_native_metadata(cached_attributes(meta.as_ref()), 0),
+                );
                 if entries.len() % 256 == 0 {
                     let mut snapshot = entries.clone();
                     sort_entries(&mut snapshot, &sort_col, &sort_dir, false);
@@ -186,7 +195,10 @@ pub async fn list_dir_with_preview(
         // A server that refused two sign-ins is left alone for a while, so
         // Atlas never adds failed logons that lock accounts or trip alarms.
         let sign_in_server = crate::fs::network::server_of(&dir);
-        if let Some(left) = sign_in_server.as_deref().and_then(crate::fs::network_guard::paused_for) {
+        if let Some(left) = sign_in_server
+            .as_deref()
+            .and_then(crate::fs::network_guard::paused_for)
+        {
             anyhow::bail!(crate::fs::network_guard::paused_error(left));
         }
         let signed_in = || {
@@ -214,7 +226,10 @@ pub async fn list_dir_with_preview(
             let native = atlas_win_space::directory::enumerate(&dir, |raw| {
                 let hidden = raw.attributes & (0x2 | 0x4) != 0
                     || raw.name.to_string_lossy().starts_with('.');
-                if !show_hidden && hidden && !raw.name.to_string_lossy().starts_with(crate::vault::PREFIX) {
+                if !show_hidden
+                    && hidden
+                    && !raw.name.to_string_lossy().starts_with(crate::vault::PREFIX)
+                {
                     return;
                 }
                 let path = dir.join(&raw.name);
@@ -237,23 +252,33 @@ pub async fn list_dir_with_preview(
                             }
                         });
 
-                entries.push(FileEntry::in_directory(atlas_model::file_entry::FileEntryData {
-                    name: name.into(),
-                    path,
-                    kind: if symlink {
-                        FileKind::Symlink
-                    } else if is_dir {
-                        FileKind::Dir
-                    } else {
-                        FileKind::File
-                    },
-                    size: (!is_dir && !symlink).then_some(raw.size),
-                    modified,
-                    _is_hidden: hidden,
-                    _is_symlink: symlink,
-                    archive_root: None,
-                    recycle_info: None,
-                }, directory.clone()).with_native_reparse_metadata(raw.attributes, u128::from_le_bytes(raw.file_id), raw.reparse_tag));
+                entries.push(
+                    FileEntry::in_directory(
+                        atlas_model::file_entry::FileEntryData {
+                            name: name.into(),
+                            path,
+                            kind: if symlink {
+                                FileKind::Symlink
+                            } else if is_dir {
+                                FileKind::Dir
+                            } else {
+                                FileKind::File
+                            },
+                            size: (!is_dir && !symlink).then_some(raw.size),
+                            modified,
+                            _is_hidden: hidden,
+                            _is_symlink: symlink,
+                            archive_root: None,
+                            recycle_info: None,
+                        },
+                        directory.clone(),
+                    )
+                    .with_native_reparse_metadata(
+                        raw.attributes,
+                        u128::from_le_bytes(raw.file_id),
+                        raw.reparse_tag,
+                    ),
+                );
                 if entries.len() == 256 {
                     let mut first = entries.clone();
                     sort_entries(&mut first, &sort_col, &sort_dir, folder_order);
@@ -314,7 +339,8 @@ pub async fn list_dir_with_preview(
 /// A refused sign-in counts against the server; the second one pauses it.
 fn network_error(dir: &Path, error: anyhow::Error) -> anyhow::Error {
     use crate::fs::network_guard as guard;
-    if let (Some(server), Some(code)) = (crate::fs::network::server_of(dir), guard::os_code(&error)) {
+    if let (Some(server), Some(code)) = (crate::fs::network::server_of(dir), guard::os_code(&error))
+    {
         if guard::is_sign_in_failure(code) {
             if let Some(pause) = guard::record_failure(&server) {
                 return anyhow::anyhow!(guard::paused_error(pause));
@@ -341,7 +367,10 @@ fn list_dir_portable(
     for raw in std::fs::read_dir(&dir)? {
         let Ok(de) = raw else { continue };
         let path = de.path();
-        if !show_hidden && crate::util::display::is_hidden(&path) && !crate::vault::is_private_path(&path) {
+        if !show_hidden
+            && crate::util::display::is_hidden(&path)
+            && !crate::vault::is_private_path(&path)
+        {
             continue;
         }
         let Ok(ft) = de.file_type() else { continue };
@@ -379,17 +408,23 @@ fn list_dir_portable(
         if !show_hidden && is_hidden && !crate::vault::is_private_path(&path) {
             continue;
         }
-        entries.push(FileEntry::in_directory(atlas_model::file_entry::FileEntryData {
-            name: name.into(),
-            path,
-            kind,
-            size,
-            modified,
-            _is_hidden: is_hidden,
-            _is_symlink: is_symlink,
-            archive_root: None,
-            recycle_info: None,
-        }, directory.clone()).with_native_metadata(cached_attributes(meta.as_ref()), 0));
+        entries.push(
+            FileEntry::in_directory(
+                atlas_model::file_entry::FileEntryData {
+                    name: name.into(),
+                    path,
+                    kind,
+                    size,
+                    modified,
+                    _is_hidden: is_hidden,
+                    _is_symlink: is_symlink,
+                    archive_root: None,
+                    recycle_info: None,
+                },
+                directory.clone(),
+            )
+            .with_native_metadata(cached_attributes(meta.as_ref()), 0),
+        );
         if entries.len() == 256 {
             let mut first = entries.clone();
             sort_entries(&mut first, &sort_col, &sort_dir, folder_order);
@@ -452,30 +487,33 @@ pub async fn entry_for_path(path: &Path) -> Option<FileEntry> {
     let size = meta.is_file().then_some(meta.len());
     let modified = meta.modified().ok();
 
-
     // Watcher deltas must never invoke shell extensions or hydrate placeholders.
 
-    Some(FileEntry::from(atlas_model::file_entry::FileEntryData {
-        name: name.into(),
-        path: path.to_path_buf(),
-        kind,
-        size,
-        modified,
-        _is_hidden: {
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::MetadataExt;
-                meta.file_attributes() & (0x2 | 0x4) != 0 || crate::util::display::is_hidden(path)
-            }
-            #[cfg(not(windows))]
-            {
-                crate::util::display::is_hidden(path)
-            }
-        },
-        _is_symlink: is_symlink,
-        archive_root: None,
-        recycle_info: None,
-    }).with_native_metadata(cached_attributes(Some(&meta)), 0))
+    Some(
+        FileEntry::from(atlas_model::file_entry::FileEntryData {
+            name: name.into(),
+            path: path.to_path_buf(),
+            kind,
+            size,
+            modified,
+            _is_hidden: {
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    meta.file_attributes() & (0x2 | 0x4) != 0
+                        || crate::util::display::is_hidden(path)
+                }
+                #[cfg(not(windows))]
+                {
+                    crate::util::display::is_hidden(path)
+                }
+            },
+            _is_symlink: is_symlink,
+            archive_root: None,
+            recycle_info: None,
+        })
+        .with_native_metadata(cached_attributes(Some(&meta)), 0),
+    )
 }
 
 /// Quick, non-recursive stats for a folder-hover tooltip (Explorer-style): immediate
@@ -525,7 +563,11 @@ pub fn sort_entries(
                 (_, FileKind::Dir) => std::cmp::Ordering::Greater,
                 _ => std::cmp::Ordering::Equal,
             };
-            let kind_ord = if folder_order == FolderOrder::FoldersLast { kind_ord.reverse() } else { kind_ord };
+            let kind_ord = if folder_order == FolderOrder::FoldersLast {
+                kind_ord.reverse()
+            } else {
+                kind_ord
+            };
             if kind_ord != std::cmp::Ordering::Equal {
                 return kind_ord;
             }
@@ -556,17 +598,43 @@ mod tests {
     fn three_folder_orders_respect_ascending_and_descending_sort() {
         use FolderOrder::{FoldersFirst, FoldersLast, Mixed};
         for (order, direction, expected) in [
-            (FoldersFirst, SortDir::Asc, ["b-dir", "d-dir", "a-file", "c-file"]),
-            (FoldersLast, SortDir::Asc, ["a-file", "c-file", "b-dir", "d-dir"]),
+            (
+                FoldersFirst,
+                SortDir::Asc,
+                ["b-dir", "d-dir", "a-file", "c-file"],
+            ),
+            (
+                FoldersLast,
+                SortDir::Asc,
+                ["a-file", "c-file", "b-dir", "d-dir"],
+            ),
             (Mixed, SortDir::Asc, ["a-file", "b-dir", "c-file", "d-dir"]),
-            (FoldersFirst, SortDir::Desc, ["d-dir", "b-dir", "c-file", "a-file"]),
-            (FoldersLast, SortDir::Desc, ["c-file", "a-file", "d-dir", "b-dir"]),
+            (
+                FoldersFirst,
+                SortDir::Desc,
+                ["d-dir", "b-dir", "c-file", "a-file"],
+            ),
+            (
+                FoldersLast,
+                SortDir::Desc,
+                ["c-file", "a-file", "d-dir", "b-dir"],
+            ),
             (Mixed, SortDir::Desc, ["d-dir", "c-file", "b-dir", "a-file"]),
         ] {
-            let mut entries = vec![entry("c-file", FileKind::File), entry("d-dir", FileKind::Dir),
-                entry("a-file", FileKind::File), entry("b-dir", FileKind::Dir)];
+            let mut entries = vec![
+                entry("c-file", FileKind::File),
+                entry("d-dir", FileKind::Dir),
+                entry("a-file", FileKind::File),
+                entry("b-dir", FileKind::Dir),
+            ];
             sort_entries(&mut entries, &SortColumn::Name, &direction, order);
-            assert_eq!(entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(), expected);
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|entry| entry.name.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
         }
     }
 
@@ -580,18 +648,45 @@ mod tests {
         for order in FolderOrder::ALL {
             let preview = std::sync::Arc::new(std::sync::Mutex::new(None));
             let output = preview.clone();
-            let final_batch = list_dir_with_preview(fixture.path(), true, SortColumn::Name, SortDir::Asc,
-                order, move |batch| *output.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(batch)).await.unwrap();
-            let first_batch = preview.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take().unwrap();
+            let final_batch = list_dir_with_preview(
+                fixture.path(),
+                true,
+                SortColumn::Name,
+                SortDir::Asc,
+                order,
+                move |batch| {
+                    *output
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(batch)
+                },
+            )
+            .await
+            .unwrap();
+            let first_batch = preview
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+                .unwrap();
             assert_eq!(first_batch.len(), 256);
             assert_eq!(final_batch.len(), 261);
             for batch in [&first_batch, &final_batch] {
                 let mut sorted = batch.clone();
                 sort_entries(&mut sorted, &SortColumn::Name, &SortDir::Asc, order);
-                assert_eq!(batch.iter().map(|e| e.path()).collect::<Vec<_>>(), sorted.iter().map(|e| e.path()).collect::<Vec<_>>());
+                assert_eq!(
+                    batch.iter().map(|e| e.path()).collect::<Vec<_>>(),
+                    sorted.iter().map(|e| e.path()).collect::<Vec<_>>()
+                );
             }
-            assert_eq!(final_batch.iter().position(|entry| entry.kind() == FileKind::Dir),
-                Some(if order == FolderOrder::FoldersFirst { 0 } else { 260 }));
+            assert_eq!(
+                final_batch
+                    .iter()
+                    .position(|entry| entry.kind() == FileKind::Dir),
+                Some(if order == FolderOrder::FoldersFirst {
+                    0
+                } else {
+                    260
+                })
+            );
         }
     }
 

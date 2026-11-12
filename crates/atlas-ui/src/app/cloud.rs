@@ -65,36 +65,56 @@ pub enum CloudAction {
 }
 
 impl App {
-    pub(crate) fn drop_cloud_files(&mut self, drag: &crate::ui::root::DraggedCloudFiles,
-        position: gpui::Point<gpui::Pixels>, shift: bool) {
-        let destination = self.drag_hover_drop_command_at(f32::from(position.x), f32::from(position.y));
+    pub(crate) fn drop_cloud_files(
+        &mut self,
+        drag: &crate::ui::root::DraggedCloudFiles,
+        position: gpui::Point<gpui::Pixels>,
+        shift: bool,
+    ) {
+        let destination =
+            self.drag_hover_drop_command_at(f32::from(position.x), f32::from(position.y));
         let accepted = if shift {
             self.toast_error(rust_i18n::t!("cloud_drag_copy_only").into_owned());
             false
-        } else if let Some(crate::ui::drag_hover::DragHoverDropCommand::TransferTo(destination)) = destination {
+        } else if let Some(crate::ui::drag_hover::DragHoverDropCommand::TransferTo(destination)) =
+            destination
+        {
             self.copy_cloud_files_to(drag, &destination)
         } else {
             self.toast_error(rust_i18n::t!("dnd_intent_blocked").into_owned());
             false
         };
-        if accepted { self.mark_drag_committed(); }
-        else { self.drag_hover_external_left(); }
+        if accepted {
+            self.mark_drag_committed();
+        } else {
+            self.drag_hover_external_left();
+        }
         self.drag_hover.clear();
     }
 
-    pub(crate) fn copy_cloud_files_to(&mut self, drag: &crate::ui::root::DraggedCloudFiles, destination: &std::path::Path) -> bool {
+    pub(crate) fn copy_cloud_files_to(
+        &mut self,
+        drag: &crate::ui::root::DraggedCloudFiles,
+        destination: &std::path::Path,
+    ) -> bool {
         if let Some((destination_id, base)) = parse_remote_sentinel(destination) {
-            if drag.account == destination_id && drag.paths.iter().any(|path| {
-                let path = path.to_string_lossy();
-                base == path || base.starts_with(&format!("{path}/"))
-            }) {
+            if drag.account == destination_id
+                && drag.paths.iter().any(|path| {
+                    let path = path.to_string_lossy();
+                    base == path || base.starts_with(&format!("{path}/"))
+                })
+            {
                 self.toast_error(rust_i18n::t!("dnd_intent_blocked").into_owned());
                 return false;
             }
             for path in &drag.paths {
                 let source = path.to_string_lossy().into_owned();
                 let name = atlas_model::remote_path::file_name(&source);
-                if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
+                if name.is_empty()
+                    || name == "."
+                    || name == ".."
+                    || name.contains(['/', '\\', '\0'])
+                {
                     self.toast_error(rust_i18n::t!("cloud_invalid_local_name").into_owned());
                     return false;
                 }
@@ -102,21 +122,41 @@ impl App {
             for path in &drag.paths {
                 let source = path.to_string_lossy().into_owned();
                 let name = atlas_model::remote_path::file_name(&source);
-                let target = if base.is_empty() { name.clone() } else { format!("{base}/{name}") };
-                let _ = self.cloud_tx.send(CloudCmd::EnqueueRemoteCopy { source_id: drag.account.clone(), source,
-                    destination_id: destination_id.clone(), destination: target, label: name });
+                let target = if base.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{base}/{name}")
+                };
+                let _ = self.cloud_tx.send(CloudCmd::EnqueueRemoteCopy {
+                    source_id: drag.account.clone(),
+                    source,
+                    destination_id: destination_id.clone(),
+                    destination: target,
+                    label: name,
+                });
             }
         } else {
-            if !destination.is_absolute() { return false; }
-            if drag.paths.iter().any(|path| !atlas_model::remote_path::safe_local_name(&atlas_model::remote_path::file_name(&path.to_string_lossy()))) {
+            if !destination.is_absolute() {
+                return false;
+            }
+            if drag.paths.iter().any(|path| {
+                !atlas_model::remote_path::safe_local_name(&atlas_model::remote_path::file_name(
+                    &path.to_string_lossy(),
+                ))
+            }) {
                 self.toast_error(rust_i18n::t!("cloud_invalid_local_name").into_owned());
                 return false;
             }
             for path in &drag.paths {
                 let remote_path = path.to_string_lossy().into_owned();
                 let name = atlas_model::remote_path::file_name(&remote_path);
-                let _ = self.cloud_tx.send(CloudCmd::EnqueueDownload { id: drag.account.clone(), remote_path,
-                    local_path: destination.join(&name), label: name, open_on_done: false });
+                let _ = self.cloud_tx.send(CloudCmd::EnqueueDownload {
+                    id: drag.account.clone(),
+                    remote_path,
+                    local_path: destination.join(&name),
+                    label: name,
+                    open_on_done: false,
+                });
             }
         }
         self.state.cloud.show_transfers = true;
@@ -126,21 +166,39 @@ impl App {
     pub(crate) fn cloud_drop_label(&self, destination: &std::path::Path) -> String {
         match parse_remote_sentinel(destination) {
             Some((id, path)) => {
-                let account = self.state.cloud.remotes.iter().find(|remote| remote.id == id).map_or(id.as_str(), |remote| remote.name.as_str());
+                let account = self
+                    .state
+                    .cloud
+                    .remotes
+                    .iter()
+                    .find(|remote| remote.id == id)
+                    .map_or(id.as_str(), |remote| remote.name.as_str());
                 format!("{account} / {}", atlas_model::remote_path::display(&path))
             }
             None => destination.display().to_string(),
         }
     }
 
-    pub(crate) fn cloud_drag_destination_allowed(&self, drag: &crate::ui::root::DraggedCloudFiles,
-        command: &crate::ui::drag_hover::DragHoverDropCommand, shift: bool) -> bool {
-        let crate::ui::drag_hover::DragHoverDropCommand::TransferTo(destination) = command else { return false; };
-        if shift { return false; }
+    pub(crate) fn cloud_drag_destination_allowed(
+        &self,
+        drag: &crate::ui::root::DraggedCloudFiles,
+        command: &crate::ui::drag_hover::DragHoverDropCommand,
+        shift: bool,
+    ) -> bool {
+        let crate::ui::drag_hover::DragHoverDropCommand::TransferTo(destination) = command else {
+            return false;
+        };
+        if shift {
+            return false;
+        }
         match parse_remote_sentinel(destination) {
-            Some((id, base)) => !(id == drag.account && drag.paths.iter().any(|path| {
-                let path = path.to_string_lossy(); base == path || base.starts_with(&format!("{path}/"))
-            })),
+            Some((id, base)) => {
+                !(id == drag.account
+                    && drag.paths.iter().any(|path| {
+                        let path = path.to_string_lossy();
+                        base == path || base.starts_with(&format!("{path}/"))
+                    }))
+            }
             None => destination.is_absolute(),
         }
     }
@@ -148,13 +206,22 @@ impl App {
     /// Hydrate one remote selection through the bounded provider preview queue.
     pub(crate) fn load_cloud_preview_for_selection(&mut self) -> bool {
         let tile = self.state.focused_tile;
-        let Some(Location::Remote { id, .. }) = self.tab_data_for(tile).map(|tab| tab.location.clone()) else {
+        let Some(Location::Remote { id, .. }) =
+            self.tab_data_for(tile).map(|tab| tab.location.clone())
+        else {
             return false;
         };
         let entry = self.state.tab_states.get(&tile).and_then(|state| {
             let view = &self.tab_data_for(tile)?.view_mode;
             let selected = state.selected_entries(view);
-            (selected.len() == 1).then(|| (state.last_nav_op_id, selected[0].path(), selected[0].size(), selected[0].kind() == atlas_model::file_entry::FileKind::Dir))
+            (selected.len() == 1).then(|| {
+                (
+                    state.last_nav_op_id,
+                    selected[0].path(),
+                    selected[0].size(),
+                    selected[0].kind() == atlas_model::file_entry::FileKind::Dir,
+                )
+            })
         });
         let Some((op_id, path, size, is_dir)) = entry else {
             self.state.clear_preview(tile);
@@ -168,7 +235,12 @@ impl App {
             self.preview_editor = None;
             self.state.preview.paths.insert(tile, key.clone());
             let _ = self.cloud_tx.send(CloudCmd::PreviewRemote {
-                tab: tile, id, path: path.to_string_lossy().into_owned(), key, size, is_dir,
+                tab: tile,
+                id,
+                path: path.to_string_lossy().into_owned(),
+                key,
+                size,
+                is_dir,
             });
         }
         true
@@ -372,16 +444,24 @@ impl App {
 
     /// Re-list a remote tab at `path` (Access-mode directory descent).
     pub(crate) fn navigate_remote(&mut self, tab_id: TileId, id: RemoteId, path: String) {
-        self.navigate_to(tab_id, Location::Remote { id, path }, super::nav::NavKind::Push);
+        self.navigate_to(
+            tab_id,
+            Location::Remote { id, path },
+            super::nav::NavKind::Push,
+        );
     }
 
     /// Ask the worker to list a remote dir; the answer comes back as `DirListed`.
     pub(crate) fn spawn_list_remote(&mut self, tab_id: TileId, id: RemoteId, path: String) {
         if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tab_id) {
-            if matches!(pane.view_mode, ViewMode::Miller | ViewMode::Tree) { pane.view_mode = ViewMode::Details; }
+            if matches!(pane.view_mode, ViewMode::Miller | ViewMode::Tree) {
+                pane.view_mode = ViewMode::Details;
+            }
         }
-        let (sort_col, sort_dir, folder_order) = self.tab_data_for(tab_id)
-            .map(|tab| (tab.sort_col.clone(), tab.sort_dir.clone(), tab.folder_order)).unwrap_or_default();
+        let (sort_col, sort_dir, folder_order) = self
+            .tab_data_for(tab_id)
+            .map(|tab| (tab.sort_col.clone(), tab.sort_dir.clone(), tab.folder_order))
+            .unwrap_or_default();
         let op_id = self.state.next_op_id();
         let ts = self.state.tab_states.entry(tab_id).or_default();
         ts.load_state = LoadState::Loading;
@@ -391,7 +471,9 @@ impl App {
             op_id,
             id,
             path,
-            sort_col, sort_dir, folder_order,
+            sort_col,
+            sort_dir,
+            folder_order,
         });
     }
 
@@ -592,12 +674,21 @@ impl App {
 
         if !entries.is_empty() {
             if is_move {
-                let _ = self.cloud_tx.send(CloudCmd::CopyRemoteEntries { id: src_id, entries, is_move, parent: dst_path });
+                let _ = self.cloud_tx.send(CloudCmd::CopyRemoteEntries {
+                    id: src_id,
+                    entries,
+                    is_move,
+                    parent: dst_path,
+                });
             } else {
                 for (source, destination, _) in entries {
                     let label = atlas_model::remote_path::file_name(&source);
                     let _ = self.cloud_tx.send(CloudCmd::EnqueueRemoteCopy {
-                        source_id: src_id.clone(), source, destination_id: dst_id.clone(), destination, label,
+                        source_id: src_id.clone(),
+                        source,
+                        destination_id: dst_id.clone(),
+                        destination,
+                        label,
                     });
                 }
                 self.state.cloud.show_transfers = true;
@@ -617,7 +708,11 @@ impl App {
         else {
             return false;
         };
-        let generation = self.state.tab_states.get(&tile).map_or(0, |state| state.last_nav_op_id);
+        let generation = self
+            .state
+            .tab_states
+            .get(&tile)
+            .map_or(0, |state| state.last_nav_op_id);
         for path in paths {
             let remote_path = path.to_string_lossy().into_owned();
             let name = atlas_model::remote_path::file_name(&remote_path);
@@ -643,7 +738,9 @@ impl App {
     /// Apply a cloud-related `BgResult` to `CloudState`.
     pub(crate) fn handle_cloud_bg(&mut self, result: BgResult) {
         match result {
-            BgResult::CloudProviderStopped { uninstall, result } => self.complete_cloud_shutdown(uninstall, result),
+            BgResult::CloudProviderStopped { uninstall, result } => {
+                self.complete_cloud_shutdown(uninstall, result)
+            }
             BgResult::CloudRcloneProgress { done, total } => {
                 self.state.cloud.rclone_progress = Some((done, total));
             }
@@ -651,18 +748,35 @@ impl App {
                 self.state.cloud.ready = true;
                 self.state.cloud.rclone_progress = None;
                 self.state.cloud.last_error = None;
-                let restored = self.state.all_pane_tile_ids().into_iter().filter_map(|tile| {
-                    if self.state.tab_states.get(&tile).is_some_and(|state| state.load_state != LoadState::NotLoaded) { return None; }
-                    match self.tab_data_for(tile)?.location.clone() {
-                        Location::Remote { id, path } => Some((tile, id, path)),
-                        _ => None,
-                    }
-                }).collect::<Vec<_>>();
+                let restored = self
+                    .state
+                    .all_pane_tile_ids()
+                    .into_iter()
+                    .filter_map(|tile| {
+                        if self
+                            .state
+                            .tab_states
+                            .get(&tile)
+                            .is_some_and(|state| state.load_state != LoadState::NotLoaded)
+                        {
+                            return None;
+                        }
+                        match self.tab_data_for(tile)?.location.clone() {
+                            Location::Remote { id, path } => Some((tile, id, path)),
+                            _ => None,
+                        }
+                    })
+                    .collect::<Vec<_>>();
                 for (tile, id, path) in restored {
-                    let legacy_drive = self.state.cloud.remotes.iter().any(|remote| remote.id == id && matches!(remote.kind, RemoteKind::GoogleDrive))
-                        && !path.is_empty() && atlas_model::remote_path::last(&path).is_none();
-                    if legacy_drive { self.navigate_remote(tile, id, String::new()); }
-                    else { self.spawn_list_remote(tile, id, path); }
+                    let legacy_drive = self.state.cloud.remotes.iter().any(|remote| {
+                        remote.id == id && matches!(remote.kind, RemoteKind::GoogleDrive)
+                    }) && !path.is_empty()
+                        && atlas_model::remote_path::last(&path).is_none();
+                    if legacy_drive {
+                        self.navigate_remote(tile, id, String::new());
+                    } else {
+                        self.spawn_list_remote(tile, id, path);
+                    }
                 }
             }
             BgResult::CloudError(e) => {
@@ -752,11 +866,18 @@ impl App {
                 }
             }
             BgResult::TransferUpdate(snapshot) => {
-                let completed = snapshot.iter().filter(|transfer| {
-                    transfer.kind == atlas_model::cloud_model::TransferKind::Upload
-                        && transfer.state == atlas_model::cloud_model::TransferState::Done
-                        && !self.state.cloud.transfers.iter().any(|old| old.id == transfer.id && old.state == atlas_model::cloud_model::TransferState::Done)
-                }).map(|transfer| transfer.local_path.clone()).collect::<Vec<_>>();
+                let completed = snapshot
+                    .iter()
+                    .filter(|transfer| {
+                        transfer.kind == atlas_model::cloud_model::TransferKind::Upload
+                            && transfer.state == atlas_model::cloud_model::TransferState::Done
+                            && !self.state.cloud.transfers.iter().any(|old| {
+                                old.id == transfer.id
+                                    && old.state == atlas_model::cloud_model::TransferState::Done
+                            })
+                    })
+                    .map(|transfer| transfer.local_path.clone())
+                    .collect::<Vec<_>>();
                 self.consume_completed_staged_paths(&completed);
                 let any_active = snapshot.iter().any(|t| !t.state.is_terminal());
                 self.state.cloud.transfers = snapshot;

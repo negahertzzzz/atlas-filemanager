@@ -15,6 +15,18 @@ contents:
     dst: /usr/bin/atlas
     file_info:
       mode: 0755
+  - src: ${ATLAS_BINARY_DIR}/atlas-cloud-extension
+    dst: /usr/bin/atlas-cloud-extension
+    file_info:
+      mode: 0755
+  - src: ${ATLAS_BINARY_DIR}/atlas-search-service
+    dst: /usr/bin/atlas-search-service
+    file_info:
+      mode: 0755
+  - src: ${ATLAS_BINARY_DIR}/atlas-icon-extension
+    dst: /usr/bin/atlas-icon-extension
+    file_info:
+      mode: 0755
   - src: packaging/linux/atlas.desktop
     dst: /usr/share/applications/atlas.desktop
   - src: ${ATLAS_PACKAGE_DATA}/atlas.png
@@ -25,11 +37,14 @@ contents:
     dst: /usr/share/doc/atlas/CHANGELOG.md
   - src: LICENSE
     dst: /usr/share/licenses/atlas/LICENSE
+  - src: legal/THIRD-PARTY-NOTICES.txt
+    dst: /usr/share/doc/atlas/THIRD-PARTY-NOTICES.txt
 overrides:
   deb:
     depends:
       - libc6 (>= 2.35)
       - libgcc-s1
+      - libssl3 | libssl3t64
       - libxkbcommon0
       - libxkbcommon-x11-0
       - libxcb1
@@ -42,6 +57,8 @@ overrides:
     depends:
       - libc.so.6(GLIBC_2.35)(64bit)
       - libgcc_s.so.1()(64bit)
+      - libssl.so.3()(64bit)
+      - libcrypto.so.3()(64bit)
       - libxkbcommon.so.0()(64bit)
       - libxkbcommon-x11.so.0()(64bit)
       - libxcb.so.1()(64bit)
@@ -53,6 +70,7 @@ overrides:
     depends:
       - glibc
       - gcc-libs
+      - openssl
       - libxkbcommon
       - libxkbcommon-x11
       - libxcb

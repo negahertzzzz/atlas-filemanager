@@ -17,8 +17,8 @@ use windows_sys::Win32::NetworkManagement::NetManagement::NetApiBufferFree;
 use windows_sys::Win32::NetworkManagement::WNet::{
     WNetAddConnection2W, WNetCancelConnection2W, WNetCloseEnum, WNetConnectionDialog1W,
     WNetEnumResourceW, WNetGetConnectionW, WNetOpenEnumW, CONNDLG_RO_PATH, CONNDLG_USE_MRU,
-    CONNECTDLGSTRUCTW, CONNECT_TEMPORARY, CONNECT_UPDATE_PROFILE, NETRESOURCEW,
-    RESOURCETYPE_DISK, RESOURCE_CONNECTED, RESOURCE_REMEMBERED,
+    CONNECTDLGSTRUCTW, CONNECT_TEMPORARY, CONNECT_UPDATE_PROFILE, NETRESOURCEW, RESOURCETYPE_DISK,
+    RESOURCE_CONNECTED, RESOURCE_REMEMBERED,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     NetShareEnum, SHARE_INFO_1, STYPE_DISKTREE, STYPE_MASK, STYPE_SPECIAL,
@@ -346,7 +346,9 @@ impl Drop for Credentials {
 
 impl std::fmt::Debug for Credentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Credentials").field("user", &self.user()).finish_non_exhaustive()
+        f.debug_struct("Credentials")
+            .field("user", &self.user())
+            .finish_non_exhaustive()
     }
 }
 
@@ -365,7 +367,11 @@ fn wipe(buffer: &mut [u16]) {
 ///
 /// Showing the dialog never contacts the server: nothing is attempted until
 /// the caller passes the answer to [`connect`]. `Ok(None)` means Cancel.
-pub fn prompt_credentials(owner: isize, target: &str, refused: u32) -> io::Result<Option<Credentials>> {
+pub fn prompt_credentials(
+    owner: isize,
+    target: &str,
+    refused: u32,
+) -> io::Result<Option<Credentials>> {
     use windows_sys::Win32::Security::Credentials::{
         CredUIPromptForWindowsCredentialsW, CredUnPackAuthenticationBufferW, CREDUIWIN_CHECKBOX,
         CREDUI_INFOW, CRED_PACK_PROTECTED_CREDENTIALS,
@@ -406,24 +412,29 @@ pub fn prompt_credentials(owner: isize, target: &str, refused: u32) -> io::Resul
     let mut user = vec![0u16; 514];
     let mut domain = vec![0u16; 338];
     let mut password = vec![0u16; 514];
-    let unpacked = [CRED_PACK_PROTECTED_CREDENTIALS, 0].into_iter().any(|flags| {
-        let (mut user_len, mut domain_len, mut password_len) =
-            (user.len() as u32, domain.len() as u32, password.len() as u32);
-        // SAFETY: the lengths are the buffer capacities in UTF-16 units.
-        unsafe {
-            CredUnPackAuthenticationBufferW(
-                flags,
-                out,
-                out_len,
-                user.as_mut_ptr(),
-                &mut user_len,
-                domain.as_mut_ptr(),
-                &mut domain_len,
-                password.as_mut_ptr(),
-                &mut password_len,
-            ) != 0
-        }
-    });
+    let unpacked = [CRED_PACK_PROTECTED_CREDENTIALS, 0]
+        .into_iter()
+        .any(|flags| {
+            let (mut user_len, mut domain_len, mut password_len) = (
+                user.len() as u32,
+                domain.len() as u32,
+                password.len() as u32,
+            );
+            // SAFETY: the lengths are the buffer capacities in UTF-16 units.
+            unsafe {
+                CredUnPackAuthenticationBufferW(
+                    flags,
+                    out,
+                    out_len,
+                    user.as_mut_ptr(),
+                    &mut user_len,
+                    domain.as_mut_ptr(),
+                    &mut domain_len,
+                    password.as_mut_ptr(),
+                    &mut password_len,
+                ) != 0
+            }
+        });
     let error = io::Error::last_os_error();
     // SAFETY: CredUI allocated `out_len` bytes at `out` with CoTaskMemAlloc.
     unsafe {
@@ -434,22 +445,40 @@ pub fn prompt_credentials(owner: isize, target: &str, refused: u32) -> io::Resul
         wipe(&mut password);
         return Err(error);
     }
-    let text = |buffer: &[u16]| buffer.iter().take_while(|&&c| c != 0).copied().collect::<Vec<u16>>();
+    let text = |buffer: &[u16]| {
+        buffer
+            .iter()
+            .take_while(|&&c| c != 0)
+            .copied()
+            .collect::<Vec<u16>>()
+    };
     let (name, domain) = (text(&user), text(&domain));
     let mut user: Vec<u16> = if domain.is_empty() {
         name
     } else {
-        domain.into_iter().chain(Some(u16::from(b'\\'))).chain(name).collect()
+        domain
+            .into_iter()
+            .chain(Some(u16::from(b'\\')))
+            .chain(name)
+            .collect()
     };
     user.push(0);
-    Ok(Some(Credentials { user, password, save: save != 0 }))
+    Ok(Some(Credentials {
+        user,
+        password,
+        save: save != 0,
+    }))
 }
 
 /// One sign-in attempt to `remote` (`\\server\share`), optionally on a drive
 /// letter. `None` uses the signed-in user or the credentials saved in
 /// Credential Manager. Never shows UI and never retries: the caller decides
 /// whether a refused attempt may be followed by another.
-pub fn connect(remote: &str, local: Option<&str>, credentials: Option<&Credentials>) -> io::Result<()> {
+pub fn connect(
+    remote: &str,
+    local: Option<&str>,
+    credentials: Option<&Credentials>,
+) -> io::Result<()> {
     let mut remote_wide = wide(remote);
     let mut local_wide = local.map(wide);
     let mut resource: NETRESOURCEW = unsafe { std::mem::zeroed() };
@@ -458,7 +487,8 @@ pub fn connect(remote: &str, local: Option<&str>, credentials: Option<&Credentia
     if let Some(local) = local_wide.as_mut() {
         resource.lpLocalName = local.as_mut_ptr();
     }
-    let (user, password) = credentials.map_or((null(), null()), |c| (c.user.as_ptr(), c.password.as_ptr()));
+    let (user, password) =
+        credentials.map_or((null(), null()), |c| (c.user.as_ptr(), c.password.as_ptr()));
     // SAFETY: the strings are NUL-terminated and outlive the call.
     let status = unsafe { WNetAddConnection2W(&resource, password, user, CONNECT_TEMPORARY) };
     match status {
@@ -483,7 +513,10 @@ pub fn remember_credentials(server: &str, credentials: &Credentials) -> io::Resu
         Type: CRED_TYPE_DOMAIN_PASSWORD,
         TargetName: target.as_mut_ptr(),
         Comment: null_mut(),
-        LastWritten: windows_sys::Win32::Foundation::FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 },
+        LastWritten: windows_sys::Win32::Foundation::FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        },
         CredentialBlobSize: (secret.len() * 2) as u32,
         CredentialBlob: secret.as_mut_ptr().cast(),
         Persist: CRED_PERSIST_LOCAL_MACHINE,
@@ -496,7 +529,11 @@ pub fn remember_credentials(server: &str, credentials: &Credentials) -> io::Resu
     let written = unsafe { CredWriteW(&credential, 0) } != 0;
     let error = io::Error::last_os_error();
     wipe(&mut secret);
-    if written { Ok(()) } else { Err(error) }
+    if written {
+        Ok(())
+    } else {
+        Err(error)
+    }
 }
 
 /// Disconnect a mapped drive (`Z:`) or a deviceless `\\server\share`

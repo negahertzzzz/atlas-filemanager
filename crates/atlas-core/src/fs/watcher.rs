@@ -46,13 +46,27 @@ pub fn watch_path(path: &Path, tx: flume::Sender<BgResult>) -> anyhow::Result<Wa
     watch_path_with_mode(path, tx, false)
 }
 
-pub fn watch_path_recursive(path: &Path, tx: flume::Sender<BgResult>) -> anyhow::Result<WatcherHandle> {
+pub fn watch_path_recursive(
+    path: &Path,
+    tx: flume::Sender<BgResult>,
+) -> anyhow::Result<WatcherHandle> {
     watch_path_with_mode(path, tx, true)
 }
 
-fn watch_path_with_mode(path: &Path, tx: flume::Sender<BgResult>, recursive: bool) -> anyhow::Result<WatcherHandle> {
-    anyhow::ensure!(!super::scan_policy::is_scan_excluded(path) || crate::vault::live::mount_root(path).is_some(), "Background watching is disabled for this system directory");
-    anyhow::ensure!(!super::preview::is_cloud_placeholder(path), "Background watching is disabled for an offline cloud directory");
+fn watch_path_with_mode(
+    path: &Path,
+    tx: flume::Sender<BgResult>,
+    recursive: bool,
+) -> anyhow::Result<WatcherHandle> {
+    anyhow::ensure!(
+        !super::scan_policy::is_scan_excluded(path)
+            || crate::vault::live::mount_root(path).is_some(),
+        "Background watching is disabled for this system directory"
+    );
+    anyhow::ensure!(
+        !super::preview::is_cloud_placeholder(path),
+        "Background watching is disabled for an offline cloud directory"
+    );
     let directory = path.to_path_buf();
     let watched_path = directory.clone();
     let (events_tx, events_rx) = std::sync::mpsc::channel::<Vec<Change>>();
@@ -61,20 +75,27 @@ fn watch_path_with_mode(path: &Path, tx: flume::Sender<BgResult>, recursive: boo
     #[cfg(windows)]
     let failure_path = directory.clone();
     #[cfg(windows)]
-    let native = atlas_win_space::directory::DirectoryWatcher::watch_with_subtree(path, recursive, move |events| {
-        use atlas_win_space::directory::Change as Native;
-        let events = events
-            .into_iter()
-            .filter_map(|event| match event {
-                Native::Upsert(path) => Some(Change::Upsert(path)),
-                Native::Remove(path) => Some(Change::Remove(path)),
-                Native::Rename { from, to } => Some(Change::Rename(from, to)),
-                Native::Rescan => Some(Change::Rescan),
-                Native::Disabled => { let _ = failure_tx.send(BgResult::WatcherDisabled(failure_path.clone())); None },
-            })
-            .collect();
-        let _ = events_tx.send(events);
-    })?;
+    let native = atlas_win_space::directory::DirectoryWatcher::watch_with_subtree(
+        path,
+        recursive,
+        move |events| {
+            use atlas_win_space::directory::Change as Native;
+            let events = events
+                .into_iter()
+                .filter_map(|event| match event {
+                    Native::Upsert(path) => Some(Change::Upsert(path)),
+                    Native::Remove(path) => Some(Change::Remove(path)),
+                    Native::Rename { from, to } => Some(Change::Rename(from, to)),
+                    Native::Rescan => Some(Change::Rescan),
+                    Native::Disabled => {
+                        let _ = failure_tx.send(BgResult::WatcherDisabled(failure_path.clone()));
+                        None
+                    }
+                })
+                .collect();
+            let _ = events_tx.send(events);
+        },
+    )?;
     #[cfg(not(windows))]
     let watcher = {
         use notify::{
@@ -104,7 +125,14 @@ fn watch_path_with_mode(path: &Path, tx: flume::Sender<BgResult>, recursive: boo
                 };
                 let _ = events_tx.send(events);
             })?;
-        watcher.watch(path, if recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive })?;
+        watcher.watch(
+            path,
+            if recursive {
+                RecursiveMode::Recursive
+            } else {
+                RecursiveMode::NonRecursive
+            },
+        )?;
         watcher
     };
     std::thread::Builder::new()
@@ -133,32 +161,46 @@ fn watch_path_with_mode(path: &Path, tx: flume::Sender<BgResult>, recursive: boo
                 }
                 // A panic resolving one batch must not end the watcher thread;
                 // fall back to a full rescan, which needs no per-event state.
-                let changes = crate::util::guard::contain("fs-watcher", || runtime.block_on(async {
-                    let mut changes = Vec::new();
-                    for event in coalesce_rename_chains(events) {
-                        let path = match &event { Change::Upsert(path) | Change::Remove(path) => Some(path),
-                            Change::Rename(_, to) => Some(to), Change::Rescan => None };
-                        if path.is_some_and(|path| super::scan_policy::is_scan_excluded(path) && crate::vault::live::mount_root(path).is_none()) { continue; }
-                        match event {
-                            Change::Remove(path) => changes.push(FsChange::Remove(path)),
-                            Change::Upsert(path) => {
-                                match super::list::entry_for_path(&path).await {
-                                    Some(entry) => changes.push(FsChange::Upsert(entry)),
-                                    None if !path.exists() => changes.push(FsChange::Remove(path)),
-                                    None => {}
-                                }
+                let changes = crate::util::guard::contain("fs-watcher", || {
+                    runtime.block_on(async {
+                        let mut changes = Vec::new();
+                        for event in coalesce_rename_chains(events) {
+                            let path = match &event {
+                                Change::Upsert(path) | Change::Remove(path) => Some(path),
+                                Change::Rename(_, to) => Some(to),
+                                Change::Rescan => None,
+                            };
+                            if path.is_some_and(|path| {
+                                super::scan_policy::is_scan_excluded(path)
+                                    && crate::vault::live::mount_root(path).is_none()
+                            }) {
+                                continue;
                             }
-                            Change::Rename(from, to) => {
-                                match super::list::entry_for_path(&to).await {
-                                    Some(entry) => changes.push(FsChange::Rename { from, entry }),
-                                    None => changes.push(FsChange::Remove(from)),
+                            match event {
+                                Change::Remove(path) => changes.push(FsChange::Remove(path)),
+                                Change::Upsert(path) => {
+                                    match super::list::entry_for_path(&path).await {
+                                        Some(entry) => changes.push(FsChange::Upsert(entry)),
+                                        None if !path.exists() => {
+                                            changes.push(FsChange::Remove(path))
+                                        }
+                                        None => {}
+                                    }
                                 }
+                                Change::Rename(from, to) => {
+                                    match super::list::entry_for_path(&to).await {
+                                        Some(entry) => {
+                                            changes.push(FsChange::Rename { from, entry })
+                                        }
+                                        None => changes.push(FsChange::Remove(from)),
+                                    }
+                                }
+                                Change::Rescan => unreachable!(),
                             }
-                            Change::Rescan => unreachable!(),
                         }
-                    }
-                    changes
-                }));
+                        changes
+                    })
+                });
                 let Ok(changes) = changes else {
                     if tx.send(BgResult::FsEvent(directory.clone())).is_err() {
                         break;

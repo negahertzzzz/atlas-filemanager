@@ -2,7 +2,9 @@
 //! tested exclusively on files created by the harness in a unique Temp folder.
 fn main() -> anyhow::Result<()> {
     #[cfg(windows)]
-    if atlas_win_space::mft_space::helper::try_run() { return Ok(()); }
+    if atlas_win_space::mft_space::helper::try_run() {
+        return Ok(());
+    }
     let output = std::env::args_os()
         .nth(1)
         .map(std::path::PathBuf::from)

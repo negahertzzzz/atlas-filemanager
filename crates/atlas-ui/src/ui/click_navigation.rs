@@ -10,10 +10,20 @@ pub(crate) struct NavigationClick {
     pub at: Instant,
 }
 impl NavigationClick {
-    pub fn suppresses(&self, pane: TabId, point: Point<Pixels>, clicks: usize, now: Instant, interval: Duration) -> bool {
+    pub fn suppresses(
+        &self,
+        pane: TabId,
+        point: Point<Pixels>,
+        clicks: usize,
+        now: Instant,
+        interval: Duration,
+    ) -> bool {
         let dx = f32::from(point.x - self.origin.x);
         let dy = f32::from(point.y - self.origin.y);
-        self.pane == pane && clicks >= 2 && now.saturating_duration_since(self.at) <= interval && dx * dx + dy * dy <= 16.0
+        self.pane == pane
+            && clicks >= 2
+            && now.saturating_duration_since(self.at) <= interval
+            && dx * dx + dy * dy <= 16.0
     }
 }
 
@@ -43,20 +53,34 @@ mod tests {
     use atlas_model::layout_tree::TileId;
     #[test]
     fn a_drag_marquee_or_navigation_cancels_the_folder_click() {
-        let click = FolderClick { pane: TileId(1), index: 0, tree: false, source: Location::Directory("/parent".into()),
-            path: "/parent/child".into(), origin: gpui::point(gpui::px(10.0), gpui::px(10.0)) };
-        let point = |x,y| gpui::point(gpui::px(x), gpui::px(y));
+        let click = FolderClick {
+            pane: TileId(1),
+            index: 0,
+            tree: false,
+            source: Location::Directory("/parent".into()),
+            path: "/parent/child".into(),
+            origin: gpui::point(gpui::px(10.0), gpui::px(10.0)),
+        };
+        let point = |x, y| gpui::point(gpui::px(x), gpui::px(y));
         assert!(click.accepts_release(point(11.0, 11.0), &click.source, false));
         assert!(!click.accepts_release(point(20.0, 10.0), &click.source, false));
         assert!(!click.accepts_release(point(10.0, 10.0), &click.source, true));
-        assert!(!click.accepts_release(point(10.0, 10.0), &Location::Directory("/other".into()), false));
+        assert!(!click.accepts_release(
+            point(10.0, 10.0),
+            &Location::Directory("/other".into()),
+            false
+        ));
     }
     #[test]
     fn second_half_of_a_navigation_click_cannot_activate_the_new_listing() {
         let now = Instant::now();
         let pane = TileId(1);
         let origin = gpui::point(gpui::px(10.0), gpui::px(10.0));
-        let click = NavigationClick { pane, origin, at: now };
+        let click = NavigationClick {
+            pane,
+            origin,
+            at: now,
+        };
         let interval = Duration::from_millis(500);
         assert!(click.suppresses(pane, origin, 2, now + Duration::from_millis(100), interval));
         assert!(!click.suppresses(pane, origin, 1, now, interval));

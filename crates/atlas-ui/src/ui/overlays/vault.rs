@@ -501,14 +501,18 @@ impl App {
                 || error.starts_with("WinFsp: ")
         }) {
             body = body.child(
-                div().text_size(s(12.)).text_color(muted)
+                div()
+                    .text_size(s(12.))
+                    .text_color(muted)
                     .child(rust_i18n::t!("vault_driver_external_instructions").to_string()),
             );
             body = body.child(
                 Button::new("vault-winfsp-license")
                     .ghost()
                     .label("WinFsp — license and source")
-                    .on_click(cx.listener(|_this, _, _, cx| cx.open_url("https://github.com/winfsp/winfsp/blob/v2.1/License.txt"))),
+                    .on_click(cx.listener(|_this, _, _, cx| {
+                        cx.open_url("https://github.com/winfsp/winfsp/blob/v2.1/License.txt")
+                    })),
             );
             body = body.child(
                 Button::new("vault-install-driver")

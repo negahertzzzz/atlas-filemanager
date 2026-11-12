@@ -5,7 +5,9 @@ use std::io;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_NOTIFY_ENUM_DIR, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, ERROR_NOTIFY_ENUM_DIR, HANDLE, INVALID_HANDLE_VALUE,
+};
 use windows_sys::Win32::Storage::FileSystem::*;
 
 fn wide(path: &Path) -> Vec<u16> {
@@ -27,16 +29,34 @@ pub fn is_cloud_placeholder(path: &Path) -> bool {
     if attributes == INVALID_FILE_ATTRIBUTES || attributes_require_hydration(attributes) {
         return true;
     }
-    if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 { return false; }
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+        return false;
+    }
     // Inspect the reparse point itself. Never follow it or open a data stream.
-    let handle = unsafe { CreateFileW(wide(path).as_ptr(), FILE_READ_ATTRIBUTES,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null(), OPEN_EXISTING,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, 0) };
-    if handle == INVALID_HANDLE_VALUE { return true; }
+    let handle = unsafe {
+        CreateFileW(
+            wide(path).as_ptr(),
+            FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null(),
+            OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+            0,
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return true;
+    }
     let handle = OwnedHandle(handle);
     let mut info: FILE_ATTRIBUTE_TAG_INFO = unsafe { std::mem::zeroed() };
-    let ok = unsafe { GetFileInformationByHandleEx(handle.0, FileAttributeTagInfo,
-        (&mut info as *mut FILE_ATTRIBUTE_TAG_INFO).cast(), std::mem::size_of_val(&info) as u32) };
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            handle.0,
+            FileAttributeTagInfo,
+            (&mut info as *mut FILE_ATTRIBUTE_TAG_INFO).cast(),
+            std::mem::size_of_val(&info) as u32,
+        )
+    };
     ok == 0 || is_cloud_reparse_tag(info.ReparseTag)
 }
 
@@ -88,12 +108,18 @@ impl Drop for OwnedHandle {
 /// 64 KiB, FileIdExtdDirectoryInformation (128-bit ID, reparse tag and cached
 /// timestamps). No per-entry stat calls and no data-stream handles are opened.
 pub fn enumerate(path: &Path, mut emit: impl FnMut(DirectoryEntry)) -> io::Result<()> {
-    enumerate_while(path, |entry| { emit(entry); true })
+    enumerate_while(path, |entry| {
+        emit(entry);
+        true
+    })
 }
 
 /// Cancellation is checked between native batches (at most 64 KiB), without
 /// issuing a separate metadata query for every file.
-pub fn enumerate_while(path: &Path, mut emit: impl FnMut(DirectoryEntry) -> bool) -> io::Result<()> {
+pub fn enumerate_while(
+    path: &Path,
+    mut emit: impl FnMut(DirectoryEntry) -> bool,
+) -> io::Result<()> {
     let handle = unsafe {
         CreateFileW(
             wide(path).as_ptr(),
@@ -152,9 +178,13 @@ pub fn enumerate_while(path: &Path, mut emit: impl FnMut(DirectoryEntry) -> bool
         };
         let mut keep_going = true;
         parse_directory_records(bytes, &mut |entry| {
-            if keep_going { keep_going = emit(entry); }
+            if keep_going {
+                keep_going = emit(entry);
+            }
         })?;
-        if !keep_going { return Ok(()); }
+        if !keep_going {
+            return Ok(());
+        }
     }
 }
 
@@ -251,8 +281,9 @@ fn parse_notifications(
             .collect();
         if name.is_empty()
             || name.iter().any(|unit| matches!(*unit, 0 | 47 | 58))
-            || name.split(|unit| *unit == 92).any(|component|
-                component.is_empty() || component == [46] || component == [46, 46])
+            || name
+                .split(|unit| *unit == 92)
+                .any(|component| component.is_empty() || component == [46] || component == [46, 46])
         {
             return Err(invalid());
         }
@@ -284,23 +315,30 @@ fn parse_notifications(
     }
     // Preserve moves across the boundary as a removal or insertion. Suppress
     // internal recycle traffic before it reaches the metadata worker.
-    Ok(out.into_iter().filter_map(|event| match event {
-        Change::Upsert(path) if is_recycle_path(&path) => None,
-        Change::Remove(path) if is_recycle_path(&path) => None,
-        Change::Rename { from, to } => match (is_recycle_path(&from), is_recycle_path(&to)) {
-            (true, true) => None,
-            (false, true) => Some(Change::Remove(from)),
-            (true, false) => Some(Change::Upsert(to)),
-            (false, false) => Some(Change::Rename { from, to }),
-        },
-        event => Some(event),
-    }).collect())
+    Ok(out
+        .into_iter()
+        .filter_map(|event| match event {
+            Change::Upsert(path) if is_recycle_path(&path) => None,
+            Change::Remove(path) if is_recycle_path(&path) => None,
+            Change::Rename { from, to } => match (is_recycle_path(&from), is_recycle_path(&to)) {
+                (true, true) => None,
+                (false, true) => Some(Change::Remove(from)),
+                (true, false) => Some(Change::Upsert(to)),
+                (false, false) => Some(Change::Rename { from, to }),
+            },
+            event => Some(event),
+        })
+        .collect())
 }
 
 /// A lost notification buffer invalidates rename pairing, but the directory
 /// handle remains usable. Unsupported/closed handles are a terminal failure.
-fn notifications_after_read(bytes: &[u8], error: Option<u32>, root: &Path,
-    old: &mut Option<PathBuf>) -> io::Result<Vec<Change>> {
+fn notifications_after_read(
+    bytes: &[u8],
+    error: Option<u32>,
+    root: &Path,
+    old: &mut Option<PathBuf>,
+) -> io::Result<Vec<Change>> {
     if let Some(error) = error {
         *old = None;
         if error != ERROR_NOTIFY_ENUM_DIR {
@@ -314,7 +352,10 @@ fn notifications_after_read(bytes: &[u8], error: Option<u32>, root: &Path,
     }
     match parse_notifications(bytes, root, old) {
         Ok(changes) => Ok(changes),
-        Err(_) => { *old = None; Ok(vec![Change::Rescan]) },
+        Err(_) => {
+            *old = None;
+            Ok(vec![Change::Rescan])
+        }
     }
 }
 
@@ -405,10 +446,7 @@ unsafe extern "system" fn device_window(window: isize, msg: u32, wp: usize, lp: 
 }
 
 impl DirectoryWatcher {
-    pub fn watch(
-        path: &Path,
-        emit: impl FnMut(Vec<Change>) + Send + 'static,
-    ) -> io::Result<Self> {
+    pub fn watch(path: &Path, emit: impl FnMut(Vec<Change>) + Send + 'static) -> io::Result<Self> {
         Self::watch_with_subtree(path, false, emit)
     }
 
@@ -627,7 +665,9 @@ impl DirectoryWatcher {
                         if result == 258 {
                             // WAIT_TIMEOUT: moved outside the watched directory.
                             if let Some(from) = old.take() {
-                                if !is_recycle_path(&from) { emit(vec![Change::Remove(from)]); }
+                                if !is_recycle_path(&from) {
+                                    emit(vec![Change::Remove(from)]);
+                                }
                             }
                             continue;
                         }
@@ -656,15 +696,27 @@ impl DirectoryWatcher {
                         }
                     }
                     let mut count = 0;
-                    let error = if unsafe { GetOverlappedResult(directory.0, &overlapped, &mut count, 0) } == 0 {
-                        Some(unsafe { GetLastError() })
-                    } else { None };
-                    let bytes = if error.is_some() { &[][..] } else { unsafe {
-                        std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), (count as usize).min(buffer.len() * 4))
-                    }};
+                    let error =
+                        if unsafe { GetOverlappedResult(directory.0, &overlapped, &mut count, 0) }
+                            == 0
+                        {
+                            Some(unsafe { GetLastError() })
+                        } else {
+                            None
+                        };
+                    let bytes = if error.is_some() {
+                        &[][..]
+                    } else {
+                        unsafe {
+                            std::slice::from_raw_parts(
+                                buffer.as_ptr().cast::<u8>(),
+                                (count as usize).min(buffer.len() * 4),
+                            )
+                        }
+                    };
                     match notifications_after_read(bytes, error, &path, &mut old) {
                         Ok(changes) if !changes.is_empty() => emit(changes),
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(_) => {
                             emit(vec![Change::Disabled]);
                             break;
@@ -718,15 +770,22 @@ mod tests {
         let root = Path::new("C:\\test");
         for error in [None, Some(ERROR_NOTIFY_ENUM_DIR)] {
             let mut pending = None;
-            notifications_after_read(&notification(4, "old.txt"), None, root, &mut pending).unwrap();
+            notifications_after_read(&notification(4, "old.txt"), None, root, &mut pending)
+                .unwrap();
             assert!(pending.is_some());
-            assert_eq!(notifications_after_read(&[], error, root, &mut pending).unwrap(), vec![Change::Rescan]);
+            assert_eq!(
+                notifications_after_read(&[], error, root, &mut pending).unwrap(),
+                vec![Change::Rescan]
+            );
             assert!(pending.is_none());
             // The same watch can continue immediately after either Windows
             // overflow form; the next new-name half is an insertion, not a
             // spurious rename from before the lost buffer.
-            assert_eq!(notifications_after_read(&notification(5, "new.txt"), None, root, &mut pending).unwrap(),
-                vec![Change::Upsert(root.join("new.txt"))]);
+            assert_eq!(
+                notifications_after_read(&notification(5, "new.txt"), None, root, &mut pending)
+                    .unwrap(),
+                vec![Change::Upsert(root.join("new.txt"))]
+            );
         }
     }
 
@@ -737,16 +796,31 @@ mod tests {
         assert!(notifications_after_read(&[], Some(6), root, &mut pending).is_err()); // ERROR_INVALID_HANDLE
         assert!(pending.is_none());
         pending = Some(root.join("old.txt"));
-        assert_eq!(notifications_after_read(&[0; 11], None, root, &mut pending).unwrap(), vec![Change::Rescan]);
+        assert_eq!(
+            notifications_after_read(&[0; 11], None, root, &mut pending).unwrap(),
+            vec![Change::Rescan]
+        );
         assert!(pending.is_none());
-        assert!(notifications_after_read(&notification(3, r"$Recycle.Bin\trash"), None, root, &mut pending).unwrap().is_empty());
-        assert_eq!(notifications_after_read(&notification(3, "normal.txt"), None, root, &mut pending).unwrap(),
-            vec![Change::Upsert(root.join("normal.txt"))]);
+        assert!(notifications_after_read(
+            &notification(3, r"$Recycle.Bin\trash"),
+            None,
+            root,
+            &mut pending
+        )
+        .unwrap()
+        .is_empty());
+        assert_eq!(
+            notifications_after_read(&notification(3, "normal.txt"), None, root, &mut pending)
+                .unwrap(),
+            vec![Change::Upsert(root.join("normal.txt"))]
+        );
     }
 
     #[test]
     fn cloud_tag_family_and_legacy_onedrive_are_guarded() {
-        for provider in 0..16 { assert!(is_cloud_reparse_tag(0x9000_001a | provider << 12)); }
+        for provider in 0..16 {
+            assert!(is_cloud_reparse_tag(0x9000_001a | provider << 12));
+        }
         assert!(is_cloud_reparse_tag(0x8000_0021));
         for tag in [0, 0xa000_000c, 0xa000_0003, 0x9000_001b, 0x9001_001a] {
             assert!(!is_cloud_reparse_tag(tag));
@@ -756,22 +830,48 @@ mod tests {
     #[test]
     fn recycle_notifications_are_ignored_but_boundary_moves_are_preserved() {
         let root = Path::new("C:\\");
-        assert!(parse_notifications(&notification(3, r"$recycle.bin\sid\trash"), root, &mut None).unwrap().is_empty());
-        assert!(parse_notifications(&notification(2, r"$Recycle\trash"), root, &mut None).unwrap().is_empty());
+        assert!(
+            parse_notifications(&notification(3, r"$recycle.bin\sid\trash"), root, &mut None)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            parse_notifications(&notification(2, r"$Recycle\trash"), root, &mut None)
+                .unwrap()
+                .is_empty()
+        );
         let mut old = None;
         parse_notifications(&notification(4, "document.txt"), root, &mut old).unwrap();
-        assert_eq!(parse_notifications(&notification(5, r"$Recycle.Bin\trash"), root, &mut old).unwrap(), vec![Change::Remove(root.join("document.txt"))]);
+        assert_eq!(
+            parse_notifications(&notification(5, r"$Recycle.Bin\trash"), root, &mut old).unwrap(),
+            vec![Change::Remove(root.join("document.txt"))]
+        );
         parse_notifications(&notification(4, r"$Recycle.Bin\trash"), root, &mut old).unwrap();
-        assert_eq!(parse_notifications(&notification(5, "restored.txt"), root, &mut old).unwrap(), vec![Change::Upsert(root.join("restored.txt"))]);
+        assert_eq!(
+            parse_notifications(&notification(5, "restored.txt"), root, &mut old).unwrap(),
+            vec![Change::Upsert(root.join("restored.txt"))]
+        );
         assert!(!is_recycle_path(Path::new(r"C:\$Recycle.Bin-backup\file")));
     }
     #[test]
     fn recursive_notifications_accept_nested_relative_paths_without_traversal() {
         let root = Path::new(r"C:\root");
-        assert!(matches!(parse_notifications(&notification(3, r"a\b\file.bin"), root, &mut None).unwrap().as_slice(),
-            [Change::Upsert(path)] if path == &root.join(r"a\b\file.bin")));
-        for path in [r"..\file", r"a\..\file", r"\rooted", r"a\\file", r"C:\file", r"a/../file"] {
-            assert!(parse_notifications(&notification(3, path), root, &mut None).is_err(), "{path}");
+        assert!(
+            matches!(parse_notifications(&notification(3, r"a\b\file.bin"), root, &mut None).unwrap().as_slice(),
+            [Change::Upsert(path)] if path == &root.join(r"a\b\file.bin"))
+        );
+        for path in [
+            r"..\file",
+            r"a\..\file",
+            r"\rooted",
+            r"a\\file",
+            r"C:\file",
+            r"a/../file",
+        ] {
+            assert!(
+                parse_notifications(&notification(3, path), root, &mut None).is_err(),
+                "{path}"
+            );
         }
     }
     #[test]

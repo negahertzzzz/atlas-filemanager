@@ -65,7 +65,8 @@ impl App {
         };
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
         let row_font = window.text_style().font();
-        let crumb_strip = self.render_crumb_strip(pane_id, &view, fg, muted, border, _header_bg, cx);
+        let crumb_strip =
+            self.render_crumb_strip(pane_id, &view, fg, muted, border, _header_bg, cx);
         // `thumb` stays in rem units (same meaning as before the zoom refactor) —
         // it flows into `render_cell`/`FileIcon::element`, which resolve it via
         // `rem_px()`. The virtualization math below runs against real measured
@@ -252,30 +253,33 @@ impl App {
                         let rename_input =
                             crate::ui::views::rename::active_input(app, pane_id, entry_idx);
                         let selected = ts.selection.selected.contains(&entry_idx);
-                        render_cell(GridCellProps {
-                            entry,
-                            entry_idx,
-                            selected,
-                            show_checkbox: ts.selection.selected.len() > 1,
-                            pane_id,
-                            view: &list_view,
-                            thumb,
-                            cell_w: thumb,
-                            file_icon,
-                            accent,
-                            accent_fg,
-                            hover,
-                            border,
-                            flashing,
-                            record_rects: true,
-                            rename_input,
-                            cut: app.state.system_cut_paths.contains(&entry.path()),
-                            is_animating,
-                            dimmed: crate::ui::views::rename::dim_other_entry(
-                                app, pane_id, entry_idx,
-                            ),
-                            window,
-                        }, cx)
+                        render_cell(
+                            GridCellProps {
+                                entry,
+                                entry_idx,
+                                selected,
+                                show_checkbox: ts.selection.selected.len() > 1,
+                                pane_id,
+                                view: &list_view,
+                                thumb,
+                                cell_w: thumb,
+                                file_icon,
+                                accent,
+                                accent_fg,
+                                hover,
+                                border,
+                                flashing,
+                                record_rects: true,
+                                rename_input,
+                                cut: app.state.system_cut_paths.contains(&entry.path()),
+                                is_animating,
+                                dimmed: crate::ui::views::rename::dim_other_entry(
+                                    app, pane_id, entry_idx,
+                                ),
+                                window,
+                            },
+                            cx,
+                        )
                     },
                 )
                 .into_any_element()
@@ -294,17 +298,18 @@ impl App {
                         };
                         let col = visible_pos % cols;
                         let row = visible_pos / cols;
-                        let label = crate::ui::views::grid_surface_element_deprecated::grid_label_bounds(
-                            gpui::Bounds {
-                                origin: gpui::point(
-                                    px(grid_pad_px + col as f32 * (thumb_px + grid_gap_px)),
-                                    px(grid_pad_px + row as f32 * pitch),
-                                ),
-                                size: gpui::size(px(thumb_px), px(cell_h_px)),
-                            },
-                            thumb_px * GRID_ICON_AREA,
-                            zoom_scale,
-                        );
+                        let label =
+                            crate::ui::views::grid_surface_element_deprecated::grid_label_bounds(
+                                gpui::Bounds {
+                                    origin: gpui::point(
+                                        px(grid_pad_px + col as f32 * (thumb_px + grid_gap_px)),
+                                        px(grid_pad_px + row as f32 * pitch),
+                                    ),
+                                    size: gpui::size(px(thumb_px), px(cell_h_px)),
+                                },
+                                thumb_px * GRID_ICON_AREA,
+                                zoom_scale,
+                            );
                         rename_overlay = Some(
                             div()
                                 .absolute()
@@ -534,7 +539,10 @@ impl App {
         };
 
         {
-            let mut wanted = self.thumb_wanted.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut wanted = self
+                .thumb_wanted
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             wanted.clear();
             wanted.extend(all_visible);
         }
@@ -734,7 +742,11 @@ fn render_cell(props: GridCellProps, cx: &gpui::App) -> AnyElement {
                     let natural_w = (i32::from(natural.width).max(1)) as f32;
                     let natural_h = (i32::from(natural.height).max(1)) as f32;
                     let (render_w, render_h) = crate::ui::thumbs::thumbnail_size(
-                        natural_w, natural_h, thumb, thumb * GRID_ICON_AREA);
+                        natural_w,
+                        natural_h,
+                        thumb,
+                        thumb * GRID_ICON_AREA,
+                    );
                     let outline = border.opacity(if cx.theme().is_dark() { 0.25 } else { 0.18 });
                     area.child(
                         div()
@@ -744,7 +756,14 @@ fn render_cell(props: GridCellProps, cx: &gpui::App) -> AnyElement {
                             .rounded(px(3.0))
                             .overflow_hidden()
                             .child(img(tex).size_full())
-                            .child(div().absolute().inset_0().border_1().border_color(outline).rounded(px(3.0))),
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .border_1()
+                                    .border_color(outline)
+                                    .rounded(px(3.0)),
+                            ),
                     )
                 }
                 FileIcon::IconTexture(tex) => {
@@ -811,12 +830,7 @@ fn render_cell(props: GridCellProps, cx: &gpui::App) -> AnyElement {
                 })
         })
         .when(rename_input.is_none() && !is_animating, |s| {
-            s.on_file_drag_item(
-                view.clone(),
-                pane_id,
-                entry_idx,
-                entry.path(),
-            )
+            s.on_file_drag_item(view.clone(), pane_id, entry_idx, entry.path())
         })
         .tooltip({
             let tip_name = entry.name.to_string();
@@ -836,8 +850,9 @@ fn render_cell(props: GridCellProps, cx: &gpui::App) -> AnyElement {
                 )
             }
         })
-        .when(matches!(entry.kind(), FileKind::Dir) && !is_animating, |s| {
-            crate::ui::views::folder_drop_target(s, view, pane_id, entry.path())
-        })
+        .when(
+            matches!(entry.kind(), FileKind::Dir) && !is_animating,
+            |s| crate::ui::views::folder_drop_target(s, view, pane_id, entry.path()),
+        )
         .into_any_element()
 }

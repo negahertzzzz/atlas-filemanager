@@ -20,13 +20,13 @@ use gpui::RenderImage;
 /// Nyquist-Shannon undersampling aliasing (jagged/chewed edges on curves).
 #[derive(Clone)]
 pub struct MultiResIcon {
-    /// 32px: for list / compact list / details / sidebar (<= 28px display)
+    /// 32px: for list / compact list / details / sidebar (<= 32px physical edge)
     pub small: Arc<RenderImage>,
-    /// 64px: for small grid thumbnails (29px .. 56px display)
+    /// 64px: for small grid thumbnails (32px < physical edge <= 64px)
     pub medium: Arc<RenderImage>,
-    /// 128px: for medium grid thumbnails (57px .. 112px display)
+    /// 128px: for medium grid thumbnails (64px < physical edge <= 128px)
     pub large: Arc<RenderImage>,
-    /// 256px: for large grid thumbnails (> 112px display)
+    /// 256px: for large grid thumbnails (> 128px physical edge)
     pub full: Arc<RenderImage>,
 }
 

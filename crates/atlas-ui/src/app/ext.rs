@@ -15,8 +15,7 @@ pub const MEDIA_THUMBS_ICON: &[u8] = include_bytes!("../../../../extensions/medi
 /// Bundled icon-manager extension (Open VSX VSCode icon themes).
 pub const ICON_MANAGER_MANIFEST: &str =
     include_str!("../../../../extensions/icon-manager/extension.toml");
-pub const ICON_MANAGER_ICON: &[u8] =
-    include_bytes!("../../../../extensions/icon-manager/icon.svg");
+pub const ICON_MANAGER_ICON: &[u8] = include_bytes!("../../../../extensions/icon-manager/icon.svg");
 
 /// Hidden shared tool-provider extension (portable binaries by OS/arch).
 pub const RUNTIME_TOOLS_MANIFEST: &str =
@@ -29,8 +28,7 @@ pub const CONVERSION_OPUS_MANIFEST: &str =
     include_str!("../../../../extensions/conversion-opus/extension.toml");
 
 /// Bundled cloud virtual drives extension.
-pub const CLOUD_MANIFEST: &str =
-    include_str!("../../../../extensions/cloud/extension.toml");
+pub const CLOUD_MANIFEST: &str = include_str!("../../../../extensions/cloud/extension.toml");
 pub const CLOUD_ICON: &[u8] = include_bytes!("../../../../extensions/cloud/icon.svg");
 
 /// UI-level extension actions.
@@ -172,17 +170,26 @@ impl App {
         self.rt.spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
                 let (reply, done) = std::sync::mpsc::channel();
-                cloud.send(atlas_core::cloud::CloudCmd::StopProvider { reply }).map_err(|error| error.to_string())?;
-                done.recv_timeout(std::time::Duration::from_secs(330)).map_err(|error| error.to_string())?
-            }).await.map_err(|error| error.to_string()).and_then(|result| result);
-            let _ = tx.send(atlas_model::app_state::BgResult::CloudProviderStopped { uninstall, result });
+                cloud
+                    .send(atlas_core::cloud::CloudCmd::StopProvider { reply })
+                    .map_err(|error| error.to_string())?;
+                done.recv_timeout(std::time::Duration::from_secs(330))
+                    .map_err(|error| error.to_string())?
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+            let _ = tx
+                .send(atlas_model::app_state::BgResult::CloudProviderStopped { uninstall, result });
         });
     }
 
     #[cfg(feature = "provider-host")]
     pub(crate) fn complete_cloud_shutdown(&mut self, uninstall: bool, result: Result<(), String>) {
         if let Err(error) = result {
-            self.state.ext.last_error = Some(format!("Cloud shutdown could not be confirmed; the extension was kept: {error}"));
+            self.state.ext.last_error = Some(format!(
+                "Cloud shutdown could not be confirmed; the extension was kept: {error}"
+            ));
             return;
         }
         self.state.cloud.ready = false;

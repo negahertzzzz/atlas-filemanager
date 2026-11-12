@@ -624,7 +624,9 @@ impl Element for GridSurfaceElement {
             }
 
             {
-                app.pending_drag_hover_targets.retain(|target| !matches!(target.id, DragHoverId::Folder(tab, _) if tab == pane_id));
+                app.pending_drag_hover_targets.retain(
+                    |target| !matches!(target.id, DragHoverId::Folder(tab, _) if tab == pane_id),
+                );
                 let targets = app
                     .state
                     .tab_states
@@ -636,7 +638,10 @@ impl Element for GridSurfaceElement {
                                 let entry = tab_state.entries.get(entry_idx)?;
                                 matches!(entry.kind(), FileKind::Dir).then(|| DragHoverTarget {
                                     id: DragHoverId::Folder(pane_id, entry.path()),
-                                    bounds: model.cell_bounds(visible_pos).intersect(&model.bounds).intersect(&window.content_mask().bounds),
+                                    bounds: model
+                                        .cell_bounds(visible_pos)
+                                        .intersect(&model.bounds)
+                                        .intersect(&window.content_mask().bounds),
                                     kind: DragHoverKind::Folder,
                                     command: DragHoverCommand::NavigatePathIn(
                                         pane_id,
@@ -706,8 +711,11 @@ impl Element for GridSurfaceElement {
                     font_size,
                     name_color,
                 );
-                let icon =
-                    app.file_icon_for_entry(&entry.path(), &entry.kind(), entry.extension().as_deref());
+                let icon = app.file_icon_for_entry(
+                    &entry.path(),
+                    &entry.kind(),
+                    entry.extension().as_deref(),
+                );
                 let previous_selected = state
                     .slots
                     .get(state.index(row))
@@ -854,7 +862,8 @@ impl Element for GridSurfaceElement {
 
         let now = Instant::now();
         let mut has_active_anims = false;
-        let mut next_bounds = HashMap::with_capacity(prepaint.end_idx.saturating_sub(prepaint.start_idx));
+        let mut next_bounds =
+            HashMap::with_capacity(prepaint.end_idx.saturating_sub(prepaint.start_idx));
 
         let GridSurfaceState {
             slots,
@@ -918,8 +927,18 @@ impl Element for GridSurfaceElement {
                     };
 
                     window.with_element_opacity(
-                        Some(crate::ui::views::rename::cut_entry_opacity(&app, pane_id, slot.entry_idx, cx)
-                            * if slot.dimmed { crate::ui::views::rename::DIM_OPACITY } else { 1.0 }),
+                        Some(
+                            crate::ui::views::rename::cut_entry_opacity(
+                                &app,
+                                pane_id,
+                                slot.entry_idx,
+                                cx,
+                            ) * if slot.dimmed {
+                                crate::ui::views::rename::DIM_OPACITY
+                            } else {
+                                1.0
+                            },
+                        ),
                         |window| {
                             let background = if slot.selected {
                                 Some(colors.accent)
@@ -957,8 +976,14 @@ impl Element for GridSurfaceElement {
                             } else {
                                 match &slot.icon {
                                     FileIcon::PreviewTexture(tex) => {
-                                        crate::ui::thumbs::paint_thumbnail(window, cx, tex,
-                                            icon_center, icon_size, icon_size);
+                                        crate::ui::thumbs::paint_thumbnail(
+                                            window,
+                                            cx,
+                                            tex,
+                                            icon_center,
+                                            icon_size,
+                                            icon_size,
+                                        );
                                     }
                                     FileIcon::IconTexture(tex) => {
                                         let resolved = tex.for_size(icon_size);
@@ -1071,8 +1096,18 @@ impl Element for GridSurfaceElement {
                     };
 
                     window.with_element_opacity(
-                        Some(crate::ui::views::rename::cut_entry_opacity(&app, pane_id, slot.entry_idx, cx)
-                            * if slot.dimmed { crate::ui::views::rename::DIM_OPACITY } else { 1.0 }),
+                        Some(
+                            crate::ui::views::rename::cut_entry_opacity(
+                                &app,
+                                pane_id,
+                                slot.entry_idx,
+                                cx,
+                            ) * if slot.dimmed {
+                                crate::ui::views::rename::DIM_OPACITY
+                            } else {
+                                1.0
+                            },
+                        ),
                         |window| {
                             let background = if slot.selected {
                                 Some(colors.accent)
@@ -1118,8 +1153,14 @@ impl Element for GridSurfaceElement {
                                 match &slot.icon {
                                     FileIcon::PreviewTexture(tex) => {
                                         let item_thumb = (thumb * scale_h).max(1.0);
-                                        crate::ui::thumbs::paint_thumbnail(window, cx, tex,
-                                            icon_center, item_thumb, item_icon_area_h);
+                                        crate::ui::thumbs::paint_thumbnail(
+                                            window,
+                                            cx,
+                                            tex,
+                                            icon_center,
+                                            item_thumb,
+                                            item_icon_area_h,
+                                        );
                                     }
                                     FileIcon::IconTexture(tex) => {
                                         let item_thumb = (thumb * scale_h).max(1.0);
@@ -1194,7 +1235,8 @@ impl Element for GridSurfaceElement {
             if has_active_anims {
                 window.request_animation_frame();
             }
-            animations.retain(|_, anim| now.saturating_duration_since(anim.start_time) < FLIP_DURATION);
+            animations
+                .retain(|_, anim| now.saturating_duration_since(anim.start_time) < FLIP_DURATION);
             *last_bounds = next_bounds;
 
             let Some(app_entity) = app.upgrade() else {

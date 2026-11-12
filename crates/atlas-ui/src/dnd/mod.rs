@@ -83,7 +83,12 @@ pub mod linux {
         ) -> Vec<PathBuf> {
             let paths = parse_uri_list_bytes(data);
             if !paths.is_empty() {
-                if let Some(mut q) = self.action_queue.lock().or_else(atlas_model::sync::recover).ok() {
+                if let Some(mut q) = self
+                    .action_queue
+                    .lock()
+                    .or_else(atlas_model::sync::recover)
+                    .ok()
+                {
                     q.push(LinuxDndEvent::Drop(LinuxDropPayload {
                         paths: paths.clone(),
                         from_self: false,
@@ -489,7 +494,10 @@ mod tests {
         let paths = state.handle_drop_uri_list(data, 100.0, 200.0, false, false);
         assert_eq!(paths, vec![PathBuf::from("/tmp/dropped file.txt")]);
 
-        let queue = state.action_queue.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let queue = state
+            .action_queue
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         assert_eq!(queue.len(), 1);
         if let linux::LinuxDndEvent::Drop(payload) = &queue[0] {
             assert_eq!(payload.paths, paths);
@@ -503,11 +511,7 @@ mod tests {
     #[test]
     fn parse_uri_list_with_raw_existing_paths() {
         // /tmp or /etc always exist on Linux
-        let existing = if cfg!(windows) {
-            "C:\\Windows"
-        } else {
-            "/tmp"
-        };
+        let existing = if cfg!(windows) { "C:\\Windows" } else { "/tmp" };
         let (paths, is_cut) = parse_uri_list_with_cut(existing);
         assert!(!is_cut);
         assert_eq!(paths, vec![PathBuf::from(existing)]);

@@ -11,8 +11,8 @@ pub(crate) mod document;
 mod image;
 mod linux_thumb;
 mod markdown;
-mod model3d;
 pub mod metadata;
+mod model3d;
 mod pdf;
 pub mod syntax;
 mod text;
@@ -67,7 +67,11 @@ const MULTI_BUTTERFLY_ANGLES: [f32; 4] = [0.0; 4];
 
 pub async fn load_preview(tab: TabId, path: PathBuf, tx: flume::Sender<BgResult>) {
     if crate::vault::is_private_path(&path) {
-        let _ = tx.send(BgResult::PreviewReady { tab, path, result: PreviewResult::Binary { size: 0 } });
+        let _ = tx.send(BgResult::PreviewReady {
+            tab,
+            path,
+            result: PreviewResult::Binary { size: 0 },
+        });
         return;
     }
     if is_cloud_placeholder(&path) {
@@ -96,10 +100,14 @@ pub async fn load_preview(tab: TabId, path: PathBuf, tx: flume::Sender<BgResult>
         tokio::task::spawn_blocking(move || image::preview_image(&p))
             .await
             .unwrap_or_else(|e| PreviewResult::Error(e.to_string()))
-    } else if crate::vault::live::is_private(&path) && (atlas_model::preview_cache::is_video_ext(&ext) || ext == "pdf") {
+    } else if crate::vault::live::is_private(&path)
+        && (atlas_model::preview_cache::is_video_ext(&ext) || ext == "pdf")
+    {
         // These providers render via temporary files or OS caches. Opening in an
         // external app remains explicit; automatic private previews stay in memory.
-        PreviewResult::Binary { size: std::fs::metadata(&path).map_or(0, |m| m.len()) }
+        PreviewResult::Binary {
+            size: std::fs::metadata(&path).map_or(0, |m| m.len()),
+        }
     } else if atlas_model::preview_cache::is_video_ext(&ext) {
         let p = path.clone();
         tokio::task::spawn_blocking(move || video::preview_video(&p))
@@ -120,7 +128,10 @@ pub async fn load_preview(tab: TabId, path: PathBuf, tx: flume::Sender<BgResult>
         tokio::task::spawn_blocking(move || model3d::preview_model(&p))
             .await
             .unwrap_or_else(|e| PreviewResult::Error(e.to_string()))
-    } else if matches!(ext.as_str(), "docx" | "csv" | "tsv" | "xls" | "xlsx" | "ods" | "pptx" | "psd" | "psb") {
+    } else if matches!(
+        ext.as_str(),
+        "docx" | "csv" | "tsv" | "xls" | "xlsx" | "ods" | "pptx" | "psd" | "psb"
+    ) {
         let p = path.clone();
         tokio::task::spawn_blocking(move || crate::ext::runner::native_document_preview(&p))
             .await

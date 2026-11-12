@@ -7,7 +7,10 @@
 use std::path::{Path, PathBuf};
 
 use gpui::prelude::*;
-use gpui::{point, px, AnyDrag, CursorStyle, Entity, ExternalDragPayload, FileDragPaths, InteractiveElement, Window};
+use gpui::{
+    point, px, AnyDrag, CursorStyle, Entity, ExternalDragPayload, FileDragPaths,
+    InteractiveElement, Window,
+};
 
 use crate::app::App;
 #[cfg(windows)]
@@ -203,7 +206,9 @@ pub(crate) fn build_file_any_drag(
             let app = view.read(&*cx);
             let pane = item.map_or(app.state.focused_tile, |(pane, _)| pane);
             match app.tab_data_for(pane).map(|tab| &tab.location) {
-                Some(atlas_model::location::Location::Remote { id, .. }) => Some((pane, id.clone())),
+                Some(atlas_model::location::Location::Remote { id, .. }) => {
+                    Some((pane, id.clone()))
+                }
                 _ => None,
             }
         };
@@ -211,18 +216,32 @@ pub(crate) fn build_file_any_drag(
             let payload = view.update(cx, |app, cx| {
                 app.pending_folder_click = None;
                 app.state.focused_tile = pane;
-                if let Some((_, index)) = item { app.ensure_drag_selection(pane, index); }
+                if let Some((_, index)) = item {
+                    app.ensure_drag_selection(pane, index);
+                }
                 let mut paths = app.selected_paths_for_pane(pane);
-                if paths.is_empty() || !paths.contains(&anchor) { paths = vec![anchor.clone()]; }
-                let account_label = app.state.cloud.remotes.iter().find(|remote| remote.id == account)
+                if paths.is_empty() || !paths.contains(&anchor) {
+                    paths = vec![anchor.clone()];
+                }
+                let account_label = app
+                    .state
+                    .cloud
+                    .remotes
+                    .iter()
+                    .find(|remote| remote.id == account)
                     .map_or_else(|| account.clone(), |remote| remote.name.clone());
                 app.begin_cloud_drag();
                 cx.notify();
-                crate::ui::root::DraggedCloudFiles { account, account_label, paths }
+                crate::ui::root::DraggedCloudFiles {
+                    account,
+                    account_label,
+                    paths,
+                }
             });
             let ghost = payload.clone();
             return AnyDrag::new(payload, cx.new(|_| ghost))
-                .offset(point(px(-12.), px(-12.))).cursor_style(cursor_style);
+                .offset(point(px(-12.), px(-12.)))
+                .cursor_style(cursor_style);
         }
     }
     // Recycle Bin rows carry mangled `$R` payload paths and remote rows carry
@@ -325,7 +344,9 @@ pub(crate) fn build_file_any_drag(
                 archive_items,
             });
         });
-        let payload = DraggedFiles { paths: paths.clone() };
+        let payload = DraggedFiles {
+            paths: paths.clone(),
+        };
         let ghost_view = cx.new(|_| DraggedFiles { paths });
         AnyDrag::new(payload, ghost_view)
             .offset(point(px(-12.0), px(-12.0)))
@@ -364,9 +385,22 @@ fn build_file_drag_start(
 /// Ensures correct selection resolution from the dragging pane, compact mouse offset
 /// for the ghost badge, and proper internal payload propagation on Linux/macOS.
 pub trait FileDragSource: gpui::StatefulInteractiveElement {
-    fn on_file_drag_item(self, view: Entity<App>, pane: TabId, idx: usize, anchor: PathBuf) -> Self {
+    fn on_file_drag_item(
+        self,
+        view: Entity<App>,
+        pane: TabId,
+        idx: usize,
+        anchor: PathBuf,
+    ) -> Self {
         self.on_drag_alt(move |_cursor_offset, cursor_style, window, cx| {
-            build_file_any_drag(&view, Some((pane, idx)), anchor.clone(), cursor_style, window, cx)
+            build_file_any_drag(
+                &view,
+                Some((pane, idx)),
+                anchor.clone(),
+                cursor_style,
+                window,
+                cx,
+            )
         })
     }
 
@@ -483,7 +517,10 @@ pub(crate) fn extract_archive_items_to_staging(
     let session_dir = dnd_staging_dir().join(format!("drag_{}_{}", std::process::id(), timestamp));
     #[allow(clippy::disallowed_methods)]
     if let Err(e) = std::fs::create_dir_all(&session_dir) {
-        tracing::warn!("Failed to create dnd staging dir {}: {e}", session_dir.display());
+        tracing::warn!(
+            "Failed to create dnd staging dir {}: {e}",
+            session_dir.display()
+        );
         return Vec::new();
     }
 
@@ -588,7 +625,10 @@ pub(crate) fn resolve_external_drag_payload(
             return None;
         }
 
-        tracing::info!(count = entries.len(), "dnd external drag payload resolved for OS drag");
+        tracing::info!(
+            count = entries.len(),
+            "dnd external drag payload resolved for OS drag"
+        );
         Some(ExternalDragPayload::Files(FileDragPaths::new(entries)))
     }
 }

@@ -21,21 +21,41 @@ struct BookmarkPresence {
 }
 
 #[derive(Default)]
-struct BookmarkPresenceState { initialized: bool, entries: Vec<BookmarkPresence> }
+struct BookmarkPresenceState {
+    initialized: bool,
+    entries: Vec<BookmarkPresence>,
+}
 
 impl BookmarkPresenceState {
-    fn sync(&mut self, items: &[(String, PathBuf)], now: Instant, instant: bool) -> Vec<BookmarkPresence> {
+    fn sync(
+        &mut self,
+        items: &[(String, PathBuf)],
+        now: Instant,
+        instant: bool,
+    ) -> Vec<BookmarkPresence> {
         for entry in &mut self.entries {
-            if !items.iter().any(|(_, path)| *path == entry.path) { entry.closing.get_or_insert(now); }
+            if !items.iter().any(|(_, path)| *path == entry.path) {
+                entry.closing.get_or_insert(now);
+            }
         }
-        self.entries.retain(|entry| entry.closing.is_none_or(|at| !instant && now.saturating_duration_since(at) < Duration::from_millis(240)));
+        self.entries.retain(|entry| {
+            entry.closing.is_none_or(|at| {
+                !instant && now.saturating_duration_since(at) < Duration::from_millis(240)
+            })
+        });
         for (index, (name, path)) in items.iter().enumerate() {
             if let Some(entry) = self.entries.iter_mut().find(|entry| entry.path == *path) {
                 entry.index = index;
                 entry.name.clone_from(name);
                 entry.closing = None;
             } else {
-                self.entries.push(BookmarkPresence { name: name.clone(), path: path.clone(), index, entered: (self.initialized && !instant).then_some(now), closing: None });
+                self.entries.push(BookmarkPresence {
+                    name: name.clone(),
+                    path: path.clone(),
+                    index,
+                    entered: (self.initialized && !instant).then_some(now),
+                    closing: None,
+                });
             }
         }
         self.initialized = true;
@@ -56,36 +76,104 @@ pub(crate) struct BookmarkCollection {
 impl RenderOnce for BookmarkCollection {
     fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
         let profile = self.app.read(cx).state.profiles.active().name.clone();
-        let state = window.use_keyed_state(SharedString::from(format!("bookmark-presence-{profile}")), cx, |_, _| BookmarkPresenceState::default());
+        let state = window.use_keyed_state(
+            SharedString::from(format!("bookmark-presence-{profile}")),
+            cx,
+            |_, _| BookmarkPresenceState::default(),
+        );
         let now = Instant::now();
         let instant = cx.reduce_motion();
         let entries = state.update(cx, |state, _| state.sync(&self.items, now, instant));
-        let insertion = match self.app.read(cx).active_drag_hover_drop_command() { Some(DragHoverDropCommand::InsertBookmarks(index)) => Some(index), _ => None };
+        let insertion = match self.app.read(cx).active_drag_hover_drop_command() {
+            Some(DragHoverDropCommand::InsertBookmarks(index)) => Some(index),
+            _ => None,
+        };
         let mut list = div().w_full().flex().flex_col();
         let mut animating = false;
         for entry in entries {
             let live = entry.closing.is_none();
-            if live { list = list.child(InsertionLane { index: entry.index, app: self.app.clone(), active: insertion == Some(entry.index), style: self.style }); }
+            if live {
+                list = list.child(InsertionLane {
+                    index: entry.index,
+                    app: self.app.clone(),
+                    active: insertion == Some(entry.index),
+                    style: self.style,
+                });
+            }
             let id = SharedString::from(format!("bookmark-{profile}-{}", entry.path.display()));
             let row = if live {
-                let shell = crate::ui::sidebar::sidebar_shell_tex(&self.app, &entry.path, self.style.windows_theme, cx);
-                crate::ui::sidebar::bookmark_row(entry.index, id.clone(), entry.name, entry.path.clone(), shell, &self.app, self.style, self.current.as_ref() == Some(&entry.path), profile.clone()).into_any_element()
+                let shell = crate::ui::sidebar::sidebar_shell_tex(
+                    &self.app,
+                    &entry.path,
+                    self.style.windows_theme,
+                    cx,
+                );
+                crate::ui::sidebar::bookmark_row(
+                    entry.index,
+                    id.clone(),
+                    entry.name,
+                    entry.path.clone(),
+                    shell,
+                    &self.app,
+                    self.style,
+                    self.current.as_ref() == Some(&entry.path),
+                    profile.clone(),
+                )
+                .into_any_element()
             } else {
                 // Retained exits carry no click, drag or drop handlers.
-                let t = now.saturating_duration_since(entry.closing.unwrap()).as_secs_f32() / 0.12;
-                div().h(crate::ui::rem_px(if self.style.windows_theme { 30.0 } else { 24.0 }))
-                    .px_2().flex().items_center().gap_2().text_color(self.style.fg)
+                let t = now
+                    .saturating_duration_since(entry.closing.unwrap())
+                    .as_secs_f32()
+                    / 0.12;
+                div()
+                    .h(crate::ui::rem_px(if self.style.windows_theme {
+                        30.0
+                    } else {
+                        24.0
+                    }))
+                    .px_2()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_color(self.style.fg)
                     .opacity(1.0 - crate::ui::motion::ease_out_quart(t))
-                    .child(crate::ui::icons::theme_icon(crate::ui::icons::AtlasIcon::Folder, 16.0, self.style.fg, self.style.windows_theme))
-                    .child(div().min_w_0().truncate().child(entry.name)).into_any_element()
+                    .child(crate::ui::icons::theme_icon(
+                        crate::ui::icons::AtlasIcon::Folder,
+                        16.0,
+                        self.style.fg,
+                        self.style.windows_theme,
+                    ))
+                    .child(div().min_w_0().truncate().child(entry.name))
+                    .into_any_element()
             };
             let mut body = crate::ui::reveal::DisclosureBody::new(id, live, row);
-            if entry.entered.is_some() { body = body.animate_entry(); }
+            if entry.entered.is_some() {
+                body = body.animate_entry();
+            }
             list = list.child(body);
-            animating |= !live || entry.entered.is_some_and(|at| now.saturating_duration_since(at) < Duration::from_millis(240));
+            animating |= !live
+                || entry.entered.is_some_and(|at| {
+                    now.saturating_duration_since(at) < Duration::from_millis(240)
+                });
         }
-        if !self.items.is_empty() { list = list.child(InsertionLane { index: self.items.len(), app: self.app, active: insertion == Some(self.items.len()), style: self.style }); }
-        if animating && !instant { list = list.child(gpui::canvas(|_, _, _| {}, |_, _, window, _| window.request_animation_frame()).size(px(0.0))); }
+        if !self.items.is_empty() {
+            list = list.child(InsertionLane {
+                index: self.items.len(),
+                app: self.app,
+                active: insertion == Some(self.items.len()),
+                style: self.style,
+            });
+        }
+        if animating && !instant {
+            list = list.child(
+                gpui::canvas(
+                    |_, _, _| {},
+                    |_, _, window, _| window.request_animation_frame(),
+                )
+                .size(px(0.0)),
+            );
+        }
         list
     }
 }
@@ -139,12 +227,17 @@ pub(crate) fn insert_references(
 
 impl App {
     pub(crate) fn bookmark_removal_at(&self, position: gpui::Point<gpui::Pixels>) -> bool {
-        self.sidebar_scroll_region.as_ref().is_some_and(|(bounds, _)| {
-            position.x > bounds.right() + gpui::px(24.0)
-        }) && !self.modal_overlay_active()
+        self.sidebar_scroll_region
+            .as_ref()
+            .is_some_and(|(bounds, _)| position.x > bounds.right() + gpui::px(24.0))
+            && !self.modal_overlay_active()
     }
 
-    pub(crate) fn remove_bookmark_reference(&mut self, drag: &BookmarkDrag, position: gpui::Point<gpui::Pixels>) {
+    pub(crate) fn remove_bookmark_reference(
+        &mut self,
+        drag: &BookmarkDrag,
+        position: gpui::Point<gpui::Pixels>,
+    ) {
         if self.state.profiles.active().name == drag.profile && self.bookmark_removal_at(position) {
             let bookmarks = &mut self.state.profiles.active_mut().bookmarks;
             let before = bookmarks.len();

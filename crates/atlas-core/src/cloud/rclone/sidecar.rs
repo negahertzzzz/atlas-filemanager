@@ -265,14 +265,21 @@ pub fn spawn_daemon(binary: &Path) -> anyhow::Result<Daemon> {
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
 
-    let mut child = cmd
-        .spawn()
-        .context("spawn rclone rcd")?;
+    let mut child = cmd.spawn().context("spawn rclone rcd")?;
     #[cfg(windows)]
-    let job = match child.raw_handle().map(|handle| atlas_win_space::process_job::ChildJob::contain(handle as isize)) {
+    let job = match child
+        .raw_handle()
+        .map(|handle| atlas_win_space::process_job::ChildJob::contain(handle as isize))
+    {
         Some(Ok(job)) => job,
-        Some(Err(error)) => { let _ = child.start_kill(); return Err(error).context("contain rclone process lifetime"); }
-        None => { let _ = child.start_kill(); return Err(anyhow!("rclone process handle unavailable")); }
+        Some(Err(error)) => {
+            let _ = child.start_kill();
+            return Err(error).context("contain rclone process lifetime");
+        }
+        None => {
+            let _ = child.start_kill();
+            return Err(anyhow!("rclone process handle unavailable"));
+        }
     };
     RCD_PID.store(child.id().unwrap_or(0), Ordering::SeqCst);
 

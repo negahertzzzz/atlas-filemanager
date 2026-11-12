@@ -1,6 +1,8 @@
 //! Immutable in-memory size tree. One scan produces one `SpaceTree`; navigating
 //! to any folder is then a lookup, never another disk read.
-use atlas_model::cleanup::{DiskEntry, DiskSnapshot, ScanBackend, ScanStatus, TreemapNode, TypeStat};
+use atlas_model::cleanup::{
+    DiskEntry, DiskSnapshot, ScanBackend, ScanStatus, TreemapNode, TypeStat,
+};
 use std::{
     cmp::Reverse,
     collections::BinaryHeap,
@@ -241,7 +243,12 @@ impl SpaceTree {
         Some(self.treemap_node(id, path, &drawn))
     }
 
-    fn treemap_node(&self, id: u32, path: &Path, drawn: &std::collections::HashSet<u32>) -> TreemapNode {
+    fn treemap_node(
+        &self,
+        id: u32,
+        path: &Path,
+        drawn: &std::collections::HashSet<u32>,
+    ) -> TreemapNode {
         let node = &self.nodes[id as usize];
         let children: Vec<TreemapNode> = self
             .kids_of(id)
@@ -249,12 +256,15 @@ impl SpaceTree {
             .filter(|kid| drawn.contains(kid))
             .map(|kid| self.treemap_node(*kid, &path.join(&*self.nodes[*kid as usize].name), drawn))
             .collect();
-        let shown = children.iter().fold(0u64, |sum, c| sum.saturating_add(c.bytes));
+        let shown = children
+            .iter()
+            .fold(0u64, |sum, c| sum.saturating_add(c.bytes));
         TreemapNode {
             path: path.to_owned(),
-            name: path
-                .file_name()
-                .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned()),
+            name: path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            ),
             bytes: node.size,
             directory: node.dir,
             other: node.size.saturating_sub(shown),
@@ -266,7 +276,8 @@ impl SpaceTree {
     /// indexed one by one; their total is reported as one "small files" row.
     pub fn types(&self, path: &Path) -> Option<Vec<TypeStat>> {
         let id = self.find(path)?;
-        let mut by_ext: std::collections::HashMap<String, (u64, u64)> = std::collections::HashMap::new();
+        let mut by_ext: std::collections::HashMap<String, (u64, u64)> =
+            std::collections::HashMap::new();
         let mut stack = vec![id];
         let (mut kept_bytes, mut kept_files) = (0u64, 0u64);
         while let Some(at) = stack.pop() {
@@ -306,7 +317,11 @@ impl SpaceTree {
                 small_files: true,
             });
         }
-        stats.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.extension.cmp(&b.extension)));
+        stats.sort_by(|a, b| {
+            b.bytes
+                .cmp(&a.bytes)
+                .then_with(|| a.extension.cmp(&b.extension))
+        });
         Some(stats)
     }
 
@@ -402,7 +417,9 @@ impl SpaceTree {
 static TREE: Mutex<Option<Arc<SpaceTree>>> = Mutex::new(None);
 
 pub fn store(tree: Arc<SpaceTree>) {
-    *TREE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tree);
+    *TREE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tree);
 }
 pub fn cached(path: &Path) -> Option<Arc<SpaceTree>> {
     TREE.lock()
@@ -413,14 +430,20 @@ pub fn cached(path: &Path) -> Option<Arc<SpaceTree>> {
 }
 /// Update the cached tree after `path` was deleted. False if nothing changed.
 pub fn remove(path: &Path) -> bool {
-    let mut guard = TREE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut guard = TREE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     guard
         .as_mut()
         .and_then(Arc::get_mut)
         .is_some_and(|tree| tree.remove_node(path))
 }
 pub fn invalidate() {
-    if let Some(old) = TREE.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() {
+    if let Some(old) = TREE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take()
+    {
         std::thread::spawn(move || drop(old));
     }
 }
@@ -457,7 +480,11 @@ mod tests {
         let whole = t.snapshot(&root, 1).unwrap();
         assert_eq!((whole.bytes, whole.entry_count), (12, 3));
         assert_eq!(
-            whole.large_files.iter().map(|f| f.bytes).collect::<Vec<_>>(),
+            whole
+                .large_files
+                .iter()
+                .map(|f| f.bytes)
+                .collect::<Vec<_>>(),
             vec![7, 3, 2]
         );
         let child = t.snapshot(&root.join("a"), 2).unwrap();
@@ -511,13 +538,17 @@ mod tests {
         let types = t.types(&root).unwrap();
         assert_eq!(types[0].extension, "mkv");
         assert_eq!(types[0].bytes, 9_000);
-        assert!(types.iter().any(|s| s.small_files && s.bytes == 20 && s.files == 1));
+        assert!(types
+            .iter()
+            .any(|s| s.small_files && s.bytes == 20 && s.files == 1));
         assert_eq!(types.iter().map(|s| s.bytes).sum::<u64>(), 11_620);
 
         let mut files = t.files_under(&root.join("a")).unwrap();
         files.sort();
         assert_eq!(files.len(), 2);
-        assert!(files.iter().any(|(p, b)| p.ends_with("movie.MKV") && *b == 9_000));
+        assert!(files
+            .iter()
+            .any(|(p, b)| p.ends_with("movie.MKV") && *b == 9_000));
     }
     #[test]
     fn small_files_fold_into_the_folder_total() {

@@ -12,7 +12,9 @@ use windows_sys::Win32::{
     Storage::FileSystem::WriteFile,
     System::{
         Diagnostics::Debug::*,
-        LibraryLoader::{GetModuleFileNameW, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32},
+        LibraryLoader::{
+            GetModuleFileNameW, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
+        },
         Threading::{GetCurrentProcess, GetCurrentThread},
     },
 };
@@ -88,10 +90,18 @@ pub(super) fn load() -> io::Result<()> {
         let options = resolve!("SymSetOptions", unsafe extern "system" fn(u32) -> u32);
         // Use local PDBs only; an exception must never wait for symbol servers
         // or display DbgHelp's error dialogs.
-        options(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_FAIL_CRITICAL_ERRORS | SYMOPT_NO_PROMPTS);
-        let search = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_owned()))
+        options(
+            SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_FAIL_CRITICAL_ERRORS | SYMOPT_NO_PROMPTS,
+        );
+        let search = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_owned()))
             .map(|p| super::super::wide(p.as_os_str()));
-        initialize(GetCurrentProcess(), search.as_ref().map_or(null(), |p| p.as_ptr()), 1);
+        initialize(
+            GetCurrentProcess(),
+            search.as_ref().map_or(null(), |p| p.as_ptr()),
+            1,
+        );
         let _ = API.set(functions);
     }
     Ok(())
@@ -162,7 +172,9 @@ pub(super) unsafe fn stack(file: HANDLE, exception: *const EXCEPTION_POINTERS) {
         }
         let current = (frame.AddrPC.Offset, frame.AddrStack.Offset);
         let duplicate = current == previous;
-        if duplicate && repeated { break; }
+        if duplicate && repeated {
+            break;
+        }
         repeated = duplicate;
         previous = current;
         // Always retain addresses if a release build has no local PDB.
@@ -173,7 +185,13 @@ pub(super) unsafe fn stack(file: HANDLE, exception: *const EXCEPTION_POINTERS) {
             hex(&mut line[28..44], base);
             let mut written = 0;
             unsafe {
-                WriteFile(file, line.as_ptr(), line.len() as u32, &mut written, null_mut());
+                WriteFile(
+                    file,
+                    line.as_ptr(),
+                    line.len() as u32,
+                    &mut written,
+                    null_mut(),
+                );
                 // The module name lets release stacks (PDB not shipped) be
                 // symbolized offline by `scripts/symbolize-crash.py`.
                 write_module_name(file, base);
@@ -200,12 +218,17 @@ pub(super) unsafe fn stack(file: HANDLE, exception: *const EXCEPTION_POINTERS) {
     }
 }
 
-struct FixedLine { bytes: [u8; 8192], len: usize }
+struct FixedLine {
+    bytes: [u8; 8192],
+    len: usize,
+}
 impl std::fmt::Write for FixedLine {
     fn write_str(&mut self, value: &str) -> std::fmt::Result {
         let available = self.bytes.len() - self.len;
         let mut count = value.len().min(available);
-        while !value.is_char_boundary(count) { count -= 1; }
+        while !value.is_char_boundary(count) {
+            count -= 1;
+        }
         self.bytes[self.len..self.len + count].copy_from_slice(&value.as_bytes()[..count]);
         self.len += count;
         Ok(())
@@ -215,7 +238,10 @@ impl FixedLine {
     fn wide(&mut self, value: &[u16]) {
         for ch in char::decode_utf16(value.iter().copied()) {
             let mut bytes = [0; 4];
-            let _ = self.write_str(ch.unwrap_or(char::REPLACEMENT_CHARACTER).encode_utf8(&mut bytes));
+            let _ = self.write_str(
+                ch.unwrap_or(char::REPLACEMENT_CHARACTER)
+                    .encode_utf8(&mut bytes),
+            );
         }
     }
 }
@@ -226,21 +252,36 @@ unsafe fn write_symbol(file: HANDLE, api: &Functions, address: u64) {
     let mut storage = [0u64; (mem::size_of::<SYMBOL_INFOW>() + 2048).div_ceil(8)];
     let symbol = storage.as_mut_ptr().cast::<SYMBOL_INFOW>();
     let mut displacement = 0u64;
-    let mut output = FixedLine { bytes: [0; 8192], len: 0 };
+    let mut output = FixedLine {
+        bytes: [0; 8192],
+        len: 0,
+    };
     unsafe {
         (*symbol).SizeOfStruct = mem::size_of::<SYMBOL_INFOW>() as u32;
         (*symbol).MaxNameLen = 1024;
         if (api.symbol)(GetCurrentProcess(), address, &mut displacement, symbol) != 0 {
             let _ = output.write_str("  ");
-            output.wide(std::slice::from_raw_parts((*symbol).Name.as_ptr(), ((*symbol).NameLen as usize).min(1023)));
+            output.wide(std::slice::from_raw_parts(
+                (*symbol).Name.as_ptr(),
+                ((*symbol).NameLen as usize).min(1023),
+            ));
             let _ = write!(output, "+0x{displacement:x}");
         }
         let mut source: IMAGEHLP_LINEW64 = mem::zeroed();
         source.SizeOfStruct = mem::size_of::<IMAGEHLP_LINEW64>() as u32;
         let mut line_displacement = 0;
-        if (api.source_line)(GetCurrentProcess(), address, &mut line_displacement, &mut source) != 0 && !source.FileName.is_null() {
+        if (api.source_line)(
+            GetCurrentProcess(),
+            address,
+            &mut line_displacement,
+            &mut source,
+        ) != 0
+            && !source.FileName.is_null()
+        {
             let mut length = 0;
-            while length < 2048 && *source.FileName.add(length) != 0 { length += 1; }
+            while length < 2048 && *source.FileName.add(length) != 0 {
+                length += 1;
+            }
             let _ = output.write_str(" ");
             output.wide(std::slice::from_raw_parts(source.FileName, length));
             let _ = write!(output, ":{}", source.LineNumber);
@@ -248,7 +289,13 @@ unsafe fn write_symbol(file: HANDLE, api: &Functions, address: u64) {
         if output.len != 0 {
             let _ = output.write_str("\r\n");
             let mut written = 0;
-            WriteFile(file, output.bytes.as_ptr(), output.len as u32, &mut written, null_mut());
+            WriteFile(
+                file,
+                output.bytes.as_ptr(),
+                output.len as u32,
+                &mut written,
+                null_mut(),
+            );
         }
     }
 }
@@ -256,18 +303,24 @@ unsafe fn write_symbol(file: HANDLE, api: &Functions, address: u64) {
 /// Appends ` <file name>` of the module loaded at `base`. Fixed buffers only.
 unsafe fn write_module_name(file: HANDLE, base: u64) {
     let mut wide = [0u16; 260];
-    let len = unsafe { GetModuleFileNameW(base as isize, wide.as_mut_ptr(), wide.len() as u32) } as usize;
+    let len =
+        unsafe { GetModuleFileNameW(base as isize, wide.as_mut_ptr(), wide.len() as u32) } as usize;
     if base == 0 || len == 0 {
         return;
     }
     let path = &wide[..len.min(wide.len())];
-    let name = path.rsplit(|&c| c == u16::from(b'\\')).next().unwrap_or(path);
+    let name = path
+        .rsplit(|&c| c == u16::from(b'\\'))
+        .next()
+        .unwrap_or(path);
     let mut output = [0u8; 1024];
     output[0] = b' ';
     let mut used = 1;
     for ch in char::decode_utf16(name.iter().copied()) {
         let mut bytes = [0; 4];
-        let encoded = ch.unwrap_or(char::REPLACEMENT_CHARACTER).encode_utf8(&mut bytes);
+        let encoded = ch
+            .unwrap_or(char::REPLACEMENT_CHARACTER)
+            .encode_utf8(&mut bytes);
         if used + encoded.len() > output.len() {
             break;
         }

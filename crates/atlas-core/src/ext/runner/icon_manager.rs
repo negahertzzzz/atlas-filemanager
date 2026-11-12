@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::ext::registry::CommandRef;
 use anyhow::{Context as _, Result};
 use atlas_model::app_state::BgResult;
-use crate::ext::registry::CommandRef;
 
 pub fn run_icon_manager(
     rt: &tokio::runtime::Handle,
@@ -38,12 +38,8 @@ pub fn run_icon_manager(
             "icon-manager.download-flow" => {
                 download_and_activate_theme(&tx, &data_dir, "thang-nm/flow-icons").await
             }
-            "icon-manager.select-theme" => {
-                select_theme_variant(&tx, &data_dir).await
-            }
-            "icon-manager.reset-default" => {
-                reset_default_icons(&data_dir)
-            }
+            "icon-manager.select-theme" => select_theme_variant(&tx, &data_dir).await,
+            "icon-manager.reset-default" => reset_default_icons(&data_dir),
             other => Err(anyhow::anyhow!("Unsupported icon-manager command: {other}")),
         };
 
@@ -160,10 +156,7 @@ fn read_package_variants(theme_root: &Path) -> Result<Vec<ThemeVariant>> {
     Ok(variants)
 }
 
-pub async fn select_theme_variant(
-    bg_tx: &flume::Sender<BgResult>,
-    data_dir: &Path,
-) -> Result<()> {
+pub async fn select_theme_variant(bg_tx: &flume::Sender<BgResult>, data_dir: &Path) -> Result<()> {
     let mut all_variants = Vec::new();
     let mut search_dirs = vec![data_dir.to_path_buf()];
     if let Some(home) = dirs::home_dir() {
@@ -175,7 +168,9 @@ pub async fn select_theme_variant(
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.join("extension/package.json").is_file() || path.join("package.json").is_file() {
+                if path.join("extension/package.json").is_file()
+                    || path.join("package.json").is_file()
+                {
                     if let Ok(variants) = read_package_variants(&path) {
                         all_variants.extend(variants);
                     }
@@ -236,7 +231,11 @@ pub async fn select_theme_variant(
         &selected_variant.theme_rel_path,
     )?;
     if let Some(slug) = selected_variant.theme_root.file_name() {
-        record_active_variant(data_dir, &slug.to_string_lossy(), &selected_variant.theme_rel_path);
+        record_active_variant(
+            data_dir,
+            &slug.to_string_lossy(),
+            &selected_variant.theme_rel_path,
+        );
     }
     Ok(())
 }
@@ -256,7 +255,10 @@ pub struct InstalledIconVariant {
 const ACTIVE_VARIANT_FILE: &str = "active_variant.txt";
 
 fn record_active_variant(data_dir: &Path, slug: &str, theme_rel_path: &str) {
-    let _ = std::fs::write(data_dir.join(ACTIVE_VARIANT_FILE), format!("{slug}\n{theme_rel_path}"));
+    let _ = std::fs::write(
+        data_dir.join(ACTIVE_VARIANT_FILE),
+        format!("{slug}\n{theme_rel_path}"),
+    );
 }
 
 /// `(slug, theme_rel_path)` of the variant last activated, if any.
@@ -307,7 +309,10 @@ pub fn activate_icon_variant(
 ) {
     rt.spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            anyhow::ensure!(!slug.contains(['/', '\\']) && !slug.contains(".."), "invalid theme dir");
+            anyhow::ensure!(
+                !slug.contains(['/', '\\']) && !slug.contains(".."),
+                "invalid theme dir"
+            );
             build_mappings_from_theme_file(&data_dir, &data_dir.join(&slug), &theme_rel_path)?;
             record_active_variant(&data_dir, &slug, &theme_rel_path);
             Ok(())
@@ -399,7 +404,11 @@ fn build_mappings_from_theme_file(
 
     // Map default folder
     if let Some(folder_id) = theme.get("folder").and_then(serde_json::Value::as_str) {
-        if let Some(icon_path) = definitions.get(folder_id).and_then(|d| d.get("iconPath")).and_then(serde_json::Value::as_str) {
+        if let Some(icon_path) = definitions
+            .get(folder_id)
+            .and_then(|d| d.get("iconPath"))
+            .and_then(serde_json::Value::as_str)
+        {
             if let Ok(path) = normalize_icon_path(&base, theme_dir, icon_path) {
                 mappings.insert(
                     "/".to_string(),
@@ -411,7 +420,11 @@ fn build_mappings_from_theme_file(
 
     // Map generic file
     if let Some(file_id) = theme.get("file").and_then(serde_json::Value::as_str) {
-        if let Some(icon_path) = definitions.get(file_id).and_then(|d| d.get("iconPath")).and_then(serde_json::Value::as_str) {
+        if let Some(icon_path) = definitions
+            .get(file_id)
+            .and_then(|d| d.get("iconPath"))
+            .and_then(serde_json::Value::as_str)
+        {
             if let Ok(path) = normalize_icon_path(&base, theme_dir, icon_path) {
                 mappings.insert(
                     "".to_string(),
@@ -422,7 +435,10 @@ fn build_mappings_from_theme_file(
     }
 
     // Map file extensions
-    if let Some(extensions) = theme.get("fileExtensions").and_then(serde_json::Value::as_object) {
+    if let Some(extensions) = theme
+        .get("fileExtensions")
+        .and_then(serde_json::Value::as_object)
+    {
         for (extension, icon_id) in extensions {
             let Some(icon_path) = icon_id
                 .as_str()
@@ -475,7 +491,13 @@ mod tests {
 
     #[test]
     fn parses_multiple_variants_from_package_json() {
-        let temp = std::env::temp_dir().join(format!("pkg_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp = std::env::temp_dir().join(format!(
+            "pkg_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let ext_dir = temp.join("extension");
         std::fs::create_dir_all(&ext_dir).unwrap();
 

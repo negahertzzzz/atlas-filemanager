@@ -10,7 +10,8 @@ impl App {
             let tx = self.tx.clone();
             self.rt.spawn_blocking(move || {
                 let _ = tx.send(atlas_model::app_state::BgResult::VolumeSnapshot(
-                    atlas_win_space::storage::mounted_volume_serials()));
+                    atlas_win_space::storage::mounted_volume_serials(),
+                ));
             });
         }
     }
@@ -47,35 +48,77 @@ impl App {
             let from = old.to_string_lossy().chars().take(2).collect::<String>();
             let to = new.to_string_lossy().chars().take(2).collect::<String>();
             if notified.insert((from.clone(), to.clone())) {
-                self.toast_info(rust_i18n::t!("volume_path_updated", from = from, to = to).to_string());
+                self.toast_info(
+                    rust_i18n::t!("volume_path_updated", from = from, to = to).to_string(),
+                );
             }
         }
     }
 
-    pub(crate) fn details_prefs_for(&self, pane: atlas_model::pane::TabId) -> crate::app::DetailsColumnPrefs {
-        let fallback = crate::app::DetailsColumnPrefs { widths: self.col_widths, order: self.details_column_order };
-        let Some(columns) = self.tab_data_for(pane).and_then(|tab| tab.details_columns.as_ref()) else { return fallback; };
-        if columns.ratios.iter().any(|v| !v.is_finite() || *v < 0.0) { return fallback; }
+    pub(crate) fn details_prefs_for(
+        &self,
+        pane: atlas_model::pane::TabId,
+    ) -> crate::app::DetailsColumnPrefs {
+        let fallback = crate::app::DetailsColumnPrefs {
+            widths: self.col_widths,
+            order: self.details_column_order,
+        };
+        let Some(columns) = self
+            .tab_data_for(pane)
+            .and_then(|tab| tab.details_columns.as_ref())
+        else {
+            return fallback;
+        };
+        if columns.ratios.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return fallback;
+        }
         let sum: f32 = columns.ratios.iter().sum();
-        if sum <= f32::EPSILON { return fallback; }
+        if sum <= f32::EPSILON {
+            return fallback;
+        }
         let mut order = crate::app::DetailsColumn::DEFAULT_ORDER;
         for (slot, key) in order.iter_mut().zip(&columns.order) {
-            *slot = match key.as_str() { "size" => crate::app::DetailsColumn::Size, "modified" => crate::app::DetailsColumn::Modified,
-                "type" => crate::app::DetailsColumn::Type, _ => return fallback };
+            *slot = match key.as_str() {
+                "size" => crate::app::DetailsColumn::Size,
+                "modified" => crate::app::DetailsColumn::Modified,
+                "type" => crate::app::DetailsColumn::Type,
+                _ => return fallback,
+            };
         }
-        if order[0] == order[1] || order[1] == order[2] || order[0] == order[2] { return fallback; }
+        if order[0] == order[1] || order[1] == order[2] || order[0] == order[2] {
+            return fallback;
+        }
         let [name, size, modified, type_w] = columns.ratios.map(|v| v / sum * 650.0);
-        crate::app::DetailsColumnPrefs { widths: crate::app::ColWidths {
-            name, size, modified, type_w, reference_width: Some(650.0),
-        }, order }
+        crate::app::DetailsColumnPrefs {
+            widths: crate::app::ColWidths {
+                name,
+                size,
+                modified,
+                type_w,
+                reference_width: Some(650.0),
+            },
+            order,
+        }
     }
 
-    pub(crate) fn set_details_prefs(&mut self, pane: atlas_model::pane::TabId, prefs: crate::app::DetailsColumnPrefs) {
-        let values = [prefs.widths.name, prefs.widths.size, prefs.widths.modified, prefs.widths.type_w];
+    pub(crate) fn set_details_prefs(
+        &mut self,
+        pane: atlas_model::pane::TabId,
+        prefs: crate::app::DetailsColumnPrefs,
+    ) {
+        let values = [
+            prefs.widths.name,
+            prefs.widths.size,
+            prefs.widths.modified,
+            prefs.widths.type_w,
+        ];
         let sum = values.iter().sum::<f32>().max(1.0);
-        if let Some(atlas_model::layout_tree::Tile::Pane(tab)) = self.state.pane_tree.tiles.get_mut(pane) {
+        if let Some(atlas_model::layout_tree::Tile::Pane(tab)) =
+            self.state.pane_tree.tiles.get_mut(pane)
+        {
             tab.details_columns = Some(atlas_model::profiles::FolderColumns {
-                ratios: values.map(|v| v / sum), order: prefs.order.map(|c| c.key().to_string()),
+                ratios: values.map(|v| v / sum),
+                order: prefs.order.map(|c| c.key().to_string()),
             });
         }
     }
@@ -84,7 +127,9 @@ impl App {
         if idx == self.state.profiles.active_idx || idx >= self.state.profiles.profiles.len() {
             return;
         }
-        if !self.close_native_vault(false) { return; }
+        if !self.close_native_vault(false) {
+            return;
+        }
         self.file_filter_projections.clear();
         // Keys and decrypted names never cross a profile boundary.
         self.vault = None;
@@ -190,10 +235,22 @@ impl App {
                 .await
                 {
                     Ok(entries) => {
-                        let has_excluded_items = super::fs_sync::has_excluded_directory_items(&path, show_hidden, entries.is_empty()).await;
-                        let _ = tx_clone.send(atlas_model::app_state::BgResult::DirListExclusions { tab: tile_id, op_id, has_excluded_items });
+                        let has_excluded_items = super::fs_sync::has_excluded_directory_items(
+                            &path,
+                            show_hidden,
+                            entries.is_empty(),
+                        )
+                        .await;
+                        let _ =
+                            tx_clone.send(atlas_model::app_state::BgResult::DirListExclusions {
+                                tab: tile_id,
+                                op_id,
+                                has_excluded_items,
+                            });
                         let _ = tx_clone.send(atlas_model::app_state::BgResult::DirListTiming {
-                            tab: tile_id, op_id, elapsed: started.elapsed(),
+                            tab: tile_id,
+                            op_id,
+                            elapsed: started.elapsed(),
                         });
                         let _ = tx_clone.send(atlas_model::app_state::BgResult::DirListed {
                             tab: tile_id,
@@ -386,10 +443,17 @@ impl App {
             .active_mut()
             .set_scoped::<DetailsColumns>(&prefs);
         let folder = self.tab_data_for(pane).and_then(|tab| match &tab.location {
-            atlas_model::location::Location::Directory(path) => Some((path.clone(), atlas_model::profiles::FolderViewPref {
-                view_mode: tab.view_mode.clone(), sort_col: tab.sort_col.clone(), sort_dir: tab.sort_dir.clone(),
-                recursive: false, columns: tab.details_columns.clone(),
-            })), _ => None,
+            atlas_model::location::Location::Directory(path) => Some((
+                path.clone(),
+                atlas_model::profiles::FolderViewPref {
+                    view_mode: tab.view_mode.clone(),
+                    sort_col: tab.sort_col.clone(),
+                    sort_dir: tab.sort_dir.clone(),
+                    recursive: false,
+                    columns: tab.details_columns.clone(),
+                },
+            )),
+            _ => None,
         });
         self.save_folder_view_pref(folder);
         atlas_core::util::config::save_profiles(&self.state.profiles);
@@ -451,7 +515,11 @@ impl App {
         // Choosing an icon theme means "show it": native Shell icons would
         // otherwise keep winning under the Windows themes.
         use atlas_model::settings::IconStyle;
-        let style = if map.is_empty() { IconStyle::Auto } else { IconStyle::Theme };
+        let style = if map.is_empty() {
+            IconStyle::Auto
+        } else {
+            IconStyle::Theme
+        };
         if self.state.settings.icon_style != style {
             self.state.settings.icon_style = style;
             atlas_core::util::config::save_settings(&self.state.settings);

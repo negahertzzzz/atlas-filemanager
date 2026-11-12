@@ -1,0 +1,123 @@
+name: Repackage existing Linux binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: Previous manual Packages run with compiled Linux binaries and atlas-source
+        required: true
+      version:
+        description: Version of those binaries
+        required: true
+        default: '0.1.5'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repack:
+    runs-on: ubuntu-22.04
+    env:
+      ATLAS_VERSION: ${{ inputs.version }}
+      SOURCE_RUN: ${{ inputs.run-id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: atlas-linux-x86_64
+          path: original
+          run-id: ${{ inputs.run-id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: atlas-source
+          path: source
+          run-id: ${{ inputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Verify candidate origin and recover the four exact binaries
+        run: |
+          (cd original && sha256sum --check SHA256SUMS)
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, tarfile
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from linux_release import validate_version
+          version = validate_version(os.environ['ATLAS_VERSION'])
+          run_id, repo = os.environ['SOURCE_RUN'], os.environ['GITHUB_REPOSITORY']
+          assert run_id.isdecimal()
+          run = json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{run_id}']))
+          assert run['event']=='workflow_dispatch' and run['head_branch']=='main'
+          assert run['head_repository']['full_name'].lower()==repo.lower()
+          assert run['path']=='.github/workflows/packages.yml'
+          assert re.fullmatch('[0-9a-f]{40}', run['head_sha'])
+          jobs = json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{run_id}/jobs']))['jobs']
+          build = next(job for job in jobs if 'Build Linux x86_64' in job['name'])
+          assert build['conclusion']=='success'
+          assert json.load(open('original/atlas-linux.json'))['version']==version
+          output = Path('target/release')
+          output.mkdir(parents=True, exist_ok=True)
+          with tarfile.open(f'original/atlas-{version}-linux-x86_64.tar.gz') as archive:
+              for name in ('atlas','atlas-search-service','atlas-cloud-extension','atlas-icon-extension'):
+                  member = archive.getmember(f'atlas-{version}-linux-x86_64/bin/{name}')
+                  assert member.isfile()
+                  (output/name).write_bytes(archive.extractfile(member).read())
+                  (output/name).chmod(0o755)
+          Path('source/BINARY-PROVENANCE.json').write_text(json.dumps(dict(
+              sourceRun=run['html_url'], binarySourceRevision=run['head_sha'],
+              packagingRevision=os.environ['GITHUB_SHA'], version=version), indent=2)+'\n')
+          with open(os.environ['GITHUB_ENV'],'a') as stream:
+              stream.write('BASE_REVISION='+run['head_sha']+'\n')
+          PY
+      - name: Packaging and desktop dependencies
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y libxkbcommon-x11-0 libssl3 libfontconfig1 \
+            libwayland-client0 libegl1 libvulkan1 desktop-file-utils appstream squashfs-tools librsvg2-bin python3-pil
+      - name: Package without recompiling Rust
+        run: |
+          test "$(target/release/atlas --version)" = "Atlas $ATLAS_VERSION"
+          python3 scripts/generate-third-party.py --verify-release --scope desktop
+          python3 -m unittest discover -s scripts/tests -p 'test_linux*.py'
+          python3 scripts/linux_release.py tools
+          python3 scripts/linux_release.py packages --version "$ATLAS_VERSION"
+          desktop-file-validate packaging/linux/atlas.desktop
+          appstreamcli validate --no-net target/linux-release/*.metainfo.xml
+      - name: Keep the matching original source and provide packaging changes
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REVISION"
+          git diff "$BASE_REVISION" HEAD -- packaging/linux scripts/linux_release.py scripts/linux-store-packages.sh scripts/linux-container-test.sh > source/PACKAGING-CHANGES.patch
+          printf '%s\n' 'The source ZIP and its receipt are unchanged and match the compiled binaries.' \
+            'Apply PACKAGING-CHANGES.patch with git apply --ignore-space-change in the extracted source root to use the updated Linux packaging.' \
+            'BINARY-PROVENANCE.json identifies the binary and packaging revisions.' > source/README.txt
+          cp source/BINARY-PROVENANCE.json target/linux-dist/
+          cp docs/package-downloads.md target/linux-dist/README.md
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from linux_release import write_checksums
+          write_checksums(Path('source'))
+          write_checksums(Path('target/linux-dist'))
+          PY
+          (cd target/linux-dist && sha256sum --check SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-linux-x86_64
+          path: target/linux-dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-source
+          path: source/*
+          if-no-files-found: error
+          compression-level: 0
+
+  validate:
+    needs: repack
+    uses: ./.github/workflows/linux-package-validation.yml
+    with:
+      run-id: ${{ github.run_id }}
+      version: ${{ inputs.version }}
+      test-stores: true

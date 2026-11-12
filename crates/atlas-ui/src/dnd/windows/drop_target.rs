@@ -298,16 +298,35 @@ impl AtlasDropTarget {
     }
 
     fn update_description(&self, x: f32, y: f32, ctrl: bool, shift: bool) -> DROPEFFECT {
-        let target = self.zones.lock().or_else(atlas_model::sync::recover).ok().and_then(|zones| {
-            let dest = zones.hover_snapshot.as_ref()?.transfer_at(x, y, &zones.paths, ctrl, shift)?;
-            let default = if zones.paths.is_empty() { crate::dnd::DropEffect::Copy }
-                else { crate::dnd::default_effect_for_paths(&zones.paths, &dest) };
-            Some((crate::dnd::effect_with_modifiers(default, ctrl, shift), dest))
-        });
+        let target = self
+            .zones
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+            .and_then(|zones| {
+                let dest =
+                    zones
+                        .hover_snapshot
+                        .as_ref()?
+                        .transfer_at(x, y, &zones.paths, ctrl, shift)?;
+                let default = if zones.paths.is_empty() {
+                    crate::dnd::DropEffect::Copy
+                } else {
+                    crate::dnd::default_effect_for_paths(&zones.paths, &dest)
+                };
+                Some((
+                    crate::dnd::effect_with_modifiers(default, ctrl, shift),
+                    dest,
+                ))
+            });
         if *self.description_target.borrow() != target {
             let object = self.active_data.borrow().clone();
             if let Some(object) = object.as_ref() {
-                super::drop_description::publish(object, target.as_ref().map(|t| t.0), target.as_ref().map(|t| t.1.as_path()));
+                super::drop_description::publish(
+                    object,
+                    target.as_ref().map(|t| t.0),
+                    target.as_ref().map(|t| t.1.as_path()),
+                );
             }
             *self.description_target.borrow_mut() = target.clone();
         }
@@ -382,10 +401,20 @@ impl IDropTarget_Impl for AtlasDropTarget_Impl {
         self.last_effect.set(effect);
         unsafe { *pdweffect = effect };
 
-        let visual_effect = self.update_description(x, y, grfkeystate.0 & 0x0008 != 0, grfkeystate.0 & 0x0004 != 0);
+        let visual_effect = self.update_description(
+            x,
+            y,
+            grfkeystate.0 & 0x0008 != 0,
+            grfkeystate.0 & 0x0004 != 0,
+        );
         if let Some(helper) = &self.helper {
             unsafe {
-                let _ = helper.DragEnter(self.hwnd, data_obj, &POINT { x: pt.x, y: pt.y }, visual_effect);
+                let _ = helper.DragEnter(
+                    self.hwnd,
+                    data_obj,
+                    &POINT { x: pt.x, y: pt.y },
+                    visual_effect,
+                );
             }
         }
         Ok(())
@@ -403,7 +432,12 @@ impl IDropTarget_Impl for AtlasDropTarget_Impl {
         unsafe { *pdweffect = effect };
 
         let (x, y) = self.to_logical(pt);
-        let visual_effect = self.update_description(x, y, grfkeystate.0 & 0x0008 != 0, grfkeystate.0 & 0x0004 != 0);
+        let visual_effect = self.update_description(
+            x,
+            y,
+            grfkeystate.0 & 0x0008 != 0,
+            grfkeystate.0 & 0x0004 != 0,
+        );
         if let Some(helper) = &self.helper {
             unsafe {
                 let _ = helper.DragOver(&POINT { x: pt.x, y: pt.y }, visual_effect);
@@ -415,7 +449,12 @@ impl IDropTarget_Impl for AtlasDropTarget_Impl {
             zones.ctrl = grfkeystate.0 & 0x0008 != 0;
             zones.shift = grfkeystate.0 & 0x0004 != 0;
         }
-        if let Some(mut q) = self.action_queue.lock().or_else(atlas_model::sync::recover).ok() {
+        if let Some(mut q) = self
+            .action_queue
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+        {
             q.push(super::DndEvent::DragOver { x, y });
             crate::ui_wake::wake();
         }
@@ -430,7 +469,12 @@ impl IDropTarget_Impl for AtlasDropTarget_Impl {
             zones.paths.clear();
             zones.hover_snapshot = None;
         }
-        if let Some(mut q) = self.action_queue.lock().or_else(atlas_model::sync::recover).ok() {
+        if let Some(mut q) = self
+            .action_queue
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+        {
             q.push(super::DndEvent::DragLeave);
             crate::ui_wake::wake();
         }
@@ -496,7 +540,12 @@ impl IDropTarget_Impl for AtlasDropTarget_Impl {
             x: lx,
             y: ly,
         };
-        if let Some(mut q) = self.action_queue.lock().or_else(atlas_model::sync::recover).ok() {
+        if let Some(mut q) = self
+            .action_queue
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+        {
             q.push(super::DndEvent::DropIn(payload));
             crate::ui_wake::wake();
         }

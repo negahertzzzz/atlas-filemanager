@@ -44,7 +44,11 @@ pub fn save_custom_theme(file_name: &str, theme: &impl Serialize) -> anyhow::Res
     save_custom_theme_in(&themes_dir(), file_name, theme)
 }
 
-fn save_custom_theme_in(directory: &std::path::Path, file_name: &str, theme: &impl Serialize) -> anyhow::Result<()> {
+fn save_custom_theme_in(
+    directory: &std::path::Path,
+    file_name: &str,
+    theme: &impl Serialize,
+) -> anyhow::Result<()> {
     let path = std::path::Path::new(file_name);
     if path.file_name().and_then(std::ffi::OsStr::to_str) != Some(file_name)
         || path.extension().and_then(std::ffi::OsStr::to_str) != Some("json")
@@ -53,7 +57,10 @@ fn save_custom_theme_in(directory: &std::path::Path, file_name: &str, theme: &im
     {
         anyhow::bail!("invalid custom theme filename");
     }
-    write_atomic(&directory.join(file_name), &serde_json::to_vec_pretty(theme)?)?;
+    write_atomic(
+        &directory.join(file_name),
+        &serde_json::to_vec_pretty(theme)?,
+    )?;
     Ok(())
 }
 
@@ -166,8 +173,12 @@ pub fn save_profiles(profiles: &ProfileManager) {
     let mut profiles = profiles.clone();
     use atlas_model::profiles::{FolderViewFeature, RecentFoldersFeature};
     for profile in &mut profiles.profiles {
-        if let Some(tree) = &mut profile.tree { scrub_private_tree(tree); }
-        profile.bookmarks.retain(|bookmark| !crate::vault::live::is_private(&bookmark.path));
+        if let Some(tree) = &mut profile.tree {
+            scrub_private_tree(tree);
+        }
+        profile
+            .bookmarks
+            .retain(|bookmark| !crate::vault::live::is_private(&bookmark.path));
         let mut recent = profile.scoped::<RecentFoldersFeature>();
         recent.retain(|path| !crate::vault::live::is_private(path));
         profile.set_scoped::<RecentFoldersFeature>(&recent);
@@ -181,25 +192,41 @@ pub fn save_profiles(profiles: &ProfileManager) {
 
 fn scrub_private_tree(tree: &mut atlas_model::layout_tree::Tree<TabData>) {
     for (_, tile) in tree.tiles.iter_mut() {
-        let atlas_model::layout_tree::Tile::Pane(tab) = tile else { continue };
+        let atlas_model::layout_tree::Tile::Pane(tab) = tile else {
+            continue;
+        };
         if crate::vault::live::is_private(&tab.location.display_path()) {
-            tab.location = atlas_model::location::Location::Directory(dirs::home_dir().unwrap_or_default());
+            tab.location =
+                atlas_model::location::Location::Directory(dirs::home_dir().unwrap_or_default());
             tab.volume_serial = None;
         }
-        tab.history.retain(|location| !crate::vault::live::is_private(&location.display_path()));
-        tab.history_forward.retain(|location| !crate::vault::live::is_private(&location.display_path()));
-        if tab.breadcrumb_trail.as_ref().is_some_and(|path| crate::vault::live::is_private(path)) { tab.breadcrumb_trail = None; }
+        tab.history
+            .retain(|location| !crate::vault::live::is_private(&location.display_path()));
+        tab.history_forward
+            .retain(|location| !crate::vault::live::is_private(&location.display_path()));
+        if tab
+            .breadcrumb_trail
+            .as_ref()
+            .is_some_and(|path| crate::vault::live::is_private(path))
+        {
+            tab.breadcrumb_trail = None;
+        }
     }
 }
 
 static VOLUME_SNAPSHOT: std::sync::RwLock<Vec<(PathBuf, u32)>> = std::sync::RwLock::new(Vec::new());
 
 pub fn set_volume_snapshot(volumes: &[(PathBuf, u32)]) {
-    if let Ok(mut snapshot) = VOLUME_SNAPSHOT.write() { *snapshot = volumes.to_vec(); }
+    if let Ok(mut snapshot) = VOLUME_SNAPSHOT.write() {
+        *snapshot = volumes.to_vec();
+    }
 }
 
 fn volume_snapshot() -> Vec<(PathBuf, u32)> {
-    VOLUME_SNAPSHOT.read().map(|snapshot| snapshot.clone()).unwrap_or_default()
+    VOLUME_SNAPSHOT
+        .read()
+        .map(|snapshot| snapshot.clone())
+        .unwrap_or_default()
 }
 
 /// Apply the last background snapshot; saving never probes disconnected disks.
@@ -254,9 +281,17 @@ mod tests {
         std::fs::write(&bundled, b"bundled preset").unwrap();
         let theme = serde_json::json!({"name": "Custom", "themes": [{"name": "Custom", "colors": {"accent.background": "#aabbcc"}}]});
         super::save_custom_theme_in(directory.path(), "custom-1.json", &theme).unwrap();
-        let restored: serde_json::Value = serde_json::from_slice(&std::fs::read(directory.path().join("custom-1.json")).unwrap()).unwrap();
+        let restored: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(directory.path().join("custom-1.json")).unwrap())
+                .unwrap();
         assert_eq!(restored, theme);
-        for name in ["atlas-themes.json", "../outside.json", "..\\outside.json", "nested/theme.json", "custom.tmp"] {
+        for name in [
+            "atlas-themes.json",
+            "../outside.json",
+            "..\\outside.json",
+            "nested/theme.json",
+            "custom.tmp",
+        ] {
             assert!(super::save_custom_theme_in(directory.path(), name, &theme).is_err());
         }
         assert_eq!(std::fs::read(bundled).unwrap(), b"bundled preset");

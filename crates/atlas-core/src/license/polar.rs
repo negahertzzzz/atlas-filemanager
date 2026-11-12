@@ -59,7 +59,9 @@ struct Validation {
 }
 
 fn org() -> Result<&'static str, Error> {
-    ORG_ID.filter(|id| !id.is_empty()).ok_or(Error::NotConfigured)
+    ORG_ID
+        .filter(|id| !id.is_empty())
+        .ok_or(Error::NotConfigured)
 }
 
 fn client() -> Result<reqwest::Client, Error> {
@@ -94,7 +96,11 @@ async fn post<T: Serialize + Sync>(path: &str, body: &T) -> Result<reqwest::Resp
 
 /// Binds `key` to this device and returns the activation id to store.
 pub async fn activate(key: &str, label: &str) -> Result<String, Error> {
-    let body = ActivateRequest { key, organization_id: org()?, label };
+    let body = ActivateRequest {
+        key,
+        organization_id: org()?,
+        label,
+    };
     let activation: Activation = post("activate", &body)
         .await?
         .json()
@@ -105,7 +111,11 @@ pub async fn activate(key: &str, label: &str) -> Result<String, Error> {
 
 /// `Ok(true)` when the key is granted for this activation.
 pub async fn validate(key: &str, activation_id: &str) -> Result<bool, Error> {
-    let body = KeyRequest { key, organization_id: org()?, activation_id };
+    let body = KeyRequest {
+        key,
+        organization_id: org()?,
+        activation_id,
+    };
     let validation: Validation = post("validate", &body)
         .await?
         .json()
@@ -116,7 +126,11 @@ pub async fn validate(key: &str, activation_id: &str) -> Result<bool, Error> {
 
 /// Frees this device's slot so the key can move to another PC.
 pub async fn deactivate(key: &str, activation_id: &str) -> Result<(), Error> {
-    let body = KeyRequest { key, organization_id: org()?, activation_id };
+    let body = KeyRequest {
+        key,
+        organization_id: org()?,
+        activation_id,
+    };
     post("deactivate", &body).await.map(drop)
 }
 

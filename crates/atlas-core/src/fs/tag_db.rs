@@ -157,12 +157,21 @@ fn handle(
             create_tag_with_paths(conn, &name, color, profile.as_deref(), &[])?;
             send_defs(conn, bg_tx)?;
         }
-        TagDbCmd::CreateAndAssignTag { name, color, profile, mut paths } => {
+        TagDbCmd::CreateAndAssignTag {
+            name,
+            color,
+            profile,
+            mut paths,
+        } => {
             paths.retain(|path| !crate::vault::live::is_private(path));
             let tag = create_tag_with_paths(conn, &name, color, profile.as_deref(), &paths)?;
             send_defs(conn, bg_tx)?;
             if !paths.is_empty() {
-                let _ = bg_tx.send(BgResult::TagAssignmentComplete { tag, paths, result: Ok(()) });
+                let _ = bg_tx.send(BgResult::TagAssignmentComplete {
+                    tag,
+                    paths,
+                    result: Ok(()),
+                });
             }
         }
         TagDbCmd::DeleteTag(id) => {
@@ -181,12 +190,20 @@ fn handle(
             let result = (|| -> rusqlite::Result<()> {
                 let tx = conn.unchecked_transaction()?;
                 {
-                    let mut stmt = tx.prepare("INSERT OR IGNORE INTO file_tags (path, tag_id) VALUES (?1, ?2)")?;
-                    for p in &paths { stmt.execute(params![path_key(p), tag.0])?; }
+                    let mut stmt = tx.prepare(
+                        "INSERT OR IGNORE INTO file_tags (path, tag_id) VALUES (?1, ?2)",
+                    )?;
+                    for p in &paths {
+                        stmt.execute(params![path_key(p), tag.0])?;
+                    }
                 }
                 tx.commit()
             })();
-            let _ = bg_tx.send(BgResult::TagAssignmentComplete { tag, paths, result: result.as_ref().map(|_| ()).map_err(ToString::to_string) });
+            let _ = bg_tx.send(BgResult::TagAssignmentComplete {
+                tag,
+                paths,
+                result: result.as_ref().map(|_| ()).map_err(ToString::to_string),
+            });
             result?;
         }
         TagDbCmd::UnassignTag { tag, paths } => {
@@ -201,7 +218,9 @@ fn handle(
             tx.commit()?;
         }
         TagDbCmd::RenamePath { old, new } => {
-            if crate::vault::live::is_private(&new) { return Ok(()); }
+            if crate::vault::live::is_private(&new) {
+                return Ok(());
+            }
             let old_key = path_key(&old);
             let new_key = path_key(&new);
             // The path itself (a tagged file, or the moved directory if it was tagged).
@@ -272,9 +291,8 @@ fn create_tag_with_paths(
         |row| Ok(TagId(row.get(0)?)),
     )?;
     {
-        let mut statement = tx.prepare(
-            "INSERT OR IGNORE INTO file_tags (path, tag_id) VALUES (?1, ?2)",
-        )?;
+        let mut statement =
+            tx.prepare("INSERT OR IGNORE INTO file_tags (path, tag_id) VALUES (?1, ?2)")?;
         for path in paths {
             statement.execute(params![path_key(path), tag.0])?;
         }
@@ -322,23 +340,41 @@ mod tests {
     fn create_from_picker_assigns_the_captured_targets_and_reuses_global_definitions() {
         let conn = open(Path::new(":memory:")).unwrap();
         let (tx, rx) = flume::unbounded();
-        let paths = vec![PathBuf::from("images/first.png"), PathBuf::from("images/second.png")];
+        let paths = vec![
+            PathBuf::from("images/first.png"),
+            PathBuf::from("images/second.png"),
+        ];
         for _ in 0..2 {
-            handle(&conn, TagDbCmd::CreateAndAssignTag {
-                name: "Art".into(), color: [120, 80, 240], profile: None, paths: paths.clone(),
-            }, &tx).unwrap();
+            handle(
+                &conn,
+                TagDbCmd::CreateAndAssignTag {
+                    name: "Art".into(),
+                    color: [120, 80, 240],
+                    profile: None,
+                    paths: paths.clone(),
+                },
+                &tx,
+            )
+            .unwrap();
         }
         let definitions = load_defs(&conn).unwrap();
         assert_eq!(definitions.len(), 1);
         let tag = definitions[0].id;
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row.get::<_, i64>(0)).unwrap(), 2);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
         let events: Vec<_> = rx.try_iter().collect();
         assert!(events.into_iter().any(|event| matches!(event,
             BgResult::TagAssignmentComplete { tag: assigned, paths: targets, result: Ok(()) }
                 if assigned == tag && targets == paths
         )));
         handle(&conn, TagDbCmd::QueryTagsForPaths(paths.clone()), &tx).unwrap();
-        let BgResult::TagsForPaths { tags } = rx.recv().unwrap() else { panic!("Expected file tags"); };
+        let BgResult::TagsForPaths { tags } = rx.recv().unwrap() else {
+            panic!("Expected file tags");
+        };
         assert!(paths.iter().all(|path| tags.get(path) == Some(&vec![tag])));
     }
 
@@ -346,26 +382,55 @@ mod tests {
     fn sidebar_creation_creates_only_a_definition() {
         let conn = open(Path::new(":memory:")).unwrap();
         let (tx, rx) = flume::unbounded();
-        handle(&conn, TagDbCmd::CreateTag {
-            name: "Unassigned".into(), color: [1, 2, 3], profile: Some("Main".into()),
-        }, &tx).unwrap();
+        handle(
+            &conn,
+            TagDbCmd::CreateTag {
+                name: "Unassigned".into(),
+                color: [1, 2, 3],
+                profile: Some("Main".into()),
+            },
+            &tx,
+        )
+        .unwrap();
         assert_eq!(load_defs(&conn).unwrap().len(), 1);
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
-        assert!(!rx.try_iter().any(|event| matches!(event, BgResult::TagAssignmentComplete { .. })));
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert!(!rx
+            .try_iter()
+            .any(|event| matches!(event, BgResult::TagAssignmentComplete { .. })));
     }
 
     #[test]
     fn failed_picker_assignment_rolls_back_the_new_definition_and_all_targets() {
         let conn = open(Path::new(":memory:")).unwrap();
-        conn.execute_batch("CREATE TRIGGER reject_second_target BEFORE INSERT ON file_tags
-            WHEN NEW.path = 'second.png' BEGIN SELECT RAISE(ABORT, 'Rejected target'); END;").unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER reject_second_target BEFORE INSERT ON file_tags
+            WHEN NEW.path = 'second.png' BEGIN SELECT RAISE(ABORT, 'Rejected target'); END;",
+        )
+        .unwrap();
         let (tx, rx) = flume::unbounded();
-        assert!(handle(&conn, TagDbCmd::CreateAndAssignTag {
-            name: "Art".into(), color: [1, 2, 3], profile: None,
-            paths: vec![PathBuf::from("first.png"), PathBuf::from("second.png")],
-        }, &tx).is_err());
+        assert!(handle(
+            &conn,
+            TagDbCmd::CreateAndAssignTag {
+                name: "Art".into(),
+                color: [1, 2, 3],
+                profile: None,
+                paths: vec![PathBuf::from("first.png"), PathBuf::from("second.png")],
+            },
+            &tx
+        )
+        .is_err());
         assert!(load_defs(&conn).unwrap().is_empty());
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
         assert!(rx.try_iter().next().is_none());
     }
 
@@ -373,15 +438,52 @@ mod tests {
     fn assignment_acknowledges_commit_and_failed_transactions_do_not_assign() {
         let conn = open(Path::new(":memory:")).unwrap();
         let (tx, rx) = flume::unbounded();
-        handle(&conn, TagDbCmd::CreateTag { name: "Test".into(), color: [1, 2, 3], profile: None }, &tx).unwrap();
-        let id: i64 = conn.query_row("SELECT id FROM tags", [], |row| row.get(0)).unwrap();
+        handle(
+            &conn,
+            TagDbCmd::CreateTag {
+                name: "Test".into(),
+                color: [1, 2, 3],
+                profile: None,
+            },
+            &tx,
+        )
+        .unwrap();
+        let id: i64 = conn
+            .query_row("SELECT id FROM tags", [], |row| row.get(0))
+            .unwrap();
         let paths = vec![PathBuf::from("source/one"), PathBuf::from("source/two")];
-        handle(&conn, TagDbCmd::AssignTag { tag: TagId(id), paths: paths.clone() }, &tx).unwrap();
+        handle(
+            &conn,
+            TagDbCmd::AssignTag {
+                tag: TagId(id),
+                paths: paths.clone(),
+            },
+            &tx,
+        )
+        .unwrap();
         assert!(rx.try_iter().any(|event| matches!(event, BgResult::TagAssignmentComplete { tag, result: Ok(()), .. } if tag == TagId(id))));
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row.get::<_, i64>(0)).unwrap(), 2);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
         let invalid = TagId(id + 99);
-        assert!(handle(&conn, TagDbCmd::AssignTag { tag: invalid, paths }, &tx).is_err());
+        assert!(handle(
+            &conn,
+            TagDbCmd::AssignTag {
+                tag: invalid,
+                paths
+            },
+            &tx
+        )
+        .is_err());
         assert!(rx.try_iter().any(|event| matches!(event, BgResult::TagAssignmentComplete { tag, result: Err(_), .. } if tag == invalid)));
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row.get::<_, i64>(0)).unwrap(), 2);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM file_tags", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
     }
 }

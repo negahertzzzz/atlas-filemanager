@@ -3,8 +3,8 @@ use super::super::converter::{Phase, Session};
 use crate::app::App;
 use gpui::prelude::*;
 use gpui::{
-    canvas, point, px, Bounds, DispatchPhase, WeakEntity, Hsla, MouseButton, MouseDownEvent,
-    MouseMoveEvent, PathBuilder, Pixels, Point, Window,
+    canvas, point, px, Bounds, DispatchPhase, Hsla, MouseButton, MouseDownEvent, MouseMoveEvent,
+    PathBuilder, Pixels, Point, WeakEntity, Window,
 };
 use std::f32::consts::TAU;
 
@@ -33,8 +33,14 @@ fn sector(
     step: f32,
 ) -> Option<gpui::Path<Pixels>> {
     let half = step * 0.5;
-    let (os, oe) = (mid - half + GAP * 0.5 / outer, mid + half - GAP * 0.5 / outer);
-    let (is, ie) = (mid - half + GAP * 0.5 / inner, mid + half - GAP * 0.5 / inner);
+    let (os, oe) = (
+        mid - half + GAP * 0.5 / outer,
+        mid + half - GAP * 0.5 / outer,
+    );
+    let (is, ie) = (
+        mid - half + GAP * 0.5 / inner,
+        mid + half - GAP * 0.5 / inner,
+    );
     let corner = ((outer - inner) * 0.22).min(inner * (ie - is).max(0.0) * 0.3);
     let (oa, ob) = (os + corner / outer, oe - corner / outer);
     let (ia, ib) = (is + corner / inner, ie - corner / inner);
@@ -62,9 +68,19 @@ fn sector(
         true,
         polar(center, outer, ob),
     );
-    curve(&mut path, polar(center, outer, ob), o_end, toward(o_end, i_end, corner));
+    curve(
+        &mut path,
+        polar(center, outer, ob),
+        o_end,
+        toward(o_end, i_end, corner),
+    );
     path.line_to(toward(i_end, o_end, corner));
-    curve(&mut path, toward(i_end, o_end, corner), i_end, polar(center, inner, ib));
+    curve(
+        &mut path,
+        toward(i_end, o_end, corner),
+        i_end,
+        polar(center, inner, ib),
+    );
     path.arc_to(
         point(px(inner), px(inner)),
         px(0.),
@@ -72,9 +88,19 @@ fn sector(
         false,
         polar(center, inner, ia),
     );
-    curve(&mut path, polar(center, inner, ia), i_start, toward(i_start, o_start, corner));
+    curve(
+        &mut path,
+        polar(center, inner, ia),
+        i_start,
+        toward(i_start, o_start, corner),
+    );
     path.line_to(toward(o_start, i_start, corner));
-    curve(&mut path, toward(o_start, i_start, corner), o_start, polar(center, outer, oa));
+    curve(
+        &mut path,
+        toward(o_start, i_start, corner),
+        o_start,
+        polar(center, outer, oa),
+    );
     path.close();
     path.build().ok()
 }

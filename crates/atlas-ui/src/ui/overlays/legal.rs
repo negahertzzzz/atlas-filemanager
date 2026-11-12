@@ -8,7 +8,10 @@ pub(crate) fn open_notices() {
         let result = (|| -> anyhow::Result<()> {
             std::fs::create_dir_all(&directory)?;
             let path = directory.join("THIRD-PARTY-NOTICES.txt");
-            std::fs::write(&path, include_str!("../../../../../legal/THIRD-PARTY-NOTICES.txt"))?;
+            std::fs::write(
+                &path,
+                include_str!("../../../../../legal/THIRD-PARTY-NOTICES.txt"),
+            )?;
             open::that(&path)?;
             Ok(())
         })();

@@ -23,7 +23,10 @@ pub enum GroupBy {
 impl GroupBy {
     /// Modes backed by timestamps share the calendar buckets.
     pub const fn is_date(self) -> bool {
-        matches!(self, Self::Date | Self::Created | Self::Accessed | Self::Deleted)
+        matches!(
+            self,
+            Self::Date | Self::Created | Self::Accessed | Self::Deleted
+        )
     }
 
     pub const fn label_key(self) -> &'static str {
@@ -118,7 +121,12 @@ pub fn flow_cells(rows: &[GroupRow], flow: GroupFlow) -> GroupCells {
     let mut headers: Vec<GroupHeader> = Vec::new();
     for row in rows {
         match row {
-            GroupRow::Header { id, label, count, collapsed } => {
+            GroupRow::Header {
+                id,
+                label,
+                count,
+                collapsed,
+            } => {
                 match flow {
                     GroupFlow::Columns { rows } => {
                         let rows = rows.max(2);
@@ -137,7 +145,11 @@ pub fn flow_cells(rows: &[GroupRow], flow: GroupFlow) -> GroupCells {
                     cells.push(HEADER_CELL_BASE + headers.len());
                 }
                 headers.push(GroupHeader {
-                    cell: if matches!(flow, GroupFlow::Wrap { .. }) { cells.len() } else { cells.len() - 1 },
+                    cell: if matches!(flow, GroupFlow::Wrap { .. }) {
+                        cells.len()
+                    } else {
+                        cells.len() - 1
+                    },
                     id: id.clone(),
                     label: label.clone(),
                     count: *count,
@@ -166,7 +178,10 @@ pub fn flow_cells(rows: &[GroupRow], flow: GroupFlow) -> GroupCells {
             header.span = (end - header.cell).div_ceil(rows).max(1);
         }
     }
-    GroupCells { cells: std::sync::Arc::new(cells), headers }
+    GroupCells {
+        cells: std::sync::Arc::new(cells),
+        headers,
+    }
 }
 
 /// Vertical bands (group headers) stacked between the rows of a wrapped grid.
@@ -179,7 +194,10 @@ pub struct RowBands {
 
 impl RowBands {
     pub fn new(rows: Vec<usize>, band_h: f32) -> Self {
-        Self { rows: std::sync::Arc::new(rows), band_h }
+        Self {
+            rows: std::sync::Arc::new(rows),
+            band_h,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -202,7 +220,9 @@ impl RowBands {
 
     /// Top of the k-th band relative to the grid origin.
     pub fn band_top(&self, k: usize, pitch: f32) -> f32 {
-        self.rows.get(k).map_or(0.0, |row| *row as f32 * pitch + k as f32 * self.band_h)
+        self.rows
+            .get(k)
+            .map_or(0.0, |row| *row as f32 * pitch + k as f32 * self.band_h)
     }
 
     /// Total height added by every band.
@@ -250,7 +270,11 @@ pub fn grouped_step(cells: &[usize], current: usize, delta: isize) -> Option<usi
     let forward = delta > 0 && cells[target] != PAD_CELL;
     let after = || (target..=last).find(|i| !is_virtual_cell(cells[*i]));
     let before = || (0..target).rev().find(|i| !is_virtual_cell(cells[*i]));
-    let found = if forward { after().or_else(before) } else { before().or_else(after) };
+    let found = if forward {
+        after().or_else(before)
+    } else {
+        before().or_else(after)
+    };
     found.filter(|i| *i != current)
 }
 
@@ -275,7 +299,10 @@ pub fn build_groups(
         let Some(entry) = entries.get(index) else {
             continue;
         };
-        let stamps = times.and_then(|times| times.get(index)).copied().unwrap_or_default();
+        let stamps = times
+            .and_then(|times| times.get(index))
+            .copied()
+            .unwrap_or_default();
         let (rank, id, label) = bucket(entry, mode, today, stamps);
         buckets
             .entry((rank, id))
@@ -303,7 +330,11 @@ pub fn build_groups(
 
 /// Calendar buckets shared by every timestamp mode. `prefix` keeps the ids of
 /// one mode from colliding with another's in the collapsed set.
-fn date_bucket(time: Option<std::time::SystemTime>, prefix: &str, today: NaiveDate) -> (u8, String, String) {
+fn date_bucket(
+    time: Option<std::time::SystemTime>,
+    prefix: &str,
+    today: NaiveDate,
+) -> (u8, String, String) {
     let id = |name: &str| format!("{prefix}:{name}");
     let Some(time) = time else {
         return (9, id("unknown"), "group_unknown".to_string());
@@ -339,14 +370,26 @@ fn date_bucket(time: Option<std::time::SystemTime>, prefix: &str, today: NaiveDa
     (rank, id(key), label.to_string())
 }
 
-fn bucket(entry: &FileEntry, mode: GroupBy, today: NaiveDate, stamps: EntryTimes) -> (u8, String, String) {
+fn bucket(
+    entry: &FileEntry,
+    mode: GroupBy,
+    today: NaiveDate,
+    stamps: EntryTimes,
+) -> (u8, String, String) {
     let fixed = |rank, key: &str, label: String| (rank, key.to_owned(), label);
     match mode {
         GroupBy::Date => date_bucket(entry.modified, "date", today),
         GroupBy::Created => date_bucket(stamps.0, "created", today),
         GroupBy::Accessed => date_bucket(stamps.1, "accessed", today),
-        GroupBy::Deleted => date_bucket(entry.recycle_info().map(|info| info.deleted_at), "deleted", today),
-        GroupBy::Origin => match entry.recycle_info().and_then(|info| info.original_path.parent()) {
+        GroupBy::Deleted => date_bucket(
+            entry.recycle_info().map(|info| info.deleted_at),
+            "deleted",
+            today,
+        ),
+        GroupBy::Origin => match entry
+            .recycle_info()
+            .and_then(|info| info.original_path.parent())
+        {
             Some(parent) => {
                 let label = parent.display().to_string();
                 (0, format!("origin:{label}"), label)
@@ -355,19 +398,13 @@ fn bucket(entry: &FileEntry, mode: GroupBy, today: NaiveDate, stamps: EntryTimes
         },
         GroupBy::Size => {
             if entry.kind() == FileKind::Dir {
-                return fixed(
-                    0,
-                    "size:folders",
-                    "file_kind_folder".to_string(),
-                );
+                return fixed(0, "size:folders", "file_kind_folder".to_string());
             }
             let (rank, key, label) = match entry.size() {
                 Some(0..=16_383) => (1, "size:tiny", "group_tiny"),
                 Some(16_384..=1_048_575) => (2, "size:small", "group_small"),
                 Some(1_048_576..=134_217_727) => (3, "size:medium", "group_medium"),
-                Some(134_217_728..=1_073_741_823) => {
-                    (4, "size:large", "group_large")
-                }
+                Some(134_217_728..=1_073_741_823) => (4, "size:large", "group_large"),
                 Some(1_073_741_824..=4_294_967_295) => (5, "size:huge", "group_huge"),
                 Some(_) => (6, "size:gigantic", "group_gigantic"),
                 None => (7, "size:unknown", "group_unknown"),
@@ -375,18 +412,20 @@ fn bucket(entry: &FileEntry, mode: GroupBy, today: NaiveDate, stamps: EntryTimes
             fixed(rank, key, label.to_string())
         }
         GroupBy::Type => {
-            let label = crate::file_entry::file_category(&entry.kind(), entry.extension().as_deref());
+            let label =
+                crate::file_entry::file_category(&entry.kind(), entry.extension().as_deref());
             let rank = u8::from(entry.kind() != FileKind::Dir);
             (rank, format!("type:{label}"), label.to_string())
         }
         GroupBy::Name => {
-            let (rank, key, label) = match entry.name.chars().next().map(|ch| ch.to_ascii_uppercase()) {
-                Some('0'..='9') => (0, "name:0-9", "0–9".to_string()),
-                Some('A'..='H') => (1, "name:A-H", "A–H".to_string()),
-                Some('I'..='P') => (2, "name:I-P", "I–P".to_string()),
-                Some('Q'..='Z') => (3, "name:Q-Z", "Q–Z".to_string()),
-                _ => (4, "name:other", "group_other".to_string()),
-            };
+            let (rank, key, label) =
+                match entry.name.chars().next().map(|ch| ch.to_ascii_uppercase()) {
+                    Some('0'..='9') => (0, "name:0-9", "0–9".to_string()),
+                    Some('A'..='H') => (1, "name:A-H", "A–H".to_string()),
+                    Some('I'..='P') => (2, "name:I-P", "I–P".to_string()),
+                    Some('Q'..='Z') => (3, "name:Q-Z", "Q–Z".to_string()),
+                    _ => (4, "name:other", "group_other".to_string()),
+                };
             fixed(rank, key, label)
         }
         GroupBy::None => unreachable!("ungrouped list handled before bucketing"),
@@ -482,58 +521,192 @@ mod tests {
 
     fn dated(date: NaiveDate) -> FileEntry {
         let mut file = entry("file", None);
-        file.modified = Some(Local.from_local_datetime(&date.and_hms_opt(12, 0, 0).unwrap()).single().unwrap().into());
+        file.modified = Some(
+            Local
+                .from_local_datetime(&date.and_hms_opt(12, 0, 0).unwrap())
+                .single()
+                .unwrap()
+                .into(),
+        );
         file
     }
 
     #[test]
     fn ten_date_buckets_follow_calendar_boundaries_including_year_crossings() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 29).unwrap();
-        let dates = [(2026,10,29), (2026,10,28), (2026,10,26), (2026,10,19),
-            (2026,10,1), (2026,9,1), (2026,1,1), (2025,1,1), (2024,12,31)];
-        let mut files = dates.map(|(y,m,d)| dated(NaiveDate::from_ymd_opt(y,m,d).unwrap())).to_vec();
+        let dates = [
+            (2026, 10, 29),
+            (2026, 10, 28),
+            (2026, 10, 26),
+            (2026, 10, 19),
+            (2026, 10, 1),
+            (2026, 9, 1),
+            (2026, 1, 1),
+            (2025, 1, 1),
+            (2024, 12, 31),
+        ];
+        let mut files = dates
+            .map(|(y, m, d)| dated(NaiveDate::from_ymd_opt(y, m, d).unwrap()))
+            .to_vec();
         files.push(entry("unknown", None));
-        let (rows, order) = build_groups(&files, &(0..10).collect::<Vec<_>>(), GroupBy::Date, &BTreeSet::new(), today, None);
-        let headers: Vec<_> = rows.iter().filter_map(|row| match row { GroupRow::Header { id, .. } => Some(id.as_str()), _ => None }).collect();
-        assert_eq!(headers, ["date:today", "date:yesterday", "date:week", "date:last-week", "date:month",
-            "date:last-month", "date:year", "date:last-year", "date:older", "date:unknown"]);
+        let (rows, order) = build_groups(
+            &files,
+            &(0..10).collect::<Vec<_>>(),
+            GroupBy::Date,
+            &BTreeSet::new(),
+            today,
+            None,
+        );
+        let headers: Vec<_> = rows
+            .iter()
+            .filter_map(|row| match row {
+                GroupRow::Header { id, .. } => Some(id.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            headers,
+            [
+                "date:today",
+                "date:yesterday",
+                "date:week",
+                "date:last-week",
+                "date:month",
+                "date:last-month",
+                "date:year",
+                "date:last-year",
+                "date:older",
+                "date:unknown"
+            ]
+        );
         assert_eq!(order, (0..10).collect::<Vec<_>>());
         let january = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
-        assert_eq!(bucket(&dated(NaiveDate::from_ymd_opt(2025,12,31).unwrap()), GroupBy::Date, january, Default::default()).1, "date:week");
-        assert_eq!(bucket(&dated(NaiveDate::from_ymd_opt(2025,12,22).unwrap()), GroupBy::Date, january, Default::default()).1, "date:last-week");
-        let march = NaiveDate::from_ymd_opt(2024,3,15).unwrap();
-        assert_eq!(bucket(&dated(NaiveDate::from_ymd_opt(2024,2,29).unwrap()), GroupBy::Date, march, Default::default()).1, "date:last-month");
-        assert_eq!(bucket(&dated(today + Duration::days(1)), GroupBy::Date, today, Default::default()).1, "date:today");
+        assert_eq!(
+            bucket(
+                &dated(NaiveDate::from_ymd_opt(2025, 12, 31).unwrap()),
+                GroupBy::Date,
+                january,
+                Default::default()
+            )
+            .1,
+            "date:week"
+        );
+        assert_eq!(
+            bucket(
+                &dated(NaiveDate::from_ymd_opt(2025, 12, 22).unwrap()),
+                GroupBy::Date,
+                january,
+                Default::default()
+            )
+            .1,
+            "date:last-week"
+        );
+        let march = NaiveDate::from_ymd_opt(2024, 3, 15).unwrap();
+        assert_eq!(
+            bucket(
+                &dated(NaiveDate::from_ymd_opt(2024, 2, 29).unwrap()),
+                GroupBy::Date,
+                march,
+                Default::default()
+            )
+            .1,
+            "date:last-month"
+        );
+        assert_eq!(
+            bucket(
+                &dated(today + Duration::days(1)),
+                GroupBy::Date,
+                today,
+                Default::default()
+            )
+            .1,
+            "date:today"
+        );
     }
 
     #[test]
     fn name_groups_have_five_balanced_ranges_with_case_insensitive_edges() {
-        let today = NaiveDate::from_ymd_opt(2026,10,15).unwrap();
-        for (name, expected) in [("0file", "name:0-9"), ("9file", "name:0-9"), ("alpha", "name:A-H"),
-            ("Hotel", "name:A-H"), ("india", "name:I-P"), ("Papa", "name:I-P"), ("queen", "name:Q-Z"),
-            ("Zulu", "name:Q-Z"), (".hidden", "name:other"), ("日本語", "name:other")] {
-            assert_eq!(bucket(&entry(name, None), GroupBy::Name, today, Default::default()).1, expected, "{name}");
+        let today = NaiveDate::from_ymd_opt(2026, 10, 15).unwrap();
+        for (name, expected) in [
+            ("0file", "name:0-9"),
+            ("9file", "name:0-9"),
+            ("alpha", "name:A-H"),
+            ("Hotel", "name:A-H"),
+            ("india", "name:I-P"),
+            ("Papa", "name:I-P"),
+            ("queen", "name:Q-Z"),
+            ("Zulu", "name:Q-Z"),
+            (".hidden", "name:other"),
+            ("日本語", "name:other"),
+        ] {
+            assert_eq!(
+                bucket(&entry(name, None), GroupBy::Name, today, Default::default()).1,
+                expected,
+                "{name}"
+            );
         }
     }
 
     #[test]
     fn size_ranges_cover_every_boundary_without_gaps() {
-        let today = NaiveDate::from_ymd_opt(2026,10,15).unwrap();
-        for (size, expected) in [(0, "tiny"), (16_383, "tiny"), (16_384, "small"), (1_048_575, "small"),
-            (1_048_576, "medium"), (134_217_727, "medium"), (134_217_728, "large"), (1_073_741_823, "large"),
-            (1_073_741_824, "huge"), (4_294_967_295, "huge"), (4_294_967_296, "gigantic"), (u64::MAX, "gigantic")] {
-            assert_eq!(bucket(&entry("file", Some(size)), GroupBy::Size, today, Default::default()).1, format!("size:{expected}"));
+        let today = NaiveDate::from_ymd_opt(2026, 10, 15).unwrap();
+        for (size, expected) in [
+            (0, "tiny"),
+            (16_383, "tiny"),
+            (16_384, "small"),
+            (1_048_575, "small"),
+            (1_048_576, "medium"),
+            (134_217_727, "medium"),
+            (134_217_728, "large"),
+            (1_073_741_823, "large"),
+            (1_073_741_824, "huge"),
+            (4_294_967_295, "huge"),
+            (4_294_967_296, "gigantic"),
+            (u64::MAX, "gigantic"),
+        ] {
+            assert_eq!(
+                bucket(
+                    &entry("file", Some(size)),
+                    GroupBy::Size,
+                    today,
+                    Default::default()
+                )
+                .1,
+                format!("size:{expected}")
+            );
         }
-        assert_eq!(bucket(&entry("unknown", None), GroupBy::Size, today, Default::default()).1, "size:unknown");
+        assert_eq!(
+            bucket(
+                &entry("unknown", None),
+                GroupBy::Size,
+                today,
+                Default::default()
+            )
+            .1,
+            "size:unknown"
+        );
     }
 
     #[test]
     fn flow_cells_pad_columns_and_keep_headers_out_of_entry_space() {
         let rows = vec![
-            GroupRow::Header { id: "a".into(), label: "A".into(), count: 1, collapsed: false },
+            GroupRow::Header {
+                id: "a".into(),
+                label: "A".into(),
+                count: 1,
+                collapsed: false,
+            },
             GroupRow::Entry(7),
-            GroupRow::Header { id: "b".into(), label: "B".into(), count: 4, collapsed: false },
-            GroupRow::Entry(0), GroupRow::Entry(1), GroupRow::Entry(2), GroupRow::Entry(3),
+            GroupRow::Header {
+                id: "b".into(),
+                label: "B".into(),
+                count: 4,
+                collapsed: false,
+            },
+            GroupRow::Entry(0),
+            GroupRow::Entry(1),
+            GroupRow::Entry(2),
+            GroupRow::Entry(3),
         ];
         let flat = flow_cells(&rows, GroupFlow::Rows);
         assert_eq!(flat.cells.len(), 7);
@@ -552,15 +725,35 @@ mod tests {
     #[test]
     fn wrapped_grid_bands_shift_rows_and_invert_cleanly() {
         let rows = vec![
-            GroupRow::Header { id: "a".into(), label: "A".into(), count: 3, collapsed: false },
-            GroupRow::Entry(0), GroupRow::Entry(1), GroupRow::Entry(2),
-            GroupRow::Header { id: "b".into(), label: "B".into(), count: 2, collapsed: true },
-            GroupRow::Header { id: "c".into(), label: "C".into(), count: 1, collapsed: false },
+            GroupRow::Header {
+                id: "a".into(),
+                label: "A".into(),
+                count: 3,
+                collapsed: false,
+            },
+            GroupRow::Entry(0),
+            GroupRow::Entry(1),
+            GroupRow::Entry(2),
+            GroupRow::Header {
+                id: "b".into(),
+                label: "B".into(),
+                count: 2,
+                collapsed: true,
+            },
+            GroupRow::Header {
+                id: "c".into(),
+                label: "C".into(),
+                count: 1,
+                collapsed: false,
+            },
             GroupRow::Entry(3),
         ];
         let wrapped = flow_cells(&rows, GroupFlow::Wrap { cols: 2 });
         assert_eq!(wrapped.cells.as_slice(), [0, 1, 2, PAD_CELL, 3]);
-        assert_eq!(wrapped.headers.iter().map(|h| h.cell).collect::<Vec<_>>(), [0, 4, 4]);
+        assert_eq!(
+            wrapped.headers.iter().map(|h| h.cell).collect::<Vec<_>>(),
+            [0, 4, 4]
+        );
         let bands = RowBands::new(wrapped.headers.iter().map(|h| h.cell / 2).collect(), 10.0);
         // rows 0,1 hold group a; row 2 (group c) sits under bands b and c.
         assert_eq!(bands.row_top(0, 100.0), 10.0);
@@ -576,7 +769,16 @@ mod tests {
 
     #[test]
     fn grouped_step_skips_headers_and_row_end_padding() {
-        let cells = [HEADER_CELL_BASE, 0, 1, PAD_CELL, HEADER_CELL_BASE + 1, 2, 3, 4];
+        let cells = [
+            HEADER_CELL_BASE,
+            0,
+            1,
+            PAD_CELL,
+            HEADER_CELL_BASE + 1,
+            2,
+            3,
+            4,
+        ];
         assert_eq!(grouped_step(&cells, 1, 1), Some(2));
         // Padding resolves back into the row, so there is nowhere further to go.
         assert_eq!(grouped_step(&cells, 2, 1), None);
@@ -589,15 +791,45 @@ mod tests {
     fn created_and_accessed_use_background_stamps_and_fall_back_to_unknown() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 15).unwrap();
         let entries = [entry("a", None), entry("b", None)];
-        let noon = Local.from_local_datetime(&today.and_hms_opt(12, 0, 0).unwrap()).single().unwrap().into();
+        let noon = Local
+            .from_local_datetime(&today.and_hms_opt(12, 0, 0).unwrap())
+            .single()
+            .unwrap()
+            .into();
         let times = [(Some(noon), None), (None, Some(noon))];
         let ids = |mode| {
-            let (rows, _) = build_groups(&entries, &[0, 1], mode, &BTreeSet::new(), today, Some(&times));
-            rows.iter().filter_map(|row| match row { GroupRow::Header { id, .. } => Some(id.clone()), _ => None }).collect::<Vec<_>>()
+            let (rows, _) = build_groups(
+                &entries,
+                &[0, 1],
+                mode,
+                &BTreeSet::new(),
+                today,
+                Some(&times),
+            );
+            rows.iter()
+                .filter_map(|row| match row {
+                    GroupRow::Header { id, .. } => Some(id.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
         };
         assert_eq!(ids(GroupBy::Created), ["created:today", "created:unknown"]);
-        assert_eq!(ids(GroupBy::Accessed), ["accessed:today", "accessed:unknown"]);
-        let (rows, _) = build_groups(&entries, &[0, 1], GroupBy::Created, &BTreeSet::new(), today, None);
-        assert_eq!(rows.len(), 3, "without stamps everything waits under Unknown");
+        assert_eq!(
+            ids(GroupBy::Accessed),
+            ["accessed:today", "accessed:unknown"]
+        );
+        let (rows, _) = build_groups(
+            &entries,
+            &[0, 1],
+            GroupBy::Created,
+            &BTreeSet::new(),
+            today,
+            None,
+        );
+        assert_eq!(
+            rows.len(),
+            3,
+            "without stamps everything waits under Unknown"
+        );
     }
 }

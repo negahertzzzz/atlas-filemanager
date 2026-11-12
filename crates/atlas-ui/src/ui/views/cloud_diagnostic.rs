@@ -44,14 +44,23 @@ fn fixture_entries() -> Vec<FileEntry> {
 }
 
 fn massive_entries(count: usize) -> Vec<FileEntry> {
-    (0..count).map(|index| {
-        let name = format!("Object {index:07}.txt");
-        FileEntry::from(FileEntryData {
-            path: atlas_model::remote_path::join("", &format!("object-{index}"), &name, false).into(),
-            name: name.into(), kind: FileKind::File, size: Some(index as u64), modified: None,
-            _is_hidden: false, _is_symlink: false, archive_root: None, recycle_info: None,
+    (0..count)
+        .map(|index| {
+            let name = format!("Object {index:07}.txt");
+            FileEntry::from(FileEntryData {
+                path: atlas_model::remote_path::join("", &format!("object-{index}"), &name, false)
+                    .into(),
+                name: name.into(),
+                kind: FileKind::File,
+                size: Some(index as u64),
+                modified: None,
+                _is_hidden: false,
+                _is_symlink: false,
+                archive_root: None,
+                recycle_info: None,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 fn fixture_reply(app: &Entity<App>, cx: &mut gpui::App) {

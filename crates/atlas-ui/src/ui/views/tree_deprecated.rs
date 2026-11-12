@@ -1,13 +1,15 @@
 //! Dedicated hierarchical tree view (`ViewMode::Tree`).
 use crate::app::App;
 use crate::input::action::Action;
-use crate::ui::icons::{is_windows_theme, theme_icon, AtlasIcon};
 use crate::ui::glass::backdrop_tint;
+use crate::ui::icons::{is_windows_theme, theme_icon, AtlasIcon};
 use atlas_model::file_entry::{FileEntry, FileKind};
 use atlas_model::pane::TabId;
 use gpui::prelude::*;
 use gpui::ColorExt as _;
-use gpui::{div, px, uniform_list, AnyElement, Context, Entity, Hsla, MouseButton, SharedString, Window};
+use gpui::{
+    div, px, uniform_list, AnyElement, Context, Entity, Hsla, MouseButton, SharedString, Window,
+};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use std::sync::Arc;
 
@@ -69,7 +71,8 @@ impl App {
         }
 
         let body: AnyElement = if rows.is_empty() {
-            let empty_msg = self.empty_pane_message(pane_id, rust_i18n::t!("empty_folder").into_owned());
+            let empty_msg =
+                self.empty_pane_message(pane_id, rust_i18n::t!("empty_folder").into_owned());
             v_flex()
                 .size_full()
                 .items_center()
@@ -109,7 +112,12 @@ impl App {
                                 };
                                 this.maybe_request_file_icon(&file_ref);
                                 let file_icon = this.file_icon(&file_ref);
-                                let is_editing = crate::ui::views::rename::active_input_for_path(this, pane_id, &entry.path()).is_some();
+                                let is_editing = crate::ui::views::rename::active_input_for_path(
+                                    this,
+                                    pane_id,
+                                    &entry.path(),
+                                )
+                                .is_some();
 
                                 render_tree_row(TreeRowProps {
                                     entry,
@@ -146,39 +154,42 @@ impl App {
                 .size_full()
                 .flex_1()
                 .min_h(px(0.))
-                .capture_key_down(cx.listener(move |this, ev: &gpui::KeyDownEvent, _window, cx| {
-                    let key = ev.keystroke.key.as_str();
-                    let shift = ev.keystroke.modifiers.shift;
-                    let ctrl = ev.keystroke.modifiers.control || ev.keystroke.modifiers.platform;
-                    let handled = match key {
-                        "up" | "k" => {
-                            this.nav_up(shift, ctrl);
-                            true
+                .capture_key_down(
+                    cx.listener(move |this, ev: &gpui::KeyDownEvent, _window, cx| {
+                        let key = ev.keystroke.key.as_str();
+                        let shift = ev.keystroke.modifiers.shift;
+                        let ctrl =
+                            ev.keystroke.modifiers.control || ev.keystroke.modifiers.platform;
+                        let handled = match key {
+                            "up" | "k" => {
+                                this.nav_up(shift, ctrl);
+                                true
+                            }
+                            "down" | "j" => {
+                                this.nav_down(shift, ctrl);
+                                true
+                            }
+                            "left" | "h" => {
+                                this.nav_left(false, false);
+                                true
+                            }
+                            "right" | "l" => {
+                                this.nav_right(false, false);
+                                true
+                            }
+                            "enter" => {
+                                this.open_cursor();
+                                true
+                            }
+                            _ => false,
+                        };
+                        if handled {
+                            cx.stop_propagation();
+                            this.notify_pane(pane_id, cx);
+                            cx.notify();
                         }
-                        "down" | "j" => {
-                            this.nav_down(shift, ctrl);
-                            true
-                        }
-                        "left" | "h" => {
-                            this.nav_left(false, false);
-                            true
-                        }
-                        "right" | "l" => {
-                            this.nav_right(false, false);
-                            true
-                        }
-                        "enter" => {
-                            this.open_cursor();
-                            true
-                        }
-                        _ => false,
-                    };
-                    if handled {
-                        cx.stop_propagation();
-                        this.notify_pane(pane_id, cx);
-                        cx.notify();
-                    }
-                }))
+                    }),
+                )
                 .child(tree_list)
                 .into_any_element()
         };
@@ -253,7 +264,9 @@ fn render_tree_row(props: TreeRowProps) -> AnyElement {
         .items_center()
         .rounded_sm()
         .cursor_pointer()
-        .when(selected && !is_editing, |s| s.bg(accent).text_color(accent_fg))
+        .when(selected && !is_editing, |s| {
+            s.bg(accent).text_color(accent_fg)
+        })
         .when(!selected || is_editing, |s| s.hover(move |h| h.bg(hover)))
         .when(cursor && !is_editing, |s| {
             s.border_1()
@@ -268,20 +281,15 @@ fn render_tree_row(props: TreeRowProps) -> AnyElement {
     };
     for _ in 0..depth {
         row = row.child(
-            div()
-                .w(px(18.0))
-                .h_full()
-                .relative()
-                .flex_none()
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(8.0))
-                        .top_0()
-                        .bottom_0()
-                        .w(px(1.0))
-                        .bg(guide_color),
-                ),
+            div().w(px(18.0)).h_full().relative().flex_none().child(
+                div()
+                    .absolute()
+                    .left(px(8.0))
+                    .top_0()
+                    .bottom_0()
+                    .w(px(1.0))
+                    .bg(guide_color),
+            ),
         );
     }
 
@@ -292,7 +300,11 @@ fn render_tree_row(props: TreeRowProps) -> AnyElement {
         } else {
             AtlasIcon::CaretRight
         };
-        let chevron_color = if selected && !is_editing { accent_fg } else { muted };
+        let chevron_color = if selected && !is_editing {
+            accent_fg
+        } else {
+            muted
+        };
         let chevron_view = view.clone();
         let chevron_path = entry.path();
         row = row.child(
@@ -338,7 +350,11 @@ fn render_tree_row(props: TreeRowProps) -> AnyElement {
             .min_w(px(0.))
             .truncate()
             .text_xs()
-            .text_color(if selected && !is_editing { accent_fg } else { fg })
+            .text_color(if selected && !is_editing {
+                accent_fg
+            } else {
+                fg
+            })
             .child(entry.name.to_string()),
     );
 
@@ -382,15 +398,24 @@ fn render_tree_row(props: TreeRowProps) -> AnyElement {
             let m = ev.modifiers();
             let (shift, ctrl) = (m.shift, m.control || m.platform);
             row_view.update(cx, |this, cx| {
-                if this.suppress_navigation_double_click(pane_id, ev.position(), ev.click_count()) { return; }
+                if this.suppress_navigation_double_click(pane_id, ev.position(), ev.click_count()) {
+                    return;
+                }
                 if this.rename_edit.is_some() {
                     this.commit_rename(cx);
                 }
-                if this.state.settings.single_click_opens_folder(is_dir, ev.click_count(), shift || ctrl) {
+                if this.state.settings.single_click_opens_folder(
+                    is_dir,
+                    ev.click_count(),
+                    shift || ctrl,
+                ) {
                     this.navigate_clicked_folder(pane_id, click_path.clone());
-                    this.recent_folder_navigation = Some(crate::ui::click_navigation::NavigationClick {
-                        pane: pane_id, origin: ev.position(), at: std::time::Instant::now(),
-                    });
+                    this.recent_folder_navigation =
+                        Some(crate::ui::click_navigation::NavigationClick {
+                            pane: pane_id,
+                            origin: ev.position(),
+                            at: std::time::Instant::now(),
+                        });
                 } else if activate {
                     if is_dir {
                         this.process_actions(vec![Action::ToggleTreeExpand(click_path.clone())]);

@@ -52,7 +52,8 @@ impl App {
         };
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
         let row_font = window.text_style().font();
-        let crumb_strip = self.render_crumb_strip(pane_id, &view, fg, muted, border, _header_bg, cx);
+        let crumb_strip =
+            self.render_crumb_strip(pane_id, &view, fg, muted, border, _header_bg, cx);
         let count = self
             .state
             .tab_states
@@ -249,26 +250,29 @@ impl App {
                             crate::ui::views::rename::active_input(app, pane_id, entry_idx);
                         let selected = ts.selection.selected.contains(&entry_idx);
 
-                        render_cell_compact(ListCellProps {
-                            entry,
-                            entry_idx,
-                            selected,
-                            show_checkbox: ts.selection.selected.len() > 1,
-                            pane_id,
-                            view: &list_view,
-                            accent,
-                            accent_fg,
-                            hover,
-                            flashing,
-                            record_rects: true,
-                            file_icon,
-                            rename_input,
-                            cut: app.state.system_cut_paths.contains(&entry.path()),
-                            dimmed: crate::ui::views::rename::dim_other_entry(
-                                app, pane_id, entry_idx,
-                            ),
-                            window,
-                        }, cx)
+                        render_cell_compact(
+                            ListCellProps {
+                                entry,
+                                entry_idx,
+                                selected,
+                                show_checkbox: ts.selection.selected.len() > 1,
+                                pane_id,
+                                view: &list_view,
+                                accent,
+                                accent_fg,
+                                hover,
+                                flashing,
+                                record_rects: true,
+                                file_icon,
+                                rename_input,
+                                cut: app.state.system_cut_paths.contains(&entry.path()),
+                                dimmed: crate::ui::views::rename::dim_other_entry(
+                                    app, pane_id, entry_idx,
+                                ),
+                                window,
+                            },
+                            cx,
+                        )
                     },
                 )
                 .into_any_element()
@@ -288,16 +292,17 @@ impl App {
                         };
                         let col = visible_pos % cols;
                         let row = visible_pos / cols;
-                        let label = crate::ui::views::grid_surface_element_deprecated::list_name_bounds(
-                            gpui::Bounds {
-                                origin: gpui::point(
-                                    px(col as f32 * cell_stride),
-                                    px(row as f32 * pitch),
-                                ),
-                                size: gpui::size(px(CELL_W * zoom_scale), px(cell_h_px)),
-                            },
-                            zoom_scale,
-                        );
+                        let label =
+                            crate::ui::views::grid_surface_element_deprecated::list_name_bounds(
+                                gpui::Bounds {
+                                    origin: gpui::point(
+                                        px(col as f32 * cell_stride),
+                                        px(row as f32 * pitch),
+                                    ),
+                                    size: gpui::size(px(CELL_W * zoom_scale), px(cell_h_px)),
+                                },
+                                zoom_scale,
+                            );
                         rename_overlay = Some(
                             div()
                                 .absolute()
@@ -617,12 +622,7 @@ fn render_cell_compact(props: ListCellProps, cx: &gpui::App) -> AnyElement {
             s.on_mouse_down(MouseButton::Left, |_ev, _window, cx| {
                 cx.stop_propagation();
             })
-            .on_file_drag_item(
-                view.clone(),
-                pane_id,
-                entry_idx,
-                entry.path(),
-            )
+            .on_file_drag_item(view.clone(), pane_id, entry_idx, entry.path())
         })
         .tooltip({
             let tip_name = entry.name.to_string();

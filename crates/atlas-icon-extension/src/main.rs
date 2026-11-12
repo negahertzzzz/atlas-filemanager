@@ -12,8 +12,12 @@ async fn main() -> Result<()> {
     anyhow::ensure!(request.version == 1, "unsupported command protocol version");
     let response = match request.command_id.as_str() {
         "icon-manager.download-theme" => download_theme(&request).await,
-        "icon-manager.download-material" => download_theme_id(&request, "PKief/material-icon-theme").await,
-        "icon-manager.download-catppuccin" => download_theme_id(&request, "catppuccin/catppuccin-vsc-icons").await,
+        "icon-manager.download-material" => {
+            download_theme_id(&request, "PKief/material-icon-theme").await
+        }
+        "icon-manager.download-catppuccin" => {
+            download_theme_id(&request, "catppuccin/catppuccin-vsc-icons").await
+        }
         "icon-manager.download-flow" => download_theme_id(&request, "thang-nm/flow-icons").await,
         "icon-manager.reset-default" => reset_default(&request).await,
         other => anyhow::bail!("unsupported icon-manager command: {other}"),
@@ -154,8 +158,14 @@ fn build_mappings(data_dir: &Path, theme_root: &Path) -> Result<()> {
 
     // Map default directory icon
     if let Some(folder_id) = theme.get("folder").and_then(serde_json::Value::as_str) {
-        if let Some(icon_path) = definitions.get(folder_id).and_then(|d| d.get("iconPath")).and_then(serde_json::Value::as_str) {
-            if let Ok(path) = normalize_icon_path(&theme_root.join("extension"), theme_dir, icon_path) {
+        if let Some(icon_path) = definitions
+            .get(folder_id)
+            .and_then(|d| d.get("iconPath"))
+            .and_then(serde_json::Value::as_str)
+        {
+            if let Ok(path) =
+                normalize_icon_path(&theme_root.join("extension"), theme_dir, icon_path)
+            {
                 mappings.insert(
                     "/".to_string(),
                     serde_json::Value::String(path.to_string_lossy().into_owned()),
@@ -166,8 +176,14 @@ fn build_mappings(data_dir: &Path, theme_root: &Path) -> Result<()> {
 
     // Map generic file icon
     if let Some(file_id) = theme.get("file").and_then(serde_json::Value::as_str) {
-        if let Some(icon_path) = definitions.get(file_id).and_then(|d| d.get("iconPath")).and_then(serde_json::Value::as_str) {
-            if let Ok(path) = normalize_icon_path(&theme_root.join("extension"), theme_dir, icon_path) {
+        if let Some(icon_path) = definitions
+            .get(file_id)
+            .and_then(|d| d.get("iconPath"))
+            .and_then(serde_json::Value::as_str)
+        {
+            if let Ok(path) =
+                normalize_icon_path(&theme_root.join("extension"), theme_dir, icon_path)
+            {
                 mappings.insert(
                     "".to_string(),
                     serde_json::Value::String(path.to_string_lossy().into_owned()),
@@ -177,7 +193,10 @@ fn build_mappings(data_dir: &Path, theme_root: &Path) -> Result<()> {
     }
 
     // Map file extensions
-    if let Some(extensions) = theme.get("fileExtensions").and_then(serde_json::Value::as_object) {
+    if let Some(extensions) = theme
+        .get("fileExtensions")
+        .and_then(serde_json::Value::as_object)
+    {
         for (extension, icon_id) in extensions {
             let Some(icon_path) = icon_id
                 .as_str()
@@ -187,7 +206,9 @@ fn build_mappings(data_dir: &Path, theme_root: &Path) -> Result<()> {
             else {
                 continue;
             };
-            if let Ok(path) = normalize_icon_path(&theme_root.join("extension"), theme_dir, icon_path) {
+            if let Ok(path) =
+                normalize_icon_path(&theme_root.join("extension"), theme_dir, icon_path)
+            {
                 mappings.insert(
                     extension.clone(),
                     serde_json::Value::String(path.to_string_lossy().into_owned()),

@@ -15,10 +15,26 @@ pub fn build_index(current_root: PathBuf, injector: nucleo::Injector<IndexEntry>
         // Index its home deeply (and the rest of the distro shallowly) first.
         if super::paths::wsl_distro_name(&current_root).is_some() {
             let wsl_home = wsl_home_of(&current_root);
-            index_tree(&wsl_home, WSL_HOME_DEPTH, &wsl_home, &mut seen, &injector, WSL_ENTRY_CAP, is_linux_system_dir);
+            index_tree(
+                &wsl_home,
+                WSL_HOME_DEPTH,
+                &wsl_home,
+                &mut seen,
+                &injector,
+                WSL_ENTRY_CAP,
+                is_linux_system_dir,
+            );
             let distro = wsl_distro_root(&current_root);
             if distro != wsl_home {
-                index_tree(&distro, 2, &distro, &mut seen, &injector, WSL_ENTRY_CAP * 2, is_linux_system_dir);
+                index_tree(
+                    &distro,
+                    2,
+                    &distro,
+                    &mut seen,
+                    &injector,
+                    WSL_ENTRY_CAP * 2,
+                    is_linux_system_dir,
+                );
             }
         }
 
@@ -29,9 +45,25 @@ pub fn build_index(current_root: PathBuf, injector: nucleo::Injector<IndexEntry>
             inject_folder(path, &home, &mut seen, &injector);
         }
 
-        index_tree(&home, 5, &home, &mut seen, &injector, usize::MAX, is_heavy_dir);
+        index_tree(
+            &home,
+            5,
+            &home,
+            &mut seen,
+            &injector,
+            usize::MAX,
+            is_heavy_dir,
+        );
         if !current_root.starts_with(&home) {
-            index_tree(&current_root, 3, &home, &mut seen, &injector, usize::MAX, is_heavy_dir);
+            index_tree(
+                &current_root,
+                3,
+                &home,
+                &mut seen,
+                &injector,
+                usize::MAX,
+                is_heavy_dir,
+            );
         }
         index_files(&current_root, 4, 10_000, &injector);
     });
@@ -68,7 +100,11 @@ pub fn build_index_scoped(root: PathBuf, injector: nucleo::Injector<IndexEntry>)
             .max_depth(SCOPED_MAX_DEPTH)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|entry| !super::scan_policy::is_scan_excluded(entry.path()) && !super::preview::is_cloud_placeholder(entry.path()) && (entry.depth() == 0 || !is_hidden(entry.path())))
+            .filter_entry(|entry| {
+                !super::scan_policy::is_scan_excluded(entry.path())
+                    && !super::preview::is_cloud_placeholder(entry.path())
+                    && (entry.depth() == 0 || !is_hidden(entry.path()))
+            })
             .flatten()
         {
             if entry.depth() == 0 {
@@ -133,13 +169,21 @@ fn index_tree(
         if depth >= max_depth || seen.len() >= limit {
             continue;
         }
-        if super::scan_policy::is_scan_excluded(&directory) || super::preview::is_cloud_placeholder(&directory) { continue; }
+        if super::scan_policy::is_scan_excluded(&directory)
+            || super::preview::is_cloud_placeholder(&directory)
+        {
+            continue;
+        }
         let Ok(children) = std::fs::read_dir(&directory) else {
             continue;
         };
         let mut folders: Vec<_> = children
             .flatten()
-            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir() && !kind.is_symlink()))
+            .filter(|entry| {
+                entry
+                    .file_type()
+                    .is_ok_and(|kind| kind.is_dir() && !kind.is_symlink())
+            })
             .map(|entry| entry.path())
             .filter(|path| !is_hidden(path))
             .collect();
@@ -150,7 +194,11 @@ fn index_tree(
             inject_known_folder(folder.clone(), home, seen, injector);
             // Massive trees (target, node_modules, /usr…) stay findable by name
             // but are never descended into.
-            if !folder.file_name().and_then(|n| n.to_str()).is_some_and(prune) {
+            if !folder
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(prune)
+            {
                 pending.push_back((folder, depth + 1));
             }
         }
@@ -168,7 +216,11 @@ fn index_files(
         .max_depth(max_depth)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !super::scan_policy::is_scan_excluded(e.path()) && !super::preview::is_cloud_placeholder(e.path()) && (e.depth() == 0 || !is_hidden(e.path())))
+        .filter_entry(|e| {
+            !super::scan_policy::is_scan_excluded(e.path())
+                && !super::preview::is_cloud_placeholder(e.path())
+                && (e.depth() == 0 || !is_hidden(e.path()))
+        })
         .flatten()
     {
         if entry.depth() == 0 || entry.file_type().is_dir() {
@@ -180,9 +232,15 @@ fn index_files(
             .unwrap_or(&path)
             .to_string_lossy()
             .into_owned();
-        injector.push(IndexEntry { path, is_dir: false }, move |_item, cols| {
-            cols[0] = display.as_str().into();
-        });
+        injector.push(
+            IndexEntry {
+                path,
+                is_dir: false,
+            },
+            move |_item, cols| {
+                cols[0] = display.as_str().into();
+            },
+        );
         count += 1;
         if count >= max_entries {
             break;
@@ -232,15 +290,29 @@ const EXTENDED_ENTRY_CAP: usize = 250_000;
 
 /// Dependency and build output trees: listed, never walked.
 fn is_heavy_dir(name: &str) -> bool {
-    matches!(name, "node_modules" | "target" | "__pycache__" | "vendor" | "venv" | "dist" | "build")
+    matches!(
+        name,
+        "node_modules" | "target" | "__pycache__" | "vendor" | "venv" | "dist" | "build"
+    )
 }
 
 /// Linux trees that are never a navigation target and are huge over 9P.
 fn is_linux_system_dir(name: &str) -> bool {
     matches!(
         name,
-        "proc" | "sys" | "dev" | "run" | "usr" | "lib" | "lib32" | "lib64" | "bin" | "sbin"
-            | "boot" | "snap" | "lost+found"
+        "proc"
+            | "sys"
+            | "dev"
+            | "run"
+            | "usr"
+            | "lib"
+            | "lib32"
+            | "lib64"
+            | "bin"
+            | "sbin"
+            | "boot"
+            | "snap"
+            | "lost+found"
     ) || is_heavy_dir(name)
 }
 
@@ -249,8 +321,13 @@ fn is_extended_skip(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     matches!(
         name.as_str(),
-        "windows" | "$recycle.bin" | "system volume information" | "winsxs" | "node_modules"
-            | "recovery" | "msocache"
+        "windows"
+            | "$recycle.bin"
+            | "system volume information"
+            | "winsxs"
+            | "node_modules"
+            | "recovery"
+            | "msocache"
     ) || is_linux_system_dir(&name)
 }
 
@@ -295,7 +372,15 @@ pub fn build_extended_index(injector: nucleo::Injector<IndexEntry>) {
             .collect();
         let mut seen = HashSet::new();
         for root in roots {
-            index_tree(&root, EXTENDED_DEPTH, &root, &mut seen, &injector, EXTENDED_ENTRY_CAP, is_extended_skip);
+            index_tree(
+                &root,
+                EXTENDED_DEPTH,
+                &root,
+                &mut seen,
+                &injector,
+                EXTENDED_ENTRY_CAP,
+                is_extended_skip,
+            );
         }
     });
 }
@@ -332,7 +417,15 @@ mod tests {
         std::fs::create_dir_all(root.join(".hidden/ignored")).unwrap();
         let mut pool = NucleoPool::new();
         let mut seen = HashSet::new();
-        index_tree(root, 5, root, &mut seen, &pool.injector(), usize::MAX, super::is_heavy_dir);
+        index_tree(
+            root,
+            5,
+            root,
+            &mut seen,
+            &pool.injector(),
+            usize::MAX,
+            super::is_heavy_dir,
+        );
         let deadline = Instant::now() + Duration::from_secs(5);
         while pool.nucleo.snapshot().item_count() as usize != seen.len() {
             pool.tick();
@@ -343,8 +436,14 @@ mod tests {
         let paths: Vec<_> = (0..snapshot.item_count())
             .map(|index| snapshot.get_item(index).unwrap().data.path.clone())
             .collect();
-        let depths: Vec<_> = paths.iter().map(|path| path.strip_prefix(root).unwrap().components().count()).collect();
-        assert!(depths.windows(2).all(|pair| pair[0] <= pair[1]), "shallow project folders must arrive first");
+        let depths: Vec<_> = paths
+            .iter()
+            .map(|path| path.strip_prefix(root).unwrap().components().count())
+            .collect();
+        assert!(
+            depths.windows(2).all(|pair| pair[0] <= pair[1]),
+            "shallow project folders must arrive first"
+        );
         assert!(paths.contains(&project));
         assert!(!paths.contains(&root.join(".hidden")));
         assert!(!paths.contains(&root.join("a-deep/one/two/three/four/beyond-limit")));
@@ -362,7 +461,10 @@ mod tests {
         use super::{wsl_distro_root, wsl_home_of};
         use std::path::Path;
         let deep = Path::new(r"\\wsl.localhost\Arch\home\me\dev\x");
-        assert_eq!(wsl_home_of(deep), Path::new(r"\\wsl.localhost\Arch\home\me"));
+        assert_eq!(
+            wsl_home_of(deep),
+            Path::new(r"\\wsl.localhost\Arch\home\me")
+        );
         let etc = Path::new(r"\\wsl.localhost\Arch\etc\systemd");
         assert_eq!(wsl_home_of(etc), wsl_distro_root(etc));
         assert_eq!(wsl_distro_root(etc), Path::new(r"\\wsl.localhost\Arch\"));

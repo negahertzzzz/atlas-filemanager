@@ -184,10 +184,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
 unsafe fn drain_requests(hwnd: HWND) {
     loop {
         let req = WORKER.with(|w| {
-            w.borrow()
-                .as_ref()
-                .and_then(|ws| {
-                    ws.requests.lock().or_else(atlas_model::sync::recover).ok().and_then(|mut q| {
+            w.borrow().as_ref().and_then(|ws| {
+                ws.requests
+                    .lock()
+                    .or_else(atlas_model::sync::recover)
+                    .ok()
+                    .and_then(|mut q| {
                         // Real requests jump ahead of background prewarming.
                         let pos = q
                             .iter()
@@ -195,7 +197,7 @@ unsafe fn drain_requests(hwnd: HWND) {
                             .unwrap_or(0);
                         q.remove(pos)
                     })
-                })
+            })
         });
         let Some(req) = req else { break };
         // Runs inside the wndproc, where an escaping panic always aborts. A
@@ -204,7 +206,8 @@ unsafe fn drain_requests(hwnd: HWND) {
             ShellMenuRequest::Build { id, .. } => Some(*id),
             _ => None,
         };
-        let outcome = atlas_core::util::guard::contain("shell-menu", || unsafe { process(hwnd, req) });
+        let outcome =
+            atlas_core::util::guard::contain("shell-menu", || unsafe { process(hwnd, req) });
         if let (Err(_), Some(id)) = (outcome, build_id) {
             push_event(ShellMenuEvent::Built { id, items: vec![] });
         }

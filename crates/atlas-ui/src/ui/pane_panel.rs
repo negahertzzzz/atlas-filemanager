@@ -46,9 +46,8 @@ impl Render for PaneContentView {
         let pane_id = self.pane_id;
         crate::ui::current_bounds::current_bounds(move |bounds, window, cx| {
             crate::perf::count("render.pane_content");
-            let _perf = crate::perf::span_detail("pane.content.render", || {
-                format!("pane={}", pane_id.0)
-            });
+            let _perf =
+                crate::perf::span_detail("pane.content.render", || format!("pane={}", pane_id.0));
             let Some(app) = app.upgrade() else {
                 return div().into_any_element();
             };

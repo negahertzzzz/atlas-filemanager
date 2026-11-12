@@ -104,9 +104,15 @@ mod tests {
         let injector = pool.injector();
         pool.set_pattern("");
         pool.tick();
-        assert!(!pool.is_complete(), "a cold scoped index must not freeze an empty page");
+        assert!(
+            !pool.is_complete(),
+            "a cold scoped index must not freeze an empty page"
+        );
         drop(injector);
-        assert!(pool.tick(), "finishing an empty directory must repaint the loading state");
+        assert!(
+            pool.tick(),
+            "finishing an empty directory must repaint the loading state"
+        );
         assert!(pool.is_complete());
         assert!(pool.results(10).is_empty());
         assert!(!pool.tick(), "a completed empty scope must stay idle");
@@ -123,8 +129,13 @@ mod tests {
         pool.tick();
         let path = PathBuf::from("developer/egui-app");
         pool.injector().push(
-            IndexEntry { path: path.clone(), is_dir: true },
-            |_, cols| { cols[0] = "developer/egui-app".into(); },
+            IndexEntry {
+                path: path.clone(),
+                is_dir: true,
+            },
+            |_, cols| {
+                cols[0] = "developer/egui-app".into();
+            },
         );
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
@@ -134,7 +145,10 @@ mod tests {
                 assert_eq!(pool.results(1)[0].path, path);
                 break;
             }
-            assert!(Instant::now() < deadline, "streamed folder was never published");
+            assert!(
+                Instant::now() < deadline,
+                "streamed folder was never published"
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
     }
@@ -143,8 +157,13 @@ mod tests {
     fn identical_render_queries_stay_idle_and_changed_queries_hide_old_matches() {
         let mut pool = NucleoPool::new();
         pool.injector().push(
-            IndexEntry { path: "developer/egui-app".into(), is_dir: true },
-            |_, cols| { cols[0] = "developer/egui-app".into(); },
+            IndexEntry {
+                path: "developer/egui-app".into(),
+                is_dir: true,
+            },
+            |_, cols| {
+                cols[0] = "developer/egui-app".into();
+            },
         );
         pool.set_pattern("egui");
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -155,11 +174,17 @@ mod tests {
         }
         for _ in 0..10 {
             pool.set_pattern("egui");
-            assert!(!pool.tick(), "an unchanged finder render must not restart matching");
+            assert!(
+                !pool.tick(),
+                "an unchanged finder render must not restart matching"
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
         pool.set_pattern("pexer");
-        assert!(pool.results(1).is_empty(), "old egui matches must not appear under pexer");
+        assert!(
+            pool.results(1).is_empty(),
+            "old egui matches must not appear under pexer"
+        );
         pool.reset();
         pool.set_pattern("pexer");
         assert_eq!(pool.query.as_deref(), Some("pexer"));

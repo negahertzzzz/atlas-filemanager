@@ -9,7 +9,11 @@ fn bounded_scroll_start(current: f32, target: f32) -> f32 {
 }
 
 fn file_scroll_limit(content_h: f32, viewport_h: f32, margin_ratio: f32) -> f32 {
-    let margin = if content_h > 0.0 { viewport_h * margin_ratio } else { 0.0 };
+    let margin = if content_h > 0.0 {
+        viewport_h * margin_ratio
+    } else {
+        0.0
+    };
     (content_h + margin - viewport_h).max(0.0)
 }
 
@@ -21,7 +25,11 @@ pub(crate) struct ViewSelection {
     scroll: Option<PathBuf>,
 }
 
-pub(crate) fn remap(selection: &SelectionState, old: &[PathBuf], new: &[PathBuf]) -> SelectionState {
+pub(crate) fn remap(
+    selection: &SelectionState,
+    old: &[PathBuf],
+    new: &[PathBuf],
+) -> SelectionState {
     let index = |idx: usize| {
         old.get(idx)
             .and_then(|path| new.iter().position(|candidate| candidate == path))
@@ -43,7 +51,8 @@ pub(crate) fn remap(selection: &SelectionState, old: &[PathBuf], new: &[PathBuf]
 impl App {
     /// Whether `pane`'s selection indexes visible tree rows (Tree view).
     pub(crate) fn selection_is_tree(&self, pane: TabId) -> bool {
-        self.tab_data_for(pane).is_some_and(|tab| tab.view_mode == ViewMode::Tree)
+        self.tab_data_for(pane)
+            .is_some_and(|tab| tab.view_mode == ViewMode::Tree)
     }
 
     /// The single entry point for structural tab changes (listing, re-sort, tree
@@ -89,14 +98,26 @@ impl App {
             ViewMode::Details if group_by == atlas_model::tab::GroupBy::None => {
                 let visible = self.flat_visible_indices(pane);
                 let ts = self.state.tab_states.get(&pane)?;
-                Some(visible.iter().filter_map(|i| ts.entries.get(*i)).map(|e| e.path()).collect())
+                Some(
+                    visible
+                        .iter()
+                        .filter_map(|i| ts.entries.get(*i))
+                        .map(|e| e.path())
+                        .collect(),
+                )
             }
             _ => None,
         }
     }
 
     fn row_scroll_anchor(&mut self, pane: TabId) -> Option<(PathBuf, f32)> {
-        let base = self.scroll_handles.get(&pane)?.0.borrow().base_handle.clone();
+        let base = self
+            .scroll_handles
+            .get(&pane)?
+            .0
+            .borrow()
+            .base_handle
+            .clone();
         let row_h = f32::from(base.line_scroll_height()?);
         let offset = -f32::from(base.offset().y);
         if row_h <= 0.0 || offset < 0.5 {
@@ -109,7 +130,9 @@ impl App {
     }
 
     fn restore_row_scroll_anchor(&mut self, pane: TabId, (path, intra): (PathBuf, f32)) {
-        let Some(rows) = self.display_row_paths(pane) else { return };
+        let Some(rows) = self.display_row_paths(pane) else {
+            return;
+        };
         // The anchor row may have collapsed away: pin its nearest visible ancestor.
         let (index, intra) = match rows.iter().position(|row| *row == path) {
             Some(index) => (index, intra),
@@ -124,9 +147,13 @@ impl App {
                 (index, 0.0)
             }
         };
-        let Some(handle) = self.scroll_handles.get(&pane) else { return };
+        let Some(handle) = self.scroll_handles.get(&pane) else {
+            return;
+        };
         let base = handle.0.borrow().base_handle.clone();
-        let Some(row_h) = base.line_scroll_height().map(f32::from) else { return };
+        let Some(row_h) = base.line_scroll_height().map(f32::from) else {
+            return;
+        };
         let offset = base.offset();
         let target = index as f32 * row_h + intra;
         if (target + f32::from(offset.y)).abs() > 0.5 {
@@ -135,18 +162,32 @@ impl App {
     }
 
     pub(crate) fn file_scroll_max(&self, content_h: f32, viewport_h: f32) -> f32 {
-        file_scroll_limit(content_h, viewport_h, self.state.settings.scroll_overscroll_fraction())
+        file_scroll_limit(
+            content_h,
+            viewport_h,
+            self.state.settings.scroll_overscroll_fraction(),
+        )
     }
-    pub(crate) fn set_keyboard_scroll_offset(&self, base: &gpui::ScrollHandle, target: gpui::Point<gpui::Pixels>) {
-        if self.state.settings.disable_animations || self.state.settings.scroll_smoothness <= 0.0
-            || self.pending_rename.is_some() {
+    pub(crate) fn set_keyboard_scroll_offset(
+        &self,
+        base: &gpui::ScrollHandle,
+        target: gpui::Point<gpui::Pixels>,
+    ) {
+        if self.state.settings.disable_animations
+            || self.state.settings.scroll_smoothness <= 0.0
+            || self.pending_rename.is_some()
+        {
             base.set_offset(target);
             return;
         }
         let offset = base.offset();
-        let start = gpui::point(gpui::px(bounded_scroll_start(offset.x.into(), target.x.into())),
-            gpui::px(bounded_scroll_start(offset.y.into(), target.y.into())));
-        if start != offset { base.set_offset(start); }
+        let start = gpui::point(
+            gpui::px(bounded_scroll_start(offset.x.into(), target.x.into())),
+            gpui::px(bounded_scroll_start(offset.y.into(), target.y.into())),
+        );
+        if start != offset {
+            base.set_offset(start);
+        }
         base.set_offset_smooth(target);
     }
     /// Keyboard reveal for the focused cursor. Scrolls only when the cursor would
@@ -155,32 +196,60 @@ impl App {
         use crate::ui::dg::scroll::keyboard_target;
         let mode = self.tab_data_for(pane).map(|tab| tab.view_mode.clone());
         if matches!(mode, Some(ViewMode::Tree | ViewMode::Miller)) {
-            let Some(state) = self.state.tab_states.get(&pane) else { return false; };
+            let Some(state) = self.state.tab_states.get(&pane) else {
+                return false;
+            };
             let (row, count, handle) = if mode == Some(ViewMode::Miller) {
                 let index = state.miller.focused;
-                let Some(column) = state.miller.columns.get(index) else { return false; };
+                let Some(column) = state.miller.columns.get(index) else {
+                    return false;
+                };
                 let visible = state.miller_visible_indices(index);
-                let cursor = column.selection.keyboard_cursor.or_else(|| column.primary_selected());
-                (cursor.and_then(|i| visible.iter().position(|row| *row == i)), visible.len(), self.miller_scroll_handles.get(&(pane, index)))
+                let cursor = column
+                    .selection
+                    .keyboard_cursor
+                    .or_else(|| column.primary_selected());
+                (
+                    cursor.and_then(|i| visible.iter().position(|row| *row == i)),
+                    visible.len(),
+                    self.miller_scroll_handles.get(&(pane, index)),
+                )
             } else {
-                (state.selection.keyboard_cursor, state.visible_tree_rows_snapshot().len(), self.scroll_handles.get(&pane))
+                (
+                    state.selection.keyboard_cursor,
+                    state.visible_tree_rows_snapshot().len(),
+                    self.scroll_handles.get(&pane),
+                )
             };
-            let (Some(row), Some(handle)) = (row, handle) else { return false; };
+            let (Some(row), Some(handle)) = (row, handle) else {
+                return false;
+            };
             let base = handle.0.borrow().base_handle.clone();
-            let Some(row_h) = base.line_scroll_height().map(f32::from) else { return false; };
+            let Some(row_h) = base.line_scroll_height().map(f32::from) else {
+                return false;
+            };
             let height = f32::from(base.bounds().size.height);
-            if height <= 1.0 || row >= count { return false; }
+            if height <= 1.0 || row >= count {
+                return false;
+            }
             let offset = base.offset();
             let current = (-f32::from(offset.y)).max(0.0);
-            let target = keyboard_target(row as f32 * row_h, row_h, height, current,
-                self.file_scroll_max(count as f32 * row_h, height));
+            let target = keyboard_target(
+                row as f32 * row_h,
+                row_h,
+                height,
+                current,
+                self.file_scroll_max(count as f32 * row_h, height),
+            );
             if (target - current).abs() > 0.5 {
                 self.set_keyboard_scroll_offset(&base, gpui::point(offset.x, gpui::px(-target)));
             }
             return true;
         }
-        if !matches!(mode, Some(ViewMode::Details | ViewMode::List | ViewMode::Grid))
-            || self.pending_rename.is_some()
+        if !matches!(
+            mode,
+            Some(ViewMode::Details | ViewMode::List | ViewMode::Grid)
+        ) || self.pending_rename.is_some()
         {
             let strategy = if self.pending_rename.is_some() {
                 gpui::ScrollStrategy::Center
@@ -210,7 +279,12 @@ impl App {
                     let Some(hit) = self.details_hit.get(&pane) else {
                         return false;
                     };
-                    (position as f32 * hit.row_h, hit.row_h, visible.len() as f32 * hit.row_h, false)
+                    (
+                        position as f32 * hit.row_h,
+                        hit.row_h,
+                        visible.len() as f32 * hit.row_h,
+                        false,
+                    )
                 }
                 Some(ViewMode::Grid) => {
                     let Some(hit) = self.grid_hit.get(&pane) else {
@@ -247,7 +321,11 @@ impl App {
         };
         let base = handle.0.borrow().base_handle.clone();
         let bounds = base.bounds();
-        let viewport = f32::from(if horizontal { bounds.size.width } else { bounds.size.height });
+        let viewport = f32::from(if horizontal {
+            bounds.size.width
+        } else {
+            bounds.size.height
+        });
         if viewport <= 1.0 || len <= 0.0 {
             return false;
         }
@@ -415,7 +493,9 @@ impl App {
                     col.entries
                         .iter()
                         .position(|entry| entry.path() == path)
-                        .and_then(|idx| ts.miller_visible_indices(ci).iter().position(|i| *i == idx))
+                        .and_then(|idx| {
+                            ts.miller_visible_indices(ci).iter().position(|i| *i == idx)
+                        })
                         .map(|position| (ci, position))
                 }),
                 ViewMode::Tree => ts
@@ -440,10 +520,8 @@ impl App {
                     .get(&pane)
                     .map(|hit| hit.cols.max(1))
                     .is_some_and(|cols| {
-                        {
                         let cell = self.cell_position(pane, pos);
                         self.scroll_grid_row_to(pane, cell / cols, gpui::ScrollStrategy::Nearest)
-                    }
                     }),
                 ViewMode::Details => {
                     self.details_hit.contains_key(&pane)
@@ -538,12 +616,20 @@ mod tests {
         assert_eq!(handle.max_offset().y, px(700.0));
         handle.apply_scroll_delta(ScrollDelta::Lines(point(0.0, -3.0)), now);
         assert_eq!(handle.offset().y, px(0.0));
-        assert!(handle.update_scroll_geometry(viewport, content, now + std::time::Duration::from_millis(16)));
+        assert!(handle.update_scroll_geometry(
+            viewport,
+            content,
+            now + std::time::Duration::from_millis(16)
+        ));
         let eased = handle.offset().y;
         assert!(eased < px(0.0) && eased > px(-78.0));
         handle.apply_scroll_delta(ScrollDelta::PreciseLines(point(0.0, -0.25)), now);
         assert_eq!(handle.offset().y, eased - px(6.5));
-        assert!(!handle.update_scroll_geometry(viewport, content, now + std::time::Duration::from_secs(1)));
+        assert!(!handle.update_scroll_geometry(
+            viewport,
+            content,
+            now + std::time::Duration::from_secs(1)
+        ));
         assert_eq!(handle.offset().y, eased - px(6.5));
         handle.update_scroll_geometry(viewport, size(px(300.0), px(0.0)), now);
         assert_eq!(handle.offset().y, px(0.0));

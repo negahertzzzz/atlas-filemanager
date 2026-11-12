@@ -34,14 +34,18 @@ impl App {
             layers.push(self.render_converter(window, cx));
         }
 
-
         // Live previews belong to the open settings picker; any other way of
         // closing Settings (Esc elsewhere, CloseOverlays, links) reverts them.
         let show_settings = self.state.overlay.show_settings;
         if !show_settings && self.settings_ui.drill.is_some() {
             self.settings_cancel_drill();
         }
-        let drilling = self.settings_ui.drill.as_ref().filter(|_| show_settings).map(|d| d.setting);
+        let drilling = self
+            .settings_ui
+            .drill
+            .as_ref()
+            .filter(|_| show_settings)
+            .map(|d| d.setting);
         let mut reverted = false;
         if self.settings_theme_previewing && drilling != Some("theme") {
             self.settings_theme_previewing = false;
@@ -237,11 +241,11 @@ impl App {
 #[cfg(feature = "provider-host")]
 pub(crate) mod add_cloud;
 mod batch_rename;
+mod brand;
 mod create_tag;
 mod ext_manager;
 mod ext_prompt;
 mod getting_started;
-mod brand;
 mod guide;
 pub(crate) mod legal;
 mod properties;

@@ -13,7 +13,9 @@ mod render;
 use crate::app::App;
 use crate::input::action::Action;
 use crate::ui::icons::AtlasIcon;
-use atlas_model::settings::{CharacterKeyAction, IconStyle, InspectorPlacement, Settings, ViewMode};
+use atlas_model::settings::{
+    CharacterKeyAction, IconStyle, InspectorPlacement, Settings, ViewMode,
+};
 use gpui::{Hsla, SharedString};
 use std::sync::LazyLock;
 
@@ -161,7 +163,9 @@ pub(crate) enum Control {
     },
     /// Drill into a full custom page (theme editor, shortcut editor).
     /// `searchable` pages keep the search row live and filter their list.
-    Page { searchable: bool },
+    Page {
+        searchable: bool,
+    },
 }
 
 pub(crate) struct SettingDef {
@@ -207,12 +211,25 @@ impl SettingDef {
     /// enables reset). Settings without a meaningful default never report.
     pub(crate) fn is_modified(&self, app: &App, defaults: &Settings) -> bool {
         match &self.control {
-            Control::Toggle { get, default: Some(d), .. } => get(app) != d(defaults),
-            Control::Slider(s) => s
-                .default
-                .is_some_and(|d| (s.get)(app) - d(defaults) > s.step * 0.5 || d(defaults) - (s.get)(app) > s.step * 0.5),
-            Control::Segmented { get, default: Some(d), .. } => get(app) != d(defaults),
-            Control::Choice { current, default: Some(d), .. } => current(app) != d(defaults),
+            Control::Toggle {
+                get,
+                default: Some(d),
+                ..
+            } => get(app) != d(defaults),
+            Control::Slider(s) => s.default.is_some_and(|d| {
+                (s.get)(app) - d(defaults) > s.step * 0.5
+                    || d(defaults) - (s.get)(app) > s.step * 0.5
+            }),
+            Control::Segmented {
+                get,
+                default: Some(d),
+                ..
+            } => get(app) != d(defaults),
+            Control::Choice {
+                current,
+                default: Some(d),
+                ..
+            } => current(app) != d(defaults),
             _ => false,
         }
     }
@@ -221,13 +238,25 @@ impl SettingDef {
     pub(crate) fn reset(&self, app: &mut App) -> bool {
         let defaults = Settings::default();
         match &self.control {
-            Control::Toggle { set, default: Some(d), .. } => set(app, d(&defaults)),
+            Control::Toggle {
+                set,
+                default: Some(d),
+                ..
+            } => set(app, d(&defaults)),
             Control::Slider(s) => match s.default {
                 Some(d) => (s.set)(app, d(&defaults)),
                 None => return false,
             },
-            Control::Segmented { set, default: Some(d), .. } => set(app, d(&defaults)),
-            Control::Choice { pick, default: Some(d), .. } => pick(app, &d(&defaults)),
+            Control::Segmented {
+                set,
+                default: Some(d),
+                ..
+            } => set(app, d(&defaults)),
+            Control::Choice {
+                pick,
+                default: Some(d),
+                ..
+            } => pick(app, &d(&defaults)),
             _ => return false,
         }
         true
@@ -240,12 +269,19 @@ pub(crate) fn value_label(def: &SettingDef, app: &mut App, cx: &gpui::App) -> Op
         Control::Toggle { get, .. } => Some(t(if get(app) { "sp_on" } else { "sp_off" })),
         Control::Slider(slider) => Some(slider.format((slider.get)(app)).into()),
         Control::Segmented { labels, get, .. } => labels().get(get(app)).cloned(),
-        Control::Choice { options, current, .. } => {
+        Control::Choice {
+            options, current, ..
+        } => {
             let current = current(app);
             if current.is_empty() {
                 return None;
             }
-            Some(options(app, cx).into_iter().find(|o| o.id == current).map_or(current, |o| o.label))
+            Some(
+                options(app, cx)
+                    .into_iter()
+                    .find(|o| o.id == current)
+                    .map_or(current, |o| o.label),
+            )
         }
         Control::Info { value } => Some(value(app)),
         Control::Action { .. } | Control::Page { .. } => None,
@@ -283,7 +319,9 @@ pub(crate) struct SettingsUi {
     /// Main query to put back into the search field on the next render
     /// (leaving a searchable page).
     pub restore_query: Option<String>,
-    pub choice_anchors: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<&'static str, gpui::Bounds<gpui::Pixels>>>>,
+    pub choice_anchors: std::rc::Rc<
+        std::cell::RefCell<std::collections::HashMap<&'static str, gpui::Bounds<gpui::Pixels>>>,
+    >,
 }
 
 pub(crate) struct Drill {
@@ -323,11 +361,23 @@ pub(crate) const LANGUAGES: &[(&str, &str)] = &[
 ];
 
 const VIEW_MODES: [(ViewMode, &str, AtlasIcon); 5] = [
-    (ViewMode::Details, "settings_view_details_btn", AtlasIcon::Details),
+    (
+        ViewMode::Details,
+        "settings_view_details_btn",
+        AtlasIcon::Details,
+    ),
     (ViewMode::Grid, "settings_view_grid_btn", AtlasIcon::Grid),
     (ViewMode::List, "settings_view_list_btn", AtlasIcon::List),
-    (ViewMode::Miller, "settings_view_miller_btn", AtlasIcon::Columns),
-    (ViewMode::Tree, "settings_view_tree_btn", AtlasIcon::TreeStructure),
+    (
+        ViewMode::Miller,
+        "settings_view_miller_btn",
+        AtlasIcon::Columns,
+    ),
+    (
+        ViewMode::Tree,
+        "settings_view_tree_btn",
+        AtlasIcon::TreeStructure,
+    ),
 ];
 
 const VIEW_ICONS: [AtlasIcon; 5] = [
@@ -345,24 +395,40 @@ const ICON_STYLES: [(IconStyle, &str, &str); 3] = [
 ];
 
 fn icon_style_id(style: IconStyle) -> &'static str {
-    ICON_STYLES.iter().find(|(s, ..)| *s == style).map_or("auto", |(_, id, _)| id)
+    ICON_STYLES
+        .iter()
+        .find(|(s, ..)| *s == style)
+        .map_or("auto", |(_, id, _)| id)
 }
 
 fn icon_style_from_id(id: &str) -> Option<IconStyle> {
-    ICON_STYLES.iter().find(|(_, sid, _)| *sid == id).map(|(s, ..)| *s)
+    ICON_STYLES
+        .iter()
+        .find(|(_, sid, _)| *sid == id)
+        .map(|(s, ..)| *s)
 }
 
 /// Downloadable icon themes: (`icon-manager` command, label, install-dir slug).
 const ICON_THEME_SOURCES: [(&str, &str, &str); 3] = [
-    ("icon-manager.download-material", "Material", "PKief_material-icon-theme"),
-    ("icon-manager.download-catppuccin", "Catppuccin", "catppuccin_catppuccin-vsc-icons"),
+    (
+        "icon-manager.download-material",
+        "Material",
+        "PKief_material-icon-theme",
+    ),
+    (
+        "icon-manager.download-catppuccin",
+        "Catppuccin",
+        "catppuccin_catppuccin-vsc-icons",
+    ),
     ("icon-manager.download-flow", "Flow", "thang-nm_flow-icons"),
 ];
 
 const VARIANT_PREFIX: &str = "variant:";
 
 fn icon_data_dir() -> std::path::PathBuf {
-    atlas_core::util::config::data_dir().join("extensions").join("icon-manager")
+    atlas_core::util::config::data_dir()
+        .join("extensions")
+        .join("icon-manager")
 }
 
 /// Installed icon-theme variants + the active one, scanned from disk when the
@@ -383,20 +449,31 @@ pub(crate) fn refresh_icon_inventory() {
         variants: atlas_core::ext::runner::installed_icon_variants(&dir),
         active: atlas_core::ext::runner::active_icon_variant(&dir),
     };
-    *ICON_INVENTORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = inventory;
+    *ICON_INVENTORY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = inventory;
 }
 
 fn icon_inventory() -> IconInventory {
-    let inventory = ICON_INVENTORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    let inventory = ICON_INVENTORY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
     if inventory.loaded {
         return inventory;
     }
     refresh_icon_inventory();
-    ICON_INVENTORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+    ICON_INVENTORY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
 }
 
 fn variant_id(variant: &atlas_core::ext::runner::InstalledIconVariant) -> String {
-    format!("{VARIANT_PREFIX}{}|{}", variant.slug, variant.theme_rel_path)
+    format!(
+        "{VARIANT_PREFIX}{}|{}",
+        variant.slug, variant.theme_rel_path
+    )
 }
 
 /// "Catppuccin · Mocha", or just the theme name when it has one variant.
@@ -411,7 +488,9 @@ fn variant_label(variant: &atlas_core::ext::runner::InstalledIconVariant) -> Str
         let short = label
             .get(..name.len())
             .filter(|head| head.eq_ignore_ascii_case(name))
-            .map_or(label, |_| label[name.len()..].trim_start_matches([' ', '-', ':']))
+            .map_or(label, |_| {
+                label[name.len()..].trim_start_matches([' ', '-', ':'])
+            })
             .trim();
         format!("{name} · {}", if short.is_empty() { label } else { short })
     } else {
@@ -422,15 +501,28 @@ fn variant_label(variant: &atlas_core::ext::runner::InstalledIconVariant) -> Str
 /// Picker id of the variant the live icon index uses, if any.
 fn active_variant_id(app: &App, inventory: &IconInventory) -> Option<String> {
     let index = app.icon_theme.as_ref()?;
-    let path = index.default_file.as_ref().or(index.default_folder.as_ref())?.to_string_lossy();
+    let path = index
+        .default_file
+        .as_ref()
+        .or(index.default_folder.as_ref())?
+        .to_string_lossy();
     let (slug, rel) = inventory.active.as_ref()?;
-    path.contains(slug.as_str()).then(|| format!("{VARIANT_PREFIX}{slug}|{rel}"))
+    path.contains(slug.as_str())
+        .then(|| format!("{VARIANT_PREFIX}{slug}|{rel}"))
 }
 
 const CHAR_ACTIONS: [(CharacterKeyAction, &str, &str); 3] = [
     (CharacterKeyAction::TypeInFilter, "filter", "sp_type_filter"),
-    (CharacterKeyAction::SelectTypedItem, "select", "sp_type_select"),
-    (CharacterKeyAction::TriggerHotkey, "hotkey", "sp_type_hotkey"),
+    (
+        CharacterKeyAction::SelectTypedItem,
+        "select",
+        "sp_type_select",
+    ),
+    (
+        CharacterKeyAction::TriggerHotkey,
+        "hotkey",
+        "sp_type_hotkey",
+    ),
 ];
 
 /// Fonts offered first in the family picker.
@@ -465,7 +557,10 @@ fn open_url(url: &'static str) {
 /// not offered (hand-edited settings) show as unlimited.
 fn cpu_limit_index(percent: u8) -> usize {
     let choices = atlas_core::resources::CHOICES;
-    choices.iter().position(|&choice| choice == percent).unwrap_or(choices.len() - 1)
+    choices
+        .iter()
+        .position(|&choice| choice == percent)
+        .unwrap_or(choices.len() - 1)
 }
 
 fn theme_choice_options(cx: &gpui::App, dark: Option<bool>) -> Vec<ChoiceOption> {
@@ -1525,7 +1620,8 @@ pub(crate) static SETTINGS: LazyLock<Vec<SettingDef>> = LazyLock::new(|| {
                     match atlas_win_space::integration::set_win_e_enabled(on) {
                         Ok(()) => app.win_e_enabled = on,
                         Err(error) => app.toast_error(
-                            rust_i18n::t!("settings_win_e_error", error = error.to_string()).into_owned(),
+                            rust_i18n::t!("settings_win_e_error", error = error.to_string())
+                                .into_owned(),
                         ),
                     }
                 },
@@ -1561,7 +1657,11 @@ impl App {
         let Some(drill) = self.settings_ui.drill.take() else {
             return;
         };
-        if let Some(Control::Choice { preview: Some(preview), .. }) = find(drill.setting).map(|d| &d.control) {
+        if let Some(Control::Choice {
+            preview: Some(preview),
+            ..
+        }) = find(drill.setting).map(|d| &d.control)
+        {
             preview(self, None);
         }
     }
@@ -1590,9 +1690,19 @@ mod tests {
         assert_eq!(before, ids.len(), "duplicate setting id");
         rust_i18n::set_locale("en");
         for def in SETTINGS.iter() {
-            assert_ne!(def.title().as_ref(), def.title, "missing en title for {}", def.id);
+            assert_ne!(
+                def.title().as_ref(),
+                def.title,
+                "missing en title for {}",
+                def.id
+            );
             if let Some(key) = def.desc {
-                assert_ne!(rust_i18n::t!(key).as_ref(), key, "missing en desc for {}", def.id);
+                assert_ne!(
+                    rust_i18n::t!(key).as_ref(),
+                    key,
+                    "missing en desc for {}",
+                    def.id
+                );
             }
         }
         for category in Category::ALL {

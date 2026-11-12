@@ -1,0 +1,40 @@
+name: Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Candidate version present in CHANGELOG.md (does not publish a release)
+        required: true
+        default: '0.1.5'
+      edition:
+        description: Windows edition (free for Store baseline, full for unrestricted builds)
+        type: choice
+        options: [full, free]
+        default: full
+      platform:
+        description: Platforms to package
+        type: choice
+        options: [both, windows, linux]
+        default: both
+      windows-binaries-run:
+        description: Optional prior candidate run; verifies unchanged app sources and rebuilds only search
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    if: inputs.platform != 'linux'
+    uses: ./.github/workflows/windows-packages.yml
+    with:
+      version: ${{ inputs.version }}
+      edition: ${{ inputs.edition }}
+      reuse-run-id: ${{ inputs.windows-binaries-run }}
+  linux:
+    if: inputs.platform != 'windows'
+    uses: ./.github/workflows/linux-packages.yml
+    with:
+      version: ${{ inputs.version }}

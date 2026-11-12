@@ -303,7 +303,12 @@ impl ArenaTree {
                         .and_then(|e| e.to_str())
                         .unwrap_or("")
                         .to_ascii_lowercase();
-                    if !query.filters.extensions.iter().any(|e| e.eq_ignore_ascii_case(&ext)) {
+                    if !query
+                        .filters
+                        .extensions
+                        .iter()
+                        .any(|e| e.eq_ignore_ascii_case(&ext))
+                    {
                         continue;
                     }
                 }
@@ -398,13 +403,19 @@ mod tests {
         let q = SearchQuery::text("report");
         let results = tree.search(&q);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].path, PathBuf::from("/home/user/documents/report_2026.pdf"));
+        assert_eq!(
+            results[0].path,
+            PathBuf::from("/home/user/documents/report_2026.pdf")
+        );
 
         // Search query "budget"
         let q = SearchQuery::text("budget");
         let results = tree.search(&q);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].path, PathBuf::from("/home/user/documents/budget.xlsx"));
+        assert_eq!(
+            results[0].path,
+            PathBuf::from("/home/user/documents/budget.xlsx")
+        );
 
         // Search query "nonexistent"
         let q = SearchQuery::text("nonexistent");

@@ -5,10 +5,8 @@
 use crate::app::App;
 use crate::input::action::Action;
 use gpui::prelude::*;
-use gpui::{
-    deferred, div, px, AnyElement, Context, KeyDownEvent, SharedString, Window,
-};
 use gpui::ColorExt as _;
+use gpui::{deferred, div, px, AnyElement, Context, KeyDownEvent, SharedString, Window};
 use gpui_component::{h_flex, ActiveTheme, StyledExt as _};
 
 impl App {
@@ -44,7 +42,10 @@ impl App {
             .files
             .iter()
             .zip(&batch.previews)
-            .filter(|(path, name)| path.file_name().is_none_or(|n| n.to_string_lossy() != **name))
+            .filter(|(path, name)| {
+                path.file_name()
+                    .is_none_or(|n| n.to_string_lossy() != **name)
+            })
             .count();
         let has_numbers = batch
             .multi_lines
@@ -77,9 +78,9 @@ impl App {
                 .text_color(danger)
                 .child(rust_i18n::t!("batch_inline_conflict").to_string())
         } else {
-            div()
-                .text_color(muted)
-                .child(rust_i18n::t!("batch_inline_count", changed = changed, count = count).to_string())
+            div().text_color(muted).child(
+                rust_i18n::t!("batch_inline_count", changed = changed, count = count).to_string(),
+            )
         };
 
         let pill = h_flex()
@@ -98,10 +99,19 @@ impl App {
             .child(hint(&["↵"], rust_i18n::t!("batch_hint_apply").to_string()))
             .child(hint(&["⇥"], rust_i18n::t!("batch_hint_jump").to_string()))
             .when(has_numbers, |p| {
-                p.child(hint(&["Alt", "N"], rust_i18n::t!("batch_hint_number").to_string()))
-                    .child(hint(&["Alt", "D"], rust_i18n::t!("batch_hint_dates").to_string()))
+                p.child(hint(
+                    &["Alt", "N"],
+                    rust_i18n::t!("batch_hint_number").to_string(),
+                ))
+                .child(hint(
+                    &["Alt", "D"],
+                    rust_i18n::t!("batch_hint_dates").to_string(),
+                ))
             })
-            .child(hint(&["esc"], rust_i18n::t!("batch_hint_cancel").to_string()));
+            .child(hint(
+                &["esc"],
+                rust_i18n::t!("batch_hint_cancel").to_string(),
+            ));
 
         deferred(
             div()

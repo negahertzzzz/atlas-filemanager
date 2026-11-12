@@ -151,7 +151,11 @@ pub(crate) fn scrim() -> Div {
 }
 
 /// White pill (`.btn.light`): the one primary action on a surface.
-pub(crate) fn pill(id: &'static str, label: String, trailing: Option<AnyElement>) -> gpui::Stateful<Div> {
+pub(crate) fn pill(
+    id: &'static str,
+    label: String,
+    trailing: Option<AnyElement>,
+) -> gpui::Stateful<Div> {
     div()
         .id(id)
         .relative()
@@ -191,7 +195,10 @@ pub(crate) fn ghost(id: &'static str, label: String) -> gpui::Stateful<Div> {
         .text_sm()
         .font_weight(gpui::FontWeight::MEDIUM)
         .cursor_pointer()
-        .hover(|h| h.bg(wash_hover()).border_color(gpui::hsla(0., 0., 1., 0.22)))
+        .hover(|h| {
+            h.bg(wash_hover())
+                .border_color(gpui::hsla(0., 0., 1., 0.22))
+        })
         .child(label)
 }
 

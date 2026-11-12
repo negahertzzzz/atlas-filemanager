@@ -216,11 +216,12 @@ fn launch_executable() -> io::Result<std::path::PathBuf> {
 }
 pub fn is_packaged() -> bool {
     use windows_sys::Win32::{
-        Foundation::ERROR_INSUFFICIENT_BUFFER,
-        Storage::Packaging::Appx::GetCurrentPackageFullName,
+        Foundation::ERROR_INSUFFICIENT_BUFFER, Storage::Packaging::Appx::GetCurrentPackageFullName,
     };
     let mut len = 0;
-    unsafe { GetCurrentPackageFullName(&mut len, std::ptr::null_mut()) == ERROR_INSUFFICIENT_BUFFER }
+    unsafe {
+        GetCurrentPackageFullName(&mut len, std::ptr::null_mut()) == ERROR_INSUFFICIENT_BUFFER
+    }
 }
 fn set_enabled_at(
     target_path: &str,
@@ -314,10 +315,11 @@ mod tests {
 }
 /// Call on an initialized COM apartment after the startup shell work settles.
 pub fn free_unused_com_libraries() {
-    unsafe { windows::Win32::System::Com::CoFreeUnusedLibraries(); }
+    unsafe {
+        windows::Win32::System::Com::CoFreeUnusedLibraries();
+    }
 }
 
 pub fn double_click_interval_ms() -> u32 {
     unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() }
 }
-

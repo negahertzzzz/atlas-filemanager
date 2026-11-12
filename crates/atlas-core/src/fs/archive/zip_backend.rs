@@ -165,7 +165,12 @@ impl ZipProvider {
             // enclosed_name() turns "/x" or "C:/x" into "x", a name the entry
             // cannot be opened by; such entries stay hidden as before.
             let stored = Path::new(&*raw_name);
-            if stored.has_root() || matches!(stored.components().next(), Some(std::path::Component::Prefix(_))) {
+            if stored.has_root()
+                || matches!(
+                    stored.components().next(),
+                    Some(std::path::Component::Prefix(_))
+                )
+            {
                 continue;
             }
             // Skip __MACOSX cruft and other meta entries.
@@ -465,7 +470,9 @@ mod tests {
         super::super::extract_for_export(&provider, Path::new("setup.exe"), &dest).unwrap();
         let mut copied = dest.as_os_str().to_os_string();
         copied.push(":Zone.Identifier");
-        assert!(std::fs::read_to_string(copied).unwrap().contains("ZoneId=3"));
+        assert!(std::fs::read_to_string(copied)
+            .unwrap()
+            .contains("ZoneId=3"));
         // Archives without a mark produce files without one.
         let clean = dir.path().join("clean.zip");
         std::fs::copy(tmp.path(), &clean).unwrap();

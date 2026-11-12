@@ -90,7 +90,13 @@ async fn polar_entitled() -> bool {
         Err(_) => Check::Unreachable,
     };
     match check {
-        Check::Valid => save(&Saved { validated_at: now(), ..saved }).await,
+        Check::Valid => {
+            save(&Saved {
+                validated_at: now(),
+                ..saved
+            })
+            .await
+        }
         Check::Invalid => clear().await,
         Check::Unreachable => {}
     }
@@ -126,7 +132,9 @@ const STORE_PRICED_REGIONS: &[&str] = &[
 ];
 
 pub fn is_store_priced_region(country: &str) -> bool {
-    STORE_PRICED_REGIONS.iter().any(|code| code.eq_ignore_ascii_case(country))
+    STORE_PRICED_REGIONS
+        .iter()
+        .any(|code| code.eq_ignore_ascii_case(country))
 }
 
 /// Whether this user should buy Premium through the Store add-on.

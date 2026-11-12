@@ -8,18 +8,16 @@ mod scan;
 mod tree;
 mod walk;
 
+pub use duplicates::{DuplicateJob, DEFAULT_MIN_BYTES as DUPLICATE_MIN_BYTES};
 pub use execution::{execute, prepare_plan, prepare_plan_in};
 pub use policy::{categories, is_cleanup_root, is_drive_root, protected, user_temp_root, Category};
 pub use scan::{ScanJob, ScanMode};
 use std::path::PathBuf;
-pub use duplicates::{DuplicateJob, DEFAULT_MIN_BYTES as DUPLICATE_MIN_BYTES};
 pub use tree::{cached_snapshot, cached_treemap, cached_types, invalidate as invalidate_tree};
 
 /// Open and identify the given files in parallel; files that vanished, are
 /// locked or are otherwise unsafe are simply left out.
-pub fn inspect_candidates(
-    paths: &[PathBuf],
-) -> Vec<atlas_model::cleanup::CleanupCandidate> {
+pub fn inspect_candidates(paths: &[PathBuf]) -> Vec<atlas_model::cleanup::CleanupCandidate> {
     #[cfg(windows)]
     {
         use rayon::prelude::*;
@@ -64,16 +62,20 @@ pub fn move_to_trash(path: &std::path::Path) -> std::io::Result<()> {
 /// Operating-system folders (and the Users root itself) are never offered.
 fn system_entry(path: &std::path::Path) -> bool {
     use std::path::Component;
-    let mut parts = path
-        .components()
-        .filter_map(|c| match c {
-            Component::Normal(n) => Some(n.to_string_lossy().to_ascii_lowercase()),
-            _ => None,
-        });
+    let mut parts = path.components().filter_map(|c| match c {
+        Component::Normal(n) => Some(n.to_string_lossy().to_ascii_lowercase()),
+        _ => None,
+    });
     match parts.next().as_deref() {
         Some(
-            "windows" | "program files" | "program files (x86)" | "programdata" | "$recycle.bin"
-            | "system volume information" | "recovery" | "boot",
+            "windows"
+            | "program files"
+            | "program files (x86)"
+            | "programdata"
+            | "$recycle.bin"
+            | "system volume information"
+            | "recovery"
+            | "boot",
         ) => true,
         Some("users") => parts.next().is_none(),
         _ => false,

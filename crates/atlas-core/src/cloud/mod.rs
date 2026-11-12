@@ -11,16 +11,16 @@
 //! * **Mount** — FUSE-mounted via rclone so it appears as a real path and every
 //!   existing file-view code path works unchanged.
 
-pub mod provider;
 pub mod control;
-mod journal;
-mod staging;
-pub mod preview;
 mod installation;
+mod journal;
+pub mod preview;
+pub mod provider;
 #[cfg(feature = "cloud-backend")]
 pub mod rclone;
 pub mod remote;
 pub mod sidecar_provider;
+mod staging;
 pub mod transfer;
 mod worker;
 
@@ -49,7 +49,11 @@ pub fn downloads_dir() -> PathBuf {
 pub fn open_cache_dir(account: &str, generation: u64, source: &str) -> PathBuf {
     use sha2::{Digest as _, Sha256};
     let mut digest = Sha256::new();
-    digest.update(account.as_bytes()); digest.update([0]);
-    digest.update(generation.to_le_bytes()); digest.update(source.as_bytes());
-    crate::util::config::data_dir().join("cloud-open").join(format!("{:x}", digest.finalize()))
+    digest.update(account.as_bytes());
+    digest.update([0]);
+    digest.update(generation.to_le_bytes());
+    digest.update(source.as_bytes());
+    crate::util::config::data_dir()
+        .join("cloud-open")
+        .join(format!("{:x}", digest.finalize()))
 }

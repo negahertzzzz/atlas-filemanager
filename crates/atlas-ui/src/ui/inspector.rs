@@ -565,7 +565,9 @@ impl App {
 
     pub(crate) fn load_preview_gpui(&mut self, tab: TileId, path: PathBuf) {
         #[cfg(feature = "provider-host")]
-        if self.load_cloud_preview_for_selection() { return; }
+        if self.load_cloud_preview_for_selection() {
+            return;
+        }
         if self.state.preview.paths.get(&tab).map(PathBuf::as_path) == Some(path.as_path()) {
             return;
         }
@@ -584,7 +586,9 @@ impl App {
         self.state.preview.multi.remove(&tab);
         let tx = self.tx.clone();
         if atlas_core::vault::live::is_private(&path) {
-            self.rt.spawn(async move { atlas_core::fs::preview::load_preview(tab, path, tx).await; });
+            self.rt.spawn(async move {
+                atlas_core::fs::preview::load_preview(tab, path, tx).await;
+            });
             return;
         }
         if atlas_core::fs::preview::is_cloud_placeholder(&path) {
@@ -661,7 +665,9 @@ impl App {
                     let p = path.clone();
                     let fast = tokio::task::spawn_blocking(move || {
                         let probe_path = p.clone();
-                        let probe = std::thread::spawn(move || atlas_core::fs::preview::video_exif(&probe_path));
+                        let probe = std::thread::spawn(move || {
+                            atlas_core::fs::preview::video_exif(&probe_path)
+                        });
                         let thumb = crate::shell_thumb::shell_thumbnail(&p, 1024);
                         (thumb, probe.join().unwrap_or_default())
                     })
@@ -676,7 +682,11 @@ impl App {
                             original_height: height,
                             exif,
                         };
-                        let _ = tx.send(atlas_model::app_state::BgResult::PreviewReady { tab, path, result });
+                        let _ = tx.send(atlas_model::app_state::BgResult::PreviewReady {
+                            tab,
+                            path,
+                            result,
+                        });
                     } else {
                         atlas_core::fs::preview::load_preview(tab, path, tx).await;
                     }
@@ -915,13 +925,18 @@ impl App {
             },
             |entry| entry.name.clone(),
         );
-        let locked_path = paths.first().filter(|path| paths.len() == 1 && atlas_core::vault::is_private_path(path)).cloned();
+        let locked_path = paths
+            .first()
+            .filter(|path| paths.len() == 1 && atlas_core::vault::is_private_path(path))
+            .cloned();
         let subtitle = if locked_path.is_some() {
             rust_i18n::t!("vault_locked_subtitle").to_string()
-        } else { preview_summary(
-            &summary,
-            self.state.preview.results.get(&self.state.focused_tile),
-        ) };
+        } else {
+            preview_summary(
+                &summary,
+                self.state.preview.results.get(&self.state.focused_tile),
+            )
+        };
         // Quick Look-style header: the title leads; actions stay quiet until the
         // panel is hovered so they never compete with the window caption buttons.
         let mut actions = h_flex()
@@ -1028,7 +1043,9 @@ impl App {
             })
             .child(header);
         if let Some(path) = locked_path {
-            return panel.child(self.render_locked_vault_preview(path, cx)).into_any_element();
+            return panel
+                .child(self.render_locked_vault_preview(path, cx))
+                .into_any_element();
         }
         if summary.count == 0 {
             return panel
@@ -1071,7 +1088,10 @@ impl App {
                 .child(body),
         );
         // Always reserve a reachable footer for tags; details never push it offscreen.
-        let tags = if paths.iter().any(|path| atlas_core::vault::live::is_private(path)) {
+        let tags = if paths
+            .iter()
+            .any(|path| atlas_core::vault::live::is_private(path))
+        {
             div().into_any_element()
         } else if summary.count > 1 {
             self.render_multi_tags(&paths, muted, cx)
@@ -1104,7 +1124,10 @@ impl App {
                                 .small()
                                 .compact()
                                 .ghost()
-                                .map(|b| { use gpui_component::Selectable as _; b.selected(self.preview_view_for_focused().details_open) })
+                                .map(|b| {
+                                    use gpui_component::Selectable as _;
+                                    b.selected(self.preview_view_for_focused().details_open)
+                                })
                                 .tooltip(rust_i18n::t!("inspector_details").to_string())
                                 .child(
                                     gpui_component::Icon::new(gpui_component::IconName::Info)
@@ -1467,7 +1490,10 @@ impl App {
         muted: Hsla,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if paths.iter().any(|path| atlas_core::vault::live::is_private(path)) {
+        if paths
+            .iter()
+            .any(|path| atlas_core::vault::live::is_private(path))
+        {
             return div().into_any_element();
         }
         gpui_component::button::Button::new("preview-add-tag")
@@ -1912,7 +1938,11 @@ impl App {
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .child(cell(index_w, String::new(), muted));
             for (col, width) in widths.iter().enumerate() {
-                row = row.child(cell(*width, headers.get(col).cloned().unwrap_or_default(), fg));
+                row = row.child(cell(
+                    *width,
+                    headers.get(col).cloned().unwrap_or_default(),
+                    fg,
+                ));
             }
             table = table.child(row);
         }
@@ -1924,7 +1954,11 @@ impl App {
                 .when(i % 2 == 1, |s| s.bg(stripe))
                 .child(cell(index_w, (i + 1).to_string(), muted));
             for (col, width) in widths.iter().enumerate() {
-                row = row.child(cell(*width, cells.get(col).cloned().unwrap_or_default(), fg));
+                row = row.child(cell(
+                    *width,
+                    cells.get(col).cloned().unwrap_or_default(),
+                    fg,
+                ));
             }
             table = table.child(row);
         }
@@ -2180,7 +2214,12 @@ impl App {
 
     /// Ask for the thumbnails of the folder's image/video files (the ring cards).
     fn request_dir_ring_thumbnails(&mut self, paths: &[PathBuf]) {
-        if let Some(mut wanted) = self.thumb_wanted.lock().or_else(atlas_model::sync::recover).ok() {
+        if let Some(mut wanted) = self
+            .thumb_wanted
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+        {
             wanted.extend(paths.iter().cloned());
         }
         for path in paths {
@@ -2231,13 +2270,25 @@ impl App {
         let archive = container
             .as_deref()
             .is_some_and(atlas_core::fs::archive::is_archive_path);
-        let (dirs, files) = entries.iter().fold((0, 0), |(d, f), e| {
-            if e.is_dir { (d + 1, f) } else { (d, f + 1) }
-        });
+        let (dirs, files) =
+            entries.iter().fold(
+                (0, 0),
+                |(d, f), e| {
+                    if e.is_dir {
+                        (d + 1, f)
+                    } else {
+                        (d, f + 1)
+                    }
+                },
+            );
         let (total_count, total_size) = (*total_count, *total_size);
         let mut hero = Vec::new();
         if let Some(container) = container.as_ref() {
-            let kind = if archive { FileKind::File } else { FileKind::Dir };
+            let kind = if archive {
+                FileKind::File
+            } else {
+                FileKind::Dir
+            };
             let extension = archive.then(|| {
                 container
                     .extension()
@@ -2252,7 +2303,11 @@ impl App {
         }
         for e in entries.iter().filter(|e| !e.is_dir).take(2) {
             hero.push(HeroItem::Icon {
-                path: if archive { PathBuf::new() } else { e.path.clone() },
+                path: if archive {
+                    PathBuf::new()
+                } else {
+                    e.path.clone()
+                },
                 kind: FileKind::File,
                 extension: e.extension.clone(),
             });
@@ -2308,11 +2363,13 @@ impl App {
                                     .flex_none()
                                     .into_any_element(),
                                 // Cache variant follows light/dark surfaces.
-                                None => gpui::img(self.liquid_glass_icon(&row_kind, e.extension.as_deref()))
-                                    .w(px(14.))
-                                    .h(px(14.))
-                                    .flex_none()
-                                    .into_any_element(),
+                                None => gpui::img(
+                                    self.liquid_glass_icon(&row_kind, e.extension.as_deref()),
+                                )
+                                .w(px(14.))
+                                .h(px(14.))
+                                .flex_none()
+                                .into_any_element(),
                             },
                         ),
                     )
@@ -2342,7 +2399,9 @@ impl App {
                             });
                         }
                     })
-                    .when(!archive, |row| row.on_file_drag_anchor(view.clone(), path.clone()))
+                    .when(!archive, |row| {
+                        row.on_file_drag_anchor(view.clone(), path.clone())
+                    })
                     .when(is_dir && !archive, {
                         let nav_path = path.clone();
                         let dest = match self.folder_drop_command(tab, &path) {
@@ -2457,7 +2516,10 @@ impl App {
             let key = PathBuf::from(format!(
                 "multi:{}:{}",
                 summary.count,
-                textures.first().map(|(p, _)| p.display().to_string()).unwrap_or_default()
+                textures
+                    .first()
+                    .map(|(p, _)| p.display().to_string())
+                    .unwrap_or_default()
             ));
             let ring = crate::ui::dir_ring::ensure(&mut self.dir_ring, cx);
             ring.update(cx, |ring, _| ring.set_items(&key, cards));
@@ -2468,8 +2530,16 @@ impl App {
             .saturating_sub(summary.dir_count + summary.image_count);
         let stats = self.stat_row(
             [
-                (AtlasIcon::Folder, summary.dir_count, "inspector_kind_folders"),
-                (AtlasIcon::Image, summary.image_count, "inspector_kind_images"),
+                (
+                    AtlasIcon::Folder,
+                    summary.dir_count,
+                    "inspector_kind_folders",
+                ),
+                (
+                    AtlasIcon::Image,
+                    summary.image_count,
+                    "inspector_kind_images",
+                ),
                 (AtlasIcon::File, others, "inspector_kind_files"),
             ],
             None,
@@ -2531,11 +2601,9 @@ impl App {
                     .border_color(border.opacity(0.25))
                     .overflow_y_scroll()
                     .child(v_flex().children(rows).when(hidden > 0, |list| {
-                        list.child(
-                            div().px_2().pt_1().text_xs().text_color(muted).child(
-                                rust_i18n::t!("inspector_more_items", count = hidden).to_string(),
-                            ),
-                        )
+                        list.child(div().px_2().pt_1().text_xs().text_color(muted).child(
+                            rust_i18n::t!("inspector_more_items", count = hidden).to_string(),
+                        ))
                     })),
             )
             .into_any_element()
@@ -2625,26 +2693,25 @@ impl App {
                 stack = stack.child(back);
                 continue;
             }
-            stack = stack.child(
-                back.cursor_pointer()
-                    .hover(|s| s.opacity(1.))
-                    .on_mouse_up(MouseButton::Left, move |_, _, cx| {
-                        app.update(cx, |this, cx| {
-                            let tab = this.state.focused_tile;
-                            let view = this.preview_view.entry(tab).or_default();
-                            if view.stack_dx.abs() >= 4. {
-                                // A swipe that ends over a peeking card is still a swipe.
-                                finish_stack_swipe(this, n, cx);
-                                return;
-                            }
-                            view.stack_index = step_index(view.stack_index, step, n);
-                            view.stack_drag = None;
-                            view.stack_dx = 0.;
-                            cx.notify();
-                        });
-                        cx.stop_propagation();
-                    }),
-            );
+            stack = stack.child(back.cursor_pointer().hover(|s| s.opacity(1.)).on_mouse_up(
+                MouseButton::Left,
+                move |_, _, cx| {
+                    app.update(cx, |this, cx| {
+                        let tab = this.state.focused_tile;
+                        let view = this.preview_view.entry(tab).or_default();
+                        if view.stack_dx.abs() >= 4. {
+                            // A swipe that ends over a peeking card is still a swipe.
+                            finish_stack_swipe(this, n, cx);
+                            return;
+                        }
+                        view.stack_index = step_index(view.stack_index, step, n);
+                        view.stack_drag = None;
+                        view.stack_dx = 0.;
+                        cx.notify();
+                    });
+                    cx.stop_propagation();
+                },
+            ));
         }
         let lift = (dx.abs() / 160.).min(1.);
         stack = stack.child(
@@ -2671,7 +2738,10 @@ impl App {
         let n = hero.len();
         let view = self.preview_view_for_focused();
         let front = if n == 0 { 0 } else { view.stack_index % n };
-        let caption = hero.get(front).map(|(_, name)| name.clone()).unwrap_or_default();
+        let caption = hero
+            .get(front)
+            .map(|(_, name)| name.clone())
+            .unwrap_or_default();
         let (items, _): (Vec<HeroItem>, Vec<String>) = hero.into_iter().unzip();
         let stack = self.stack_hero(&items, front, view.stack_dx, true, muted, cx);
         let app = cx.entity();
@@ -2710,7 +2780,8 @@ impl App {
                                 view.stack_drag = None;
                                 view.stack_dx = 0.;
                             } else {
-                                view.stack_dx = (f32::from(event.position.x) - start).clamp(-120., 120.);
+                                view.stack_dx =
+                                    (f32::from(event.position.x) - start).clamp(-120., 120.);
                             }
                             cx.notify();
                         });
@@ -2816,10 +2887,16 @@ impl App {
 
     /// Summary for the browsed folder when nothing is selected.
     fn folder_summary(&self) -> Option<SelectionSummary> {
-        let path = self.state.active_tab_data()?.location.fs_dir()?.to_path_buf();
-        let name = path
-            .file_name()
-            .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let path = self
+            .state
+            .active_tab_data()?
+            .location
+            .fs_dir()?
+            .to_path_buf();
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
         Some(SelectionSummary {
             count: 1,
             dir_count: 1,

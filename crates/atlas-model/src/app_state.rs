@@ -49,18 +49,38 @@ pub enum BgResult {
         outcome: NetworkOutcome,
     },
     IconKeysReady(Vec<String>),
-    DirTypeLabels { tab: TabId, op_id: u64, labels: Vec<String> },
+    DirTypeLabels {
+        tab: TabId,
+        op_id: u64,
+        labels: Vec<String>,
+    },
     /// Payload stays in the isolated conversion session; this wakes the UI drain.
     ConversionWake,
     /// Private-folder payload stays in the session-only UI channel.
     VaultWake,
     WatcherDisabled(PathBuf),
     VolumeSnapshot(Vec<(PathBuf, u32)>),
-    PreviewDelayElapsed { tab: TabId, request: crate::preview_cache::PreviewRequest, generation: u64 },
-    DirListTiming { tab: crate::pane::TabId, op_id: u64, elapsed: std::time::Duration },
+    PreviewDelayElapsed {
+        tab: TabId,
+        request: crate::preview_cache::PreviewRequest,
+        generation: u64,
+    },
+    DirListTiming {
+        tab: crate::pane::TabId,
+        op_id: u64,
+        elapsed: std::time::Duration,
+    },
     /// Created/accessed stamps of a listing, for grouping by those dates.
-    GroupTimes { tab: TabId, version: u64, times: Vec<crate::grouping::EntryTimes> },
-    DirListExclusions { tab: TabId, op_id: u64, has_excluded_items: bool },
+    GroupTimes {
+        tab: TabId,
+        version: u64,
+        times: Vec<crate::grouping::EntryTimes>,
+    },
+    DirListExclusions {
+        tab: TabId,
+        op_id: u64,
+        has_excluded_items: bool,
+    },
     DirListPreview {
         tab: TabId,
         op_id: u64,
@@ -162,7 +182,10 @@ pub enum BgResult {
     },
     FsEvent(std::path::PathBuf),
     /// An ordered batch; `FsEvent` is reserved for overflow/recovery rescans.
-    FsChanges { directory: PathBuf, changes: Vec<FsChange> },
+    FsChanges {
+        directory: PathBuf,
+        changes: Vec<FsChange>,
+    },
     OpProgress {
         id: u64,
         done: u64,
@@ -283,7 +306,10 @@ pub enum BgResult {
     #[cfg(feature = "provider-host")]
     CloudReady,
     #[cfg(feature = "provider-host")]
-    CloudProviderStopped { uninstall: bool, result: Result<(), String> },
+    CloudProviderStopped {
+        uninstall: bool,
+        result: Result<(), String>,
+    },
     /// A non-fatal cloud error to surface in the UI.
     #[cfg(feature = "provider-host")]
     CloudError(String),
@@ -428,7 +454,10 @@ impl AppState {
 
         let tab = self.focused_tile;
         let (view, folder) = match self.pane_tree.tiles.get(tab) {
-            Some(Tile::Pane(p)) => (p.view_mode.clone(), p.location.fs_dir().map(Path::to_path_buf)),
+            Some(Tile::Pane(p)) => (
+                p.view_mode.clone(),
+                p.location.fs_dir().map(Path::to_path_buf),
+            ),
             _ => return None,
         };
         let ts = self.tab_states.get(&tab)?;
@@ -437,8 +466,14 @@ impl AppState {
         if let Some(Tile::Pane(pane)) = self.pane_tree.tiles.get(tab) {
             if let crate::location::Location::Remote { id, .. } = &pane.location {
                 return if let [entry] = selected.as_slice() {
-                    Some(PreviewRequest::Single(crate::cloud_model::preview_key(id, ts.last_nav_op_id, &entry.path())))
-                } else { None };
+                    Some(PreviewRequest::Single(crate::cloud_model::preview_key(
+                        id,
+                        ts.last_nav_op_id,
+                        &entry.path(),
+                    )))
+                } else {
+                    None
+                };
             }
         }
         if let [entry] = selected.as_slice() {
@@ -454,15 +489,12 @@ impl AppState {
         let selected_count = selected.len();
         for entry in selected {
             entry.path().hash(&mut hasher);
-            let is_thumbable = entry
-                .extension()
-                .as_deref()
-                .is_some_and(|ext| {
-                    crate::preview_cache::is_image_ext(ext)
-                        || crate::preview_cache::is_audio_ext(ext)
-                        || crate::preview_cache::is_model_ext(ext)
-                        || crate::preview_cache::is_video_ext(ext)
-                });
+            let is_thumbable = entry.extension().as_deref().is_some_and(|ext| {
+                crate::preview_cache::is_image_ext(ext)
+                    || crate::preview_cache::is_audio_ext(ext)
+                    || crate::preview_cache::is_model_ext(ext)
+                    || crate::preview_cache::is_video_ext(ext)
+            });
             if paths.len() < MULTI_PREVIEW_LIMIT && is_thumbable {
                 paths.push(entry.path().clone());
             }
@@ -487,8 +519,14 @@ impl AppState {
         let Some(ts) = self.active_tab_state() else {
             return Vec::new();
         };
-        let mode = self.active_tab_data().map(|tab| tab.view_mode.clone()).unwrap_or_default();
-        ts.selected_entries(&mode).into_iter().map(FileEntry::path).collect()
+        let mode = self
+            .active_tab_data()
+            .map(|tab| tab.view_mode.clone())
+            .unwrap_or_default();
+        ts.selected_entries(&mode)
+            .into_iter()
+            .map(FileEntry::path)
+            .collect()
     }
 
     /// Like `selected_paths()` but returns `(archive, inner)` pairs for archive
@@ -508,7 +546,11 @@ impl AppState {
         selected.sort_unstable();
         let items = selected
             .into_iter()
-            .filter_map(|i| ts.entries.get(i).map(|e| (archive.clone(), e.path().clone())))
+            .filter_map(|i| {
+                ts.entries
+                    .get(i)
+                    .map(|e| (archive.clone(), e.path().clone()))
+            })
             .collect();
         Some(items)
     }
@@ -691,17 +733,26 @@ mod tests {
         let (mut state, _) = AppState::new(Settings::default());
         for index in 0..40 {
             let mut tab = state.active_tab_data().unwrap().clone();
-            tab.location = crate::location::Location::Directory(PathBuf::from(format!("folder-{index}")));
-            tab.history.push(crate::location::Location::Directory(PathBuf::from("previous")));
+            tab.location =
+                crate::location::Location::Directory(PathBuf::from(format!("folder-{index}")));
+            tab.history
+                .push(crate::location::Location::Directory(PathBuf::from(
+                    "previous",
+                )));
             tab.view_mode = crate::settings::ViewMode::Grid;
             tab.thumbnail_size = 224.0;
             state.remember_closed_tab(tab);
         }
         assert_eq!(state.closed_tabs.len(), 32);
-        assert_eq!(state.closed_tabs.front().unwrap().data.location,
-            crate::location::Location::Directory(PathBuf::from("folder-8")));
+        assert_eq!(
+            state.closed_tabs.front().unwrap().data.location,
+            crate::location::Location::Directory(PathBuf::from("folder-8"))
+        );
         let newest = state.closed_tabs.pop_back().unwrap();
-        assert_eq!(newest.data.location, crate::location::Location::Directory(PathBuf::from("folder-39")));
+        assert_eq!(
+            newest.data.location,
+            crate::location::Location::Directory(PathBuf::from("folder-39"))
+        );
         assert_eq!(newest.data.history.len(), 1);
         assert_eq!(newest.data.view_mode, crate::settings::ViewMode::Grid);
         assert_eq!(newest.data.thumbnail_size, 224.0);
@@ -791,24 +842,48 @@ mod tests {
         use crate::{layout_tree::Tile, location::Location, settings::ViewMode, tab::MillerColumn};
         let (mut state, tile) = AppState::new(Settings::default());
         let folder = FileEntry::from(crate::file_entry::FileEntryData {
-            name: "folder".into(), path: "folder".into(), kind: FileKind::Dir,
-            size: None, modified: None, _is_hidden: false, _is_symlink: false,
-            archive_root: None, recycle_info: None,
+            name: "folder".into(),
+            path: "folder".into(),
+            kind: FileKind::Dir,
+            size: None,
+            modified: None,
+            _is_hidden: false,
+            _is_symlink: false,
+            archive_root: None,
+            recycle_info: None,
         });
         let tab = state.tab_states.get_mut(&tile).unwrap();
         tab.set_entries(vec![folder.clone(), entry("wrong-root.txt")].into());
         tab.tree.expanded.insert(folder.path());
-        tab.tree.children.insert(folder.path(), vec![entry("nested.jpg")].into());
+        tab.tree
+            .children
+            .insert(folder.path(), vec![entry("nested.jpg")].into());
         tab.selection.selected.insert(1);
-        if let Some(Tile::Pane(tab)) = state.pane_tree.tiles.get_mut(tile) { tab.view_mode = ViewMode::Tree; }
-        assert_eq!(state.active_preview_request(), Some(PreviewRequest::Single("nested.jpg".into())));
+        if let Some(Tile::Pane(tab)) = state.pane_tree.tiles.get_mut(tile) {
+            tab.view_mode = ViewMode::Tree;
+        }
+        assert_eq!(
+            state.active_preview_request(),
+            Some(PreviewRequest::Single("nested.jpg".into()))
+        );
         assert_eq!(state.selected_paths(), [PathBuf::from("nested.jpg")]);
         let mut column = MillerColumn::new(Location::Directory("/column".into()));
         column.entries = vec![entry("column.jpg")].into();
         column.selection.selected.insert(0);
-        state.tab_states.get_mut(&tile).unwrap().miller.columns.push(column);
-        if let Some(Tile::Pane(tab)) = state.pane_tree.tiles.get_mut(tile) { tab.view_mode = ViewMode::Miller; }
-        assert_eq!(state.active_preview_request(), Some(PreviewRequest::Single("column.jpg".into())));
+        state
+            .tab_states
+            .get_mut(&tile)
+            .unwrap()
+            .miller
+            .columns
+            .push(column);
+        if let Some(Tile::Pane(tab)) = state.pane_tree.tiles.get_mut(tile) {
+            tab.view_mode = ViewMode::Miller;
+        }
+        assert_eq!(
+            state.active_preview_request(),
+            Some(PreviewRequest::Single("column.jpg".into()))
+        );
         assert_eq!(state.selected_paths(), [PathBuf::from("column.jpg")]);
     }
 
@@ -845,7 +920,9 @@ mod tests {
             inner: PathBuf::from(""),
         };
         let tile2 = state.pane_tree.tiles.insert_pane(td);
-        state.tab_states.insert(tile2, crate::tab::TabState::default());
+        state
+            .tab_states
+            .insert(tile2, crate::tab::TabState::default());
         state.focused_tile = tile1;
 
         let tab2 = state.tab_states.get_mut(&tile2).unwrap();
@@ -854,6 +931,9 @@ mod tests {
 
         let items = state.selected_archive_items_for_pane(tile2).unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0], (PathBuf::from("test.zip"), PathBuf::from("inner_file.txt")));
+        assert_eq!(
+            items[0],
+            (PathBuf::from("test.zip"), PathBuf::from("inner_file.txt"))
+        );
     }
 }

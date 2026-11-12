@@ -60,7 +60,11 @@ impl App {
     }
 
     /// Return the cached icon texture for `key` calibrated to `size_px`.
-    pub(crate) fn icon_texture_for_size(&self, key: &str, size_px: f32) -> Option<Arc<RenderImage>> {
+    pub(crate) fn icon_texture_for_size(
+        &self,
+        key: &str,
+        size_px: f32,
+    ) -> Option<Arc<RenderImage>> {
         match self.icon_cache.get(key) {
             Some(IconState::Ready(multi)) => Some(multi.for_size(size_px)),
             _ => None,
@@ -105,12 +109,9 @@ impl App {
     }
 
     /// Resolve `(kind, ext)` to default Icons8 Liquid Glass texture.
-    pub(crate) fn liquid_glass_icon(
-        &self,
-        kind: &FileKind,
-        ext: Option<&str>,
-    ) -> Arc<RenderImage> {
-        self.liquid_glass.texture_for_entry_on(kind, ext, self.light_surfaces)
+    pub(crate) fn liquid_glass_icon(&self, kind: &FileKind, ext: Option<&str>) -> Arc<RenderImage> {
+        self.liquid_glass
+            .texture_for_entry_on(kind, ext, self.light_surfaces)
     }
 }
 
@@ -254,16 +255,34 @@ mod tests {
         let bytes = image.as_bytes(0).expect("frame bytes must exist");
         // Far corner (0,0) is far away from the circle (r=40 in 100x100) -> must be completely transparent (0,0,0,0)
         assert_eq!(bytes[3], 0, "Corner pixel must be transparent");
-        assert_eq!(bytes[0], 0, "Blue channel must be 0 in far transparent pixel");
-        assert_eq!(bytes[1], 0, "Green channel must be 0 in far transparent pixel");
-        assert_eq!(bytes[2], 0, "Red channel must be 0 in far transparent pixel");
+        assert_eq!(
+            bytes[0], 0,
+            "Blue channel must be 0 in far transparent pixel"
+        );
+        assert_eq!(
+            bytes[1], 0,
+            "Green channel must be 0 in far transparent pixel"
+        );
+        assert_eq!(
+            bytes[2], 0,
+            "Red channel must be 0 in far transparent pixel"
+        );
 
         // Center pixel (128,128) must be opaque and have expected orange color (#ff8000 -> BGRA: B=0, G=128, R=255, A=255)
         let center_idx = (128 * 256 + 128) * 4;
         assert_eq!(bytes[center_idx + 3], 255, "Center pixel must be opaque");
-        assert!(bytes[center_idx + 2] > 240, "Red channel should be ~255 in straight BGRA");
-        assert!(bytes[center_idx + 1] > 110 && bytes[center_idx + 1] < 145, "Green channel should be ~128 in straight BGRA");
-        assert!(bytes[center_idx] < 10, "Blue channel should be ~0 in straight BGRA");
+        assert!(
+            bytes[center_idx + 2] > 240,
+            "Red channel should be ~255 in straight BGRA"
+        );
+        assert!(
+            bytes[center_idx + 1] > 110 && bytes[center_idx + 1] < 145,
+            "Green channel should be ~128 in straight BGRA"
+        );
+        assert!(
+            bytes[center_idx] < 10,
+            "Blue channel should be ~0 in straight BGRA"
+        );
     }
 
     #[test]
@@ -293,9 +312,13 @@ mod tests {
         assert_eq!(multi.for_size(24.0).size(0).width.0, 32);
         assert_eq!(multi.for_size(42.0).size(0).width.0, 64);
         assert_eq!(multi.for_size(53.0).size(0).width.0, 64);
-        assert_eq!(multi.for_size(63.0).size(0).width.0, 128);
+        assert_eq!(multi.for_size(63.0).size(0).width.0, 64);
+        assert_eq!(multi.for_size(64.0).size(0).width.0, 64);
+        assert_eq!(multi.for_size(65.0).size(0).width.0, 128);
         assert_eq!(multi.for_size(84.0).size(0).width.0, 128);
-        assert_eq!(multi.for_size(120.0).size(0).width.0, 256);
+        assert_eq!(multi.for_size(120.0).size(0).width.0, 128);
+        assert_eq!(multi.for_size(128.0).size(0).width.0, 128);
+        assert_eq!(multi.for_size(129.0).size(0).width.0, 256);
         assert_eq!(multi.for_size(200.0).size(0).width.0, 256);
     }
 
@@ -329,9 +352,18 @@ mod tests {
             if a > 16 && a < 255 {
                 semi_transparent_count += 1;
                 // Anti-aliased boundary pixels must preserve the #45403d hue without dark degradation
-                assert!(r >= 55 && r <= 80, "Red should be around 69 on boundary pixels, got {r}");
-                assert!(g >= 50 && g <= 75, "Green should be around 64 on boundary pixels, got {g}");
-                assert!(b >= 45 && b <= 70, "Blue should be around 61 on boundary pixels, got {b}");
+                assert!(
+                    r >= 55 && r <= 80,
+                    "Red should be around 69 on boundary pixels, got {r}"
+                );
+                assert!(
+                    g >= 50 && g <= 75,
+                    "Green should be around 64 on boundary pixels, got {g}"
+                );
+                assert!(
+                    b >= 45 && b <= 70,
+                    "Blue should be around 61 on boundary pixels, got {b}"
+                );
             } else if a == 0 && (r > 0 || g > 0 || b > 0) {
                 color_bled_transparent_count += 1;
                 // The 1-pixel bleed buffer must preserve the true straight color so GPU interpolation doesn't darken
@@ -344,7 +376,10 @@ mod tests {
         // Curves must have anti-aliased subpixel transitions
         assert!(semi_transparent_count > 40, "Expected anti-aliased subpixel pixels on rounded corners, got {semi_transparent_count}");
         // 1px padding must protect edges from dark fringing
-        assert!(color_bled_transparent_count > 20, "Expected 1-pixel color-bleed border pixels, got {color_bled_transparent_count}");
+        assert!(
+            color_bled_transparent_count > 20,
+            "Expected 1-pixel color-bleed border pixels, got {color_bled_transparent_count}"
+        );
         // Far corner (0,0) must still be pure zero
         assert_eq!(medium_bytes[0], 0);
         assert_eq!(medium_bytes[1], 0);

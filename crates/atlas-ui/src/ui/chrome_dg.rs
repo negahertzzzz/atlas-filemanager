@@ -8,7 +8,6 @@
 //! - OLE Drag & Drop target registration for seamless file transfers.
 //! - Read-only breadcrumbs and a shared Ctrl+L location finder.
 
-use atlas_model::clamp::ClampLenient;
 use crate::app::App;
 use crate::input::action::Action;
 use crate::ui::dg::cut::RectCut;
@@ -20,6 +19,7 @@ use crate::ui::surface::{
     chrome_font_size_crumbs, hit_first, line_width, paint_fill, paint_rounded, paint_theme_icon,
     shape_text_truncated, text_origin_y, Slot,
 };
+use atlas_model::clamp::ClampLenient;
 use atlas_model::location::Location;
 use atlas_model::pane::TabId;
 use gpui::ColorExt as _;
@@ -301,7 +301,12 @@ impl Element for DgChromeElement {
         let field_inset = 3.0 * zoom;
         let field_h = (seg_h + 2.0 * field_inset).min(strip_h);
         let field = (address_slot.w >= 16.0 * zoom).then(|| {
-            Slot::new(address_slot.x, (strip_h - field_h) * 0.5, address_slot.w, field_h)
+            Slot::new(
+                address_slot.x,
+                (strip_h - field_h) * 0.5,
+                address_slot.w,
+                field_h,
+            )
         });
         // Segments sit inside the field, not flush against its rounded edge.
         if field.is_some() {
@@ -316,7 +321,11 @@ impl Element for DgChromeElement {
 
             // When space is constrained (< 130px), degrade to showing ONLY the leaf folder
             if slicer.w < 130.0 * zoom {
-                let leaf_idx = self.segments.iter().rposition(|seg| !seg.is_ghost).unwrap_or(self.segments.len() - 1);
+                let leaf_idx = self
+                    .segments
+                    .iter()
+                    .rposition(|seg| !seg.is_ghost)
+                    .unwrap_or(self.segments.len() - 1);
                 let seg = &self.segments[leaf_idx];
                 let avail_w = (slicer.w - seg_pad * 2.0).max(0.0);
                 let line =
@@ -357,7 +366,16 @@ impl Element for DgChromeElement {
                         .min(max_seg - seg_pad * 2.0)
                         .max(0.0);
                     let line = shape_text_truncated(
-                        &seg.label, &font, font_size, if seg.is_ghost { self.fg.opacity(0.40) } else { self.fg }, avail_w, window,
+                        &seg.label,
+                        &font,
+                        font_size,
+                        if seg.is_ghost {
+                            self.fg.opacity(0.40)
+                        } else {
+                            self.fg
+                        },
+                        avail_w,
+                        window,
                     );
                     let text_w = line_width(&line);
                     let target_w = (text_w + seg_pad * 2.0)
@@ -591,8 +609,19 @@ impl Element for DgChromeElement {
 
             // Address field: a filled, rounded well behind the path segments.
             if let Some(field) = prepaint.field {
-                let fill = self.fg.opacity(if active_hit == Some(DgNavAction::OpenLocation) { 0.075 } else { 0.05 });
-                paint_rounded(window, field.to_bounds(origin), prepaint.radius + 2.0 * zoom, fill);
+                let fill = self
+                    .fg
+                    .opacity(if active_hit == Some(DgNavAction::OpenLocation) {
+                        0.075
+                    } else {
+                        0.05
+                    });
+                paint_rounded(
+                    window,
+                    field.to_bounds(origin),
+                    prepaint.radius + 2.0 * zoom,
+                    fill,
+                );
             }
 
             // The location strip is read-only; editing belongs to the location finder.
@@ -758,14 +787,22 @@ impl Element for DgChromeElement {
 pub(crate) fn path_to_dg_segments(path: &Path) -> Vec<DgCrumbSeg> {
     if let Some(root) = atlas_core::vault::live::mount_root(path) {
         let mut current = root.clone();
-        let mut segments = vec![DgCrumbSeg { is_ghost: false,
+        let mut segments = vec![DgCrumbSeg {
+            is_ghost: false,
             label: atlas_core::util::display::display_name(&root),
-            location: Location::Directory(root.clone()), parent_dir: None }];
+            location: Location::Directory(root.clone()),
+            parent_dir: None,
+        }];
         if let Ok(relative) = path.strip_prefix(&root) {
             for part in relative.components() {
-                let parent = current.clone(); current.push(part.as_os_str());
-                segments.push(DgCrumbSeg { is_ghost: false, label: part.as_os_str().to_string_lossy().into_owned(),
-                    location: Location::Directory(current.clone()), parent_dir: Some(parent) });
+                let parent = current.clone();
+                current.push(part.as_os_str());
+                segments.push(DgCrumbSeg {
+                    is_ghost: false,
+                    label: part.as_os_str().to_string_lossy().into_owned(),
+                    location: Location::Directory(current.clone()),
+                    parent_dir: Some(parent),
+                });
             }
         }
         return segments;
@@ -793,8 +830,12 @@ pub(crate) fn path_to_dg_segments(path: &Path) -> Vec<DgCrumbSeg> {
                 if let Some(segment) = segments.last_mut() {
                     segment.location = Location::Directory(current.clone());
                 } else {
-                    segments.push(DgCrumbSeg { is_ghost: false, label: std::path::MAIN_SEPARATOR.to_string(),
-                        location: Location::Directory(current.clone()), parent_dir: None });
+                    segments.push(DgCrumbSeg {
+                        is_ghost: false,
+                        label: std::path::MAIN_SEPARATOR.to_string(),
+                        location: Location::Directory(current.clone()),
+                        parent_dir: None,
+                    });
                 }
             }
             Component::Normal(name) => {
@@ -821,10 +862,15 @@ fn prefix_label(prefix: std::path::PrefixComponent<'_>) -> String {
 }
 
 pub(crate) fn path_with_ghost_segments(path: &Path, trail: Option<&Path>) -> Vec<DgCrumbSeg> {
-    let target = trail.filter(|trail| *trail != path && trail.starts_with(path)).unwrap_or(path);
+    let target = trail
+        .filter(|trail| *trail != path && trail.starts_with(path))
+        .unwrap_or(path);
     let mut segments = path_to_dg_segments(target);
     for segment in &mut segments {
-        segment.is_ghost = segment.location.fs_dir().is_some_and(|dir| dir != path && dir.starts_with(path));
+        segment.is_ghost = segment
+            .location
+            .fs_dir()
+            .is_some_and(|dir| dir != path && dir.starts_with(path));
     }
     segments
 }
@@ -837,16 +883,35 @@ mod ghost_tests {
         let current = Path::new("/users/me");
         let trail = current.join("developer/atlas");
         let segments = path_with_ghost_segments(current, Some(&trail));
-        assert_eq!(segments.iter().filter(|s| s.is_ghost).map(|s| s.label.as_str()).collect::<Vec<_>>(), ["developer", "atlas"]);
-        assert_eq!(segments.last().unwrap().location, Location::Directory(trail));
-        assert!(path_with_ghost_segments(current, Some(Path::new("/other/atlas"))).iter().all(|s| !s.is_ghost));
+        assert_eq!(
+            segments
+                .iter()
+                .filter(|s| s.is_ghost)
+                .map(|s| s.label.as_str())
+                .collect::<Vec<_>>(),
+            ["developer", "atlas"]
+        );
+        assert_eq!(
+            segments.last().unwrap().location,
+            Location::Directory(trail)
+        );
+        assert!(
+            path_with_ghost_segments(current, Some(Path::new("/other/atlas")))
+                .iter()
+                .all(|s| !s.is_ghost)
+        );
     }
     #[cfg(windows)]
     #[test]
     fn windows_crumbs_are_absolute_including_the_volume_root() {
         let segments = path_to_dg_segments(Path::new(r"C:\Users\me"));
-        assert_eq!(segments[0].location, Location::Directory(PathBuf::from(r"C:\")));
-        assert!(segments.iter().all(|segment| segment.location.fs_dir().unwrap().is_absolute()));
+        assert_eq!(
+            segments[0].location,
+            Location::Directory(PathBuf::from(r"C:\"))
+        );
+        assert!(segments
+            .iter()
+            .all(|segment| segment.location.fs_dir().unwrap().is_absolute()));
     }
 
     #[cfg(windows)]
@@ -855,7 +920,13 @@ mod ghost_tests {
         let root = Path::new(r"\\wsl.localhost\Arch\");
         let path = root.join("home").join("me");
         let segments = path_to_dg_segments(&path);
-        assert_eq!(segments.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["Arch", "home", "me"]);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|s| s.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Arch", "home", "me"]
+        );
         assert_eq!(segments[0].location, Location::Directory(root.into()));
         assert_eq!(segments[2].location, Location::Directory(path));
     }

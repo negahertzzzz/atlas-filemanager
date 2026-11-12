@@ -8,6 +8,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use serde_json::json;
 
+use super::control::{OutcomeUnknown, TransferCancelled, TransferControl};
 use crate::cloud::provider::{CloudProvider, ProgressSink, RemoteEntry};
 use crate::cloud::remote::{CloudRemote, RemoteId, RemoteKind, RemoteStatus};
 use crate::cloud::sidecar_provider::SidecarProvider;
@@ -16,7 +17,6 @@ use atlas_model::app_state::BgResult;
 use atlas_model::file_entry::{FileEntry, FileKind, SortColumn, SortDir};
 use atlas_model::pane::FolderOrder;
 use atlas_model::pane::TabId;
-use super::control::{TransferControl, TransferCancelled, OutcomeUnknown};
 
 const MAX_CONCURRENT: usize = 4;
 const MAX_PENDING_TRANSFERS: usize = 4096;
@@ -53,9 +53,20 @@ pub enum CloudCmd {
         sort_dir: SortDir,
         folder_order: FolderOrder,
     },
-    CancelList { tab: TabId },
-    CancelPreview { tab: TabId },
-    PreviewRemote { tab: TabId, id: RemoteId, path: String, key: PathBuf, size: Option<u64>, is_dir: bool },
+    CancelList {
+        tab: TabId,
+    },
+    CancelPreview {
+        tab: TabId,
+    },
+    PreviewRemote {
+        tab: TabId,
+        id: RemoteId,
+        path: String,
+        key: PathBuf,
+        size: Option<u64>,
+        is_dir: bool,
+    },
     Mount {
         id: RemoteId,
     },
@@ -111,7 +122,13 @@ pub enum CloudCmd {
         /// Move-semantics: trash the local source after a successful upload.
         delete_source: bool,
     },
-    EnqueueRemoteCopy { source_id: RemoteId, source: String, destination_id: RemoteId, destination: String, label: String },
+    EnqueueRemoteCopy {
+        source_id: RemoteId,
+        source: String,
+        destination_id: RemoteId,
+        destination: String,
+        label: String,
+    },
     PauseTransfer(TransferId),
     ResumeTransfer(TransferId),
     CancelTransfer(TransferId),
@@ -120,14 +137,20 @@ pub enum CloudCmd {
 
 /// Internal progress/result events from spawned transfer tasks.
 enum Ev {
-    Configured { remote: CloudRemote, result: Result<(), String> },
+    Configured {
+        remote: CloudRemote,
+        result: Result<(), String>,
+    },
     Progress {
         id: TransferId,
         attempt: u32,
         done: u64,
         total: u64,
     },
-    Done { id: TransferId, attempt: u32 },
+    Done {
+        id: TransferId,
+        attempt: u32,
+    },
     Failed {
         id: TransferId,
         err: String,
@@ -245,26 +268,52 @@ impl Worker {
             let progress: ProgressSink = Arc::new(move |done, total| {
                 let _ = startup_bg.send(BgResult::CloudRcloneProgress { done, total });
             });
-            let provider: Arc<dyn CloudProvider> = Arc::new(SidecarProvider::spawn_with_progress(&directory, &sidecar.command, &sidecar.args, Some(progress))?);
+            let provider: Arc<dyn CloudProvider> = Arc::new(SidecarProvider::spawn_with_progress(
+                &directory,
+                &sidecar.command,
+                &sidecar.args,
+                Some(progress),
+            )?);
             anyhow::Ok(provider)
-        }).await?.map_err(|error| anyhow::anyhow!("Cloud could not start: {error:#}"))?;
+        })
+        .await?
+        .map_err(|error| anyhow::anyhow!("Cloud could not start: {error:#}"))?;
         self.provider = Some(provider.clone());
         let _ = self.bg_tx.send(BgResult::CloudReady);
         Ok(provider)
     }
 
     async fn handle_cmd(&mut self, cmd: CloudCmd) {
-        if matches!(&cmd, CloudCmd::EnqueueDownload { .. } | CloudCmd::EnqueueUpload { .. } | CloudCmd::EnqueueRemoteCopy { .. })
-            && self.transfers.iter().filter(|transfer| !transfer.state.is_terminal() || matches!(transfer.state, TransferState::Interrupted(_))).count() >= MAX_PENDING_TRANSFERS {
+        if matches!(
+            &cmd,
+            CloudCmd::EnqueueDownload { .. }
+                | CloudCmd::EnqueueUpload { .. }
+                | CloudCmd::EnqueueRemoteCopy { .. }
+        ) && self
+            .transfers
+            .iter()
+            .filter(|transfer| {
+                !transfer.state.is_terminal()
+                    || matches!(transfer.state, TransferState::Interrupted(_))
+            })
+            .count()
+            >= MAX_PENDING_TRANSFERS
+        {
             let _ = self.bg_tx.send(BgResult::CloudError("The cloud queue is full (4096 jobs). Wait for transfers to finish before adding more.".into()));
             return;
         }
         match cmd {
             CloudCmd::StopProvider { reply } => {
-                let _ = reply.send(self.stop_provider().await.map_err(|error| error.to_string()));
+                let _ = reply.send(
+                    self.stop_provider()
+                        .await
+                        .map_err(|error| error.to_string()),
+                );
             }
             CloudCmd::Warmup => {
-                if let Err(error) = self.ensure_ready().await { let _ = self.bg_tx.send(BgResult::CloudError(error.to_string())); }
+                if let Err(error) = self.ensure_ready().await {
+                    let _ = self.bg_tx.send(BgResult::CloudError(error.to_string()));
+                }
             }
             #[cfg(windows)]
             CloudCmd::InstallWinFsp { retry_id } => {
@@ -277,21 +326,47 @@ impl Worker {
                 op_id,
                 id,
                 path,
-                sort_col, sort_dir, folder_order,
+                sort_col,
+                sort_dir,
+                folder_order,
             } => {
-                self.list_remote(tab, op_id, id, path, sort_col, sort_dir, folder_order).await;
+                self.list_remote(tab, op_id, id, path, sort_col, sort_dir, folder_order)
+                    .await;
             }
             CloudCmd::CancelList { tab } => {
-                if let Some(task) = self.listings.remove(&tab) { task.abort(); }
+                if let Some(task) = self.listings.remove(&tab) {
+                    task.abort();
+                }
                 self.previews.cancel(tab);
             }
             CloudCmd::CancelPreview { tab } => self.previews.cancel(tab),
-            CloudCmd::PreviewRemote { tab, id, path, key, size, is_dir } => {
-                match self.ensure_ready().await {
-                    Ok(provider) => self.previews.request(&self.rt, provider, self.bg_tx.clone(), tab, id, path, key, size, is_dir),
-                    Err(error) => { let _ = self.bg_tx.send(BgResult::PreviewReady { tab, path: key, result: atlas_model::preview_cache::PreviewResult::Error(error.to_string()) }); }
+            CloudCmd::PreviewRemote {
+                tab,
+                id,
+                path,
+                key,
+                size,
+                is_dir,
+            } => match self.ensure_ready().await {
+                Ok(provider) => self.previews.request(
+                    &self.rt,
+                    provider,
+                    self.bg_tx.clone(),
+                    tab,
+                    id,
+                    path,
+                    key,
+                    size,
+                    is_dir,
+                ),
+                Err(error) => {
+                    let _ = self.bg_tx.send(BgResult::PreviewReady {
+                        tab,
+                        path: key,
+                        result: atlas_model::preview_cache::PreviewResult::Error(error.to_string()),
+                    });
                 }
-            }
+            },
             CloudCmd::Mount { id } => self.mount(id).await,
             CloudCmd::Unmount { id } => self.unmount(id).await,
             CloudCmd::DeleteRemote {
@@ -327,7 +402,11 @@ impl Worker {
                 label,
                 open_on_done,
             } => {
-                let error = self.ensure_ready().await.err().map(|error| error.to_string());
+                let error = self
+                    .ensure_ready()
+                    .await
+                    .err()
+                    .map(|error| error.to_string());
                 let t = Transfer {
                     id: self.alloc_id(),
                     kind: TransferKind::Download,
@@ -354,7 +433,12 @@ impl Worker {
             } => {
                 let error = if delete_source {
                     Some("Moving local files to cloud requires a stable source snapshot; copy the files instead. The source was kept unchanged.".into())
-                } else { self.ensure_ready().await.err().map(|error| error.to_string()) };
+                } else {
+                    self.ensure_ready()
+                        .await
+                        .err()
+                        .map(|error| error.to_string())
+                };
                 let t = Transfer {
                     id: self.alloc_id(),
                     kind: TransferKind::Upload,
@@ -372,23 +456,46 @@ impl Worker {
                 };
                 self.mutate_transfers(|ts| ts.push(t));
             }
-            CloudCmd::EnqueueRemoteCopy { source_id, source, destination_id, destination, label } => {
-                let error = self.ensure_ready().await.err().map(|error| error.to_string());
+            CloudCmd::EnqueueRemoteCopy {
+                source_id,
+                source,
+                destination_id,
+                destination,
+                label,
+            } => {
+                let error = self
+                    .ensure_ready()
+                    .await
+                    .err()
+                    .map(|error| error.to_string());
                 let transfer = Transfer {
-                    id: self.alloc_id(), kind: TransferKind::RemoteCopy, label,
-                    remote_id: destination_id, remote_path: destination, local_path: PathBuf::new(),
-                    state: error.map_or(TransferState::Queued, TransferState::Failed), bytes_done: 0, bytes_total: 0, retries: 0,
-                    open_on_done: false, delete_source: false,
-                    source: Some(atlas_model::cloud_model::RemoteSource { id: source_id, path: source }),
+                    id: self.alloc_id(),
+                    kind: TransferKind::RemoteCopy,
+                    label,
+                    remote_id: destination_id,
+                    remote_path: destination,
+                    local_path: PathBuf::new(),
+                    state: error.map_or(TransferState::Queued, TransferState::Failed),
+                    bytes_done: 0,
+                    bytes_total: 0,
+                    retries: 0,
+                    open_on_done: false,
+                    delete_source: false,
+                    source: Some(atlas_model::cloud_model::RemoteSource {
+                        id: source_id,
+                        path: source,
+                    }),
                 };
                 self.mutate_transfers(|transfers| transfers.push(transfer));
             }
             CloudCmd::PauseTransfer(id) => {
-                if let Some(running) = self.running.get(&id) { running.control.cancel(); }
+                if let Some(running) = self.running.get(&id) {
+                    running.control.cancel();
+                }
                 self.set_state(id, |s| match s {
                     TransferState::Queued => *s = TransferState::Paused,
                     TransferState::Running => *s = TransferState::Pausing,
-                    _ => {},
+                    _ => {}
                 });
             }
             CloudCmd::ResumeTransfer(id) => {
@@ -398,11 +505,13 @@ impl Worker {
                     return;
                 }
                 self.mutate_transfers(|transfers| {
-                if let Some(transfer) = transfers.iter_mut().find(|transfer| transfer.id == id && transfer.state == TransferState::Paused) {
-                    transfer.state = TransferState::Queued;
-                    transfer.retries = transfer.retries.saturating_add(1);
-                    transfer.bytes_done = 0;
-                }
+                    if let Some(transfer) = transfers.iter_mut().find(|transfer| {
+                        transfer.id == id && transfer.state == TransferState::Paused
+                    }) {
+                        transfer.state = TransferState::Queued;
+                        transfer.retries = transfer.retries.saturating_add(1);
+                        transfer.bytes_done = 0;
+                    }
                 });
             }
             CloudCmd::RetryTransfer(id) => {
@@ -411,21 +520,27 @@ impl Worker {
                     return;
                 }
                 self.mutate_transfers(|ts| {
-                if let Some(t) = ts.iter_mut().find(|t| t.id == id) {
-                    if matches!(t.state, TransferState::Failed(_)) {
-                        t.state = TransferState::Queued;
-                        t.bytes_done = 0;
-                        t.retries += 1;
+                    if let Some(t) = ts.iter_mut().find(|t| t.id == id) {
+                        if matches!(t.state, TransferState::Failed(_)) {
+                            t.state = TransferState::Queued;
+                            t.bytes_done = 0;
+                            t.retries += 1;
+                        }
                     }
-                }
                 });
             }
             CloudCmd::CancelTransfer(id) => {
-                if let Some(running) = self.running.get(&id) { running.control.cancel(); }
+                if let Some(running) = self.running.get(&id) {
+                    running.control.cancel();
+                }
                 self.set_state(id, |state| match state {
-                    TransferState::Running | TransferState::Pausing => *state = TransferState::Cancelling,
-                    TransferState::Queued | TransferState::Paused => *state = TransferState::Cancelled,
-                    _ => {},
+                    TransferState::Running | TransferState::Pausing => {
+                        *state = TransferState::Cancelling
+                    }
+                    TransferState::Queued | TransferState::Paused => {
+                        *state = TransferState::Cancelled
+                    }
+                    _ => {}
                 });
             }
         }
@@ -448,7 +563,10 @@ impl Worker {
     async fn add_remote(&mut self, remote: CloudRemote, secret: String) {
         let remote_id = remote.id.clone();
         let Some(provider) = self
-            .require_ready(|e| BgResult::RemoteConfigFailed { id: remote_id, error: e.to_string() })
+            .require_ready(|e| BgResult::RemoteConfigFailed {
+                id: remote_id,
+                error: e.to_string(),
+            })
             .await
         else {
             return;
@@ -458,11 +576,15 @@ impl Worker {
         let id = remote.id.clone();
         let is_oauth = remote.kind.is_oauth();
         let params = match &remote.kind {
-            RemoteKind::Sftp { host, port, user }
-            | RemoteKind::Ftp { host, port, user } => json!({
+            RemoteKind::Sftp { host, port, user } | RemoteKind::Ftp { host, port, user } => json!({
                 "host": host, "port": port.to_string(), "user": user, "pass": secret,
             }),
-            RemoteKind::Smb { host, port, user, domain } => {
+            RemoteKind::Smb {
+                host,
+                port,
+                user,
+                domain,
+            } => {
                 let mut params = json!({
                     "host": host, "port": port.to_string(), "user": user, "pass": secret,
                 });
@@ -479,12 +601,20 @@ impl Worker {
             RemoteKind::OneDrive => json!({}),
         };
         let backend = remote.kind.rclone_type().to_string();
-        if !self.configuring.insert(id.clone()) { return; }
+        if !self.configuring.insert(id.clone()) {
+            return;
+        }
         let events = self.ev_tx.clone();
         self.rt.spawn(async move {
-            let result = if is_oauth { provider.configure_oauth(&id, &backend, params).await }
-                else { provider.configure(&id, &backend, params).await };
-            let _ = events.send(Ev::Configured { remote, result: result.map_err(|error| error.to_string()) });
+            let result = if is_oauth {
+                provider.configure_oauth(&id, &backend, params).await
+            } else {
+                provider.configure(&id, &backend, params).await
+            };
+            let _ = events.send(Ev::Configured {
+                remote,
+                result: result.map_err(|error| error.to_string()),
+            });
         });
     }
 
@@ -502,27 +632,58 @@ impl Worker {
 
     async fn remove_remote(&mut self, id: RemoteId) {
         if self.configuring.contains(&id) {
-            let _ = self.bg_tx.send(BgResult::CloudError("Finish account authorization before removing it".into()));
+            let _ = self.bg_tx.send(BgResult::CloudError(
+                "Finish account authorization before removing it".into(),
+            ));
             return;
         }
-        if self.transfers.iter().any(|transfer| (transfer.remote_id == id || transfer.source.as_ref().is_some_and(|source| source.id == id))
-            && (!transfer.state.is_terminal() || matches!(transfer.state, TransferState::Interrupted(_)))) {
-            let _ = self.bg_tx.send(BgResult::CloudError("Finish or cancel this account's transfers before removing it".into()));
+        if self.transfers.iter().any(|transfer| {
+            (transfer.remote_id == id
+                || transfer
+                    .source
+                    .as_ref()
+                    .is_some_and(|source| source.id == id))
+                && (!transfer.state.is_terminal()
+                    || matches!(transfer.state, TransferState::Interrupted(_)))
+        }) {
+            let _ = self.bg_tx.send(BgResult::CloudError(
+                "Finish or cancel this account's transfers before removing it".into(),
+            ));
             return;
         }
         match self.ensure_ready().await {
             Ok(provider) => match provider.deconfigure(&id).await {
-                Ok(()) => { let _ = self.bg_tx.send(BgResult::RemoteRemoved(id)); }
-                Err(error) => { let _ = self.bg_tx.send(BgResult::CloudError(format!("Cannot remove {id}: {error}"))); }
+                Ok(()) => {
+                    let _ = self.bg_tx.send(BgResult::RemoteRemoved(id));
+                }
+                Err(error) => {
+                    let _ = self
+                        .bg_tx
+                        .send(BgResult::CloudError(format!("Cannot remove {id}: {error}")));
+                }
             },
-            Err(error) => { let _ = self.bg_tx.send(BgResult::CloudError(format!("Cannot remove {id}: {error}"))); }
+            Err(error) => {
+                let _ = self
+                    .bg_tx
+                    .send(BgResult::CloudError(format!("Cannot remove {id}: {error}")));
+            }
         }
     }
 
-    async fn list_remote(&mut self, tab: TabId, op_id: u64, id: RemoteId, path: String,
-        sort_col: SortColumn, sort_dir: SortDir, folder_order: FolderOrder) {
+    async fn list_remote(
+        &mut self,
+        tab: TabId,
+        op_id: u64,
+        id: RemoteId,
+        path: String,
+        sort_col: SortColumn,
+        sort_dir: SortDir,
+        folder_order: FolderOrder,
+    ) {
         self.listings.retain(|_, task| !task.is_finished());
-        if let Some(task) = self.listings.remove(&tab) { task.abort(); }
+        if let Some(task) = self.listings.remove(&tab) {
+            task.abort();
+        }
         // A remote that refused two sign-ins is left alone for a while.
         let guard_key = crate::fs::network_guard::cloud_key(&id);
         if let Some(left) = crate::fs::network_guard::paused_for(&guard_key) {
@@ -552,14 +713,40 @@ impl Worker {
                     // Mapping and natural sorting large directories never run
                     // on the UI thread or block a Tokio network worker.
                     match tokio::task::spawn_blocking(move || {
-                        let mut mapped = entries.into_iter().map(remote_to_file_entry).collect::<Vec<_>>();
-                        crate::fs::list::sort_entries(&mut mapped, &sort_col, &sort_dir, folder_order);
+                        let mut mapped = entries
+                            .into_iter()
+                            .map(remote_to_file_entry)
+                            .collect::<Vec<_>>();
+                        crate::fs::list::sort_entries(
+                            &mut mapped,
+                            &sort_col,
+                            &sort_dir,
+                            folder_order,
+                        );
                         mapped
-                    }).await {
-                        Ok(entries) => { let _ = bg.send(BgResult::DirListed { tab, op_id, entries }); }
-                        Err(error) => { let _ = bg.send(BgResult::DirListError { tab, op_id, error: error.to_string() }); }
+                    })
+                    .await
+                    {
+                        Ok(entries) => {
+                            let _ = bg.send(BgResult::DirListed {
+                                tab,
+                                op_id,
+                                entries,
+                            });
+                        }
+                        Err(error) => {
+                            let _ = bg.send(BgResult::DirListError {
+                                tab,
+                                op_id,
+                                error: error.to_string(),
+                            });
+                        }
                     }
-                    let _ = bg.send(BgResult::DirListTiming { tab, op_id, elapsed: started.elapsed() });
+                    let _ = bg.send(BgResult::DirListTiming {
+                        tab,
+                        op_id,
+                        elapsed: started.elapsed(),
+                    });
                 }
                 Err(e) => {
                     let mut error = e.to_string();
@@ -629,10 +816,7 @@ impl Worker {
                 Ok(()) => RemoteStatus::Idle,
                 Err(error) => RemoteStatus::Error(format!("Unmount was not confirmed: {error}")),
             };
-            let _ = bg.send(BgResult::RemoteStatusChanged {
-                id,
-                status,
-            });
+            let _ = bg.send(BgResult::RemoteStatusChanged { id, status });
         });
     }
 
@@ -642,24 +826,43 @@ impl Worker {
                 self.configuring.remove(&remote.id);
                 match result {
                     Ok(()) => {
-                        if let Some(provider) = &self.provider { self.fetch_quota(provider.clone(), remote.id.clone()); }
+                        if let Some(provider) = &self.provider {
+                            self.fetch_quota(provider.clone(), remote.id.clone());
+                        }
                         let _ = self.bg_tx.send(BgResult::RemoteConfigured(remote));
                     }
-                    Err(error) => { let _ = self.bg_tx.send(BgResult::RemoteConfigFailed { id: remote.id, error }); }
+                    Err(error) => {
+                        let _ = self.bg_tx.send(BgResult::RemoteConfigFailed {
+                            id: remote.id,
+                            error,
+                        });
+                    }
                 }
                 return;
             }
             event => event,
         };
         let (id, attempt) = match &ev {
-            Ev::Progress { id, attempt, .. } | Ev::Done { id, attempt } | Ev::Failed { id, attempt, .. } => (*id, *attempt),
+            Ev::Progress { id, attempt, .. }
+            | Ev::Done { id, attempt }
+            | Ev::Failed { id, attempt, .. } => (*id, *attempt),
             Ev::Configured { .. } => unreachable!(),
         };
-        if !self.transfers.iter().any(|transfer| transfer.id == id && transfer.retries == attempt
-            && matches!(transfer.state, TransferState::Running | TransferState::Pausing | TransferState::Cancelling)) { return; }
+        if !self.transfers.iter().any(|transfer| {
+            transfer.id == id
+                && transfer.retries == attempt
+                && matches!(
+                    transfer.state,
+                    TransferState::Running | TransferState::Pausing | TransferState::Cancelling
+                )
+        }) {
+            return;
+        }
         match ev {
             Ev::Configured { .. } => unreachable!(),
-            Ev::Progress { id, done, total, .. } => {
+            Ev::Progress {
+                id, done, total, ..
+            } => {
                 if let Some(t) = self.transfers.iter_mut().find(|t| t.id == id) {
                     t.bytes_done = done;
                     if total > 0 {
@@ -701,7 +904,13 @@ impl Worker {
                     }
                 }
             }
-            Ev::Failed { id, err, cancelled, unknown, .. } => {
+            Ev::Failed {
+                id,
+                err,
+                cancelled,
+                unknown,
+                ..
+            } => {
                 self.running.remove(&id);
                 if let Some(t) = self.transfers.iter_mut().find(|t| t.id == id) {
                     tracing::warn!(
@@ -711,10 +920,15 @@ impl Worker {
                         %err,
                         "cloud transfer failed"
                     );
-                    t.state = if unknown { TransferState::Interrupted(err) }
-                        else if cancelled && t.state == TransferState::Pausing { TransferState::Paused }
-                        else if cancelled { TransferState::Cancelled }
-                        else { TransferState::Failed(err) };
+                    t.state = if unknown {
+                        TransferState::Interrupted(err)
+                    } else if cancelled && t.state == TransferState::Pausing {
+                        TransferState::Paused
+                    } else if cancelled {
+                        TransferState::Cancelled
+                    } else {
+                        TransferState::Failed(err)
+                    };
                 }
             }
         }
@@ -724,7 +938,9 @@ impl Worker {
 
     /// Start queued transfers up to the concurrency cap.
     fn pump_queue(&mut self) {
-        if self.journal_failed { return; }
+        if self.journal_failed {
+            return;
+        }
         if self.running.len() >= MAX_CONCURRENT {
             return;
         }
@@ -739,7 +955,9 @@ impl Worker {
             .take(MAX_CONCURRENT - self.running.len())
             .map(|t| t.id)
             .collect();
-        if ids.is_empty() { return; }
+        if ids.is_empty() {
+            return;
+        }
         for id in ids {
             if self.running.len() >= MAX_CONCURRENT {
                 break;
@@ -756,7 +974,9 @@ impl Worker {
             );
             let attempt = t.retries;
             let source = t.source.clone();
-            if !self.save_transfers() { break; }
+            if !self.save_transfers() {
+                break;
+            }
             let ev_tx = self.ev_tx.clone();
             let control = TransferControl::default();
             let task_control = control.clone();
@@ -764,13 +984,34 @@ impl Worker {
             let handle = self.rt.spawn(async move {
                 let sink_tx = ev_tx.clone();
                 let sink: ProgressSink = Arc::new(move |done, total| {
-                    let _ = sink_tx.send(Ev::Progress { id, attempt, done, total });
+                    let _ = sink_tx.send(Ev::Progress {
+                        id,
+                        attempt,
+                        done,
+                        total,
+                    });
                 });
                 let res = match kind {
-                    TransferKind::Download => p.download_controlled(&rid, &rpath, &lpath, sink, task_control).await,
-                    TransferKind::Upload => p.upload_controlled(&rid, &lpath, &rpath, sink, task_control).await,
+                    TransferKind::Download => {
+                        p.download_controlled(&rid, &rpath, &lpath, sink, task_control)
+                            .await
+                    }
+                    TransferKind::Upload => {
+                        p.upload_controlled(&rid, &lpath, &rpath, sink, task_control)
+                            .await
+                    }
                     TransferKind::RemoteCopy => match source {
-                        Some(source) => p.copy_between(&source.id, &source.path, &rid, &rpath, sink, task_control).await,
+                        Some(source) => {
+                            p.copy_between(
+                                &source.id,
+                                &source.path,
+                                &rid,
+                                &rpath,
+                                sink,
+                                task_control,
+                            )
+                            .await
+                        }
                         None => Err(anyhow::anyhow!("Remote copy has no source account")),
                     },
                 };
@@ -789,7 +1030,13 @@ impl Worker {
                     }
                 }
             });
-            self.running.insert(id, RunningTransfer { task: handle, control });
+            self.running.insert(
+                id,
+                RunningTransfer {
+                    task: handle,
+                    control,
+                },
+            );
         }
         self.emit_transfers();
     }
@@ -938,7 +1185,9 @@ impl Worker {
         if !self.save_transfers() {
             for transfer in &mut self.transfers {
                 if transfer.state == TransferState::Queued {
-                    transfer.state = TransferState::Failed("The transfer journal is unavailable; no transfer was started".into());
+                    transfer.state = TransferState::Failed(
+                        "The transfer journal is unavailable; no transfer was started".into(),
+                    );
                 }
             }
         }
@@ -949,22 +1198,36 @@ impl Worker {
         let mut retained = 0;
         self.transfers.reverse();
         self.transfers.retain(|transfer| {
-            if matches!(transfer.state, TransferState::Done | TransferState::Cancelled | TransferState::Failed(_)) {
+            if matches!(
+                transfer.state,
+                TransferState::Done | TransferState::Cancelled | TransferState::Failed(_)
+            ) {
                 retained += 1;
                 retained <= MAX_COMPLETED_HISTORY
-            } else { true }
+            } else {
+                true
+            }
         });
         self.transfers.reverse();
-        if self.journal_failed { return false; }
+        if self.journal_failed {
+            return false;
+        }
         if let Some(journal) = &self.journal {
             if let Err(error) = journal.save(&self.transfers) {
                 self.journal_failed = true;
                 for transfer in &mut self.transfers {
-                    if transfer.state == TransferState::Queued || (transfer.state == TransferState::Running && !self.running.contains_key(&transfer.id)) {
-                        transfer.state = TransferState::Failed("Transfer journal is unavailable; this attempt was not started".into());
+                    if transfer.state == TransferState::Queued
+                        || (transfer.state == TransferState::Running
+                            && !self.running.contains_key(&transfer.id))
+                    {
+                        transfer.state = TransferState::Failed(
+                            "Transfer journal is unavailable; this attempt was not started".into(),
+                        );
                     }
                 }
-                let _ = self.bg_tx.send(BgResult::CloudError(format!("Transfer journal write failed; cloud queue stopped: {error}")));
+                let _ = self.bg_tx.send(BgResult::CloudError(format!(
+                    "Transfer journal write failed; cloud queue stopped: {error}"
+                )));
                 return false;
             }
         }
@@ -972,9 +1235,16 @@ impl Worker {
     }
 
     async fn stop_provider(&mut self) -> anyhow::Result<()> {
-        anyhow::ensure!(self.configuring.is_empty(), "Finish account authorization before stopping the Cloud extension");
-        if let Some(provider) = &self.provider { provider.prepare_shutdown().await?; }
-        for task in self.listings.drain().map(|(_, task)| task) { task.abort(); }
+        anyhow::ensure!(
+            self.configuring.is_empty(),
+            "Finish account authorization before stopping the Cloud extension"
+        );
+        if let Some(provider) = &self.provider {
+            provider.prepare_shutdown().await?;
+        }
+        for task in self.listings.drain().map(|(_, task)| task) {
+            task.abort();
+        }
         self.previews.cancel_all();
         for transfer in &mut self.transfers {
             transfer.state = match &transfer.state {
@@ -983,22 +1253,37 @@ impl Worker {
                 state => state.clone(),
             };
         }
-        for running in self.running.values() { running.control.cancel(); }
+        for running in self.running.values() {
+            running.control.cancel();
+        }
         let running = std::mem::take(&mut self.running);
         let stop_deadline = tokio::time::Instant::now() + Duration::from_secs(150);
         for (id, mut running) in running {
             // All jobs were cancelled together. An unconfirmed shutdown is
             // quarantined in the journal; it must never be replayed as queued.
-            if tokio::time::timeout_at(stop_deadline, &mut running.task).await.is_err() {
+            if tokio::time::timeout_at(stop_deadline, &mut running.task)
+                .await
+                .is_err()
+            {
                 running.task.abort();
             }
             if let Some(transfer) = self.transfers.iter_mut().find(|transfer| transfer.id == id) {
-                transfer.state = TransferState::Interrupted("Provider stopped. Verify the destination before starting another attempt.".into());
+                transfer.state = TransferState::Interrupted(
+                    "Provider stopped. Verify the destination before starting another attempt."
+                        .into(),
+                );
             }
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(150);
-        while self.provider.as_ref().is_some_and(|provider| Arc::strong_count(provider) > 1) {
-            anyhow::ensure!(tokio::time::Instant::now() < deadline, "Cloud operations have not finished; the provider was kept running");
+        while self
+            .provider
+            .as_ref()
+            .is_some_and(|provider| Arc::strong_count(provider) > 1)
+        {
+            anyhow::ensure!(
+                tokio::time::Instant::now() < deadline,
+                "Cloud operations have not finished; the provider was kept running"
+            );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         self.provider = None;
@@ -1008,14 +1293,26 @@ impl Worker {
     }
 
     async fn reap_finished_tasks(&mut self) {
-        let finished = self.running.iter().filter(|(_, running)| running.task.is_finished())
-            .map(|(id, _)| *id).collect::<Vec<_>>();
+        let finished = self
+            .running
+            .iter()
+            .filter(|(_, running)| running.task.is_finished())
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
         for id in finished {
             if let Some(running) = self.running.remove(&id) {
                 if let Err(error) = running.task.await {
-                    if let Some(transfer) = self.transfers.iter().find(|transfer| transfer.id == id) {
-                        self.handle_ev(Ev::Failed { id, attempt: transfer.retries,
-                            err: format!("Transfer worker stopped without a confirmed result: {error}"), cancelled: false, unknown: true });
+                    if let Some(transfer) = self.transfers.iter().find(|transfer| transfer.id == id)
+                    {
+                        self.handle_ev(Ev::Failed {
+                            id,
+                            attempt: transfer.retries,
+                            err: format!(
+                                "Transfer worker stopped without a confirmed result: {error}"
+                            ),
+                            cancelled: false,
+                            unknown: true,
+                        });
                     }
                 }
             }
@@ -1046,16 +1343,38 @@ mod remote_change_tests {
     fn fixture_worker(state: TransferState, attempt: u32) -> (Worker, flume::Receiver<BgResult>) {
         let (bg_tx, bg_rx) = flume::unbounded();
         let (ev_tx, _) = flume::unbounded();
-        (Worker {
-            rt: tokio::runtime::Handle::current(), bg_tx, ev_tx, provider: None,
-            transfers: vec![Transfer {
-                id: 1, kind: TransferKind::Upload, label: "backup".into(), remote_id: "drive".into(),
-                remote_path: "backup".into(), local_path: "backup".into(), state,
-                bytes_done: 0, bytes_total: 1000, retries: attempt, open_on_done: false, delete_source: false, source: None,
-            }], running: HashMap::new(), listings: HashMap::new(), progress_dirty: false, next_id: 2,
-            journal: None, journal_failed: false, previews: crate::cloud::preview::PreviewQueue::default(),
-            configuring: std::collections::HashSet::new(),
-        }, bg_rx)
+        (
+            Worker {
+                rt: tokio::runtime::Handle::current(),
+                bg_tx,
+                ev_tx,
+                provider: None,
+                transfers: vec![Transfer {
+                    id: 1,
+                    kind: TransferKind::Upload,
+                    label: "backup".into(),
+                    remote_id: "drive".into(),
+                    remote_path: "backup".into(),
+                    local_path: "backup".into(),
+                    state,
+                    bytes_done: 0,
+                    bytes_total: 1000,
+                    retries: attempt,
+                    open_on_done: false,
+                    delete_source: false,
+                    source: None,
+                }],
+                running: HashMap::new(),
+                listings: HashMap::new(),
+                progress_dirty: false,
+                next_id: 2,
+                journal: None,
+                journal_failed: false,
+                previews: crate::cloud::preview::PreviewQueue::default(),
+                configuring: std::collections::HashSet::new(),
+            },
+            bg_rx,
+        )
     }
 
     #[tokio::test]
@@ -1065,7 +1384,13 @@ mod remote_change_tests {
         assert_eq!(worker.transfers[0].state, TransferState::Running);
         worker.handle_cmd(CloudCmd::PauseTransfer(1)).await;
         assert_eq!(worker.transfers[0].state, TransferState::Pausing);
-        worker.handle_ev(Ev::Failed { id: 1, attempt: 1, cancelled: true, unknown: false, err: "cancelled".into() });
+        worker.handle_ev(Ev::Failed {
+            id: 1,
+            attempt: 1,
+            cancelled: true,
+            unknown: false,
+            err: "cancelled".into(),
+        });
         assert_eq!(worker.transfers[0].state, TransferState::Paused);
         worker.handle_cmd(CloudCmd::CancelTransfer(1)).await;
         assert_eq!(worker.transfers[0].state, TransferState::Cancelled);
@@ -1074,8 +1399,17 @@ mod remote_change_tests {
         worker.transfers[0].state = TransferState::Running;
         worker.handle_cmd(CloudCmd::CancelTransfer(1)).await;
         assert_eq!(worker.transfers[0].state, TransferState::Cancelling);
-        worker.handle_ev(Ev::Failed { id: 1, attempt: 1, cancelled: false, unknown: true, err: "connection lost".into() });
-        assert!(matches!(worker.transfers[0].state, TransferState::Interrupted(_)));
+        worker.handle_ev(Ev::Failed {
+            id: 1,
+            attempt: 1,
+            cancelled: false,
+            unknown: true,
+            err: "connection lost".into(),
+        });
+        assert!(matches!(
+            worker.transfers[0].state,
+            TransferState::Interrupted(_)
+        ));
         worker.pump_queue();
         assert!(worker.running.is_empty());
     }
@@ -1084,11 +1418,25 @@ mod remote_change_tests {
     async fn unavailable_journal_rejects_new_attempts_and_completed_history_is_bounded() {
         let (mut worker, _) = fixture_worker(TransferState::Done, 0);
         let completed = worker.transfers[0].clone();
-        for id in 2..=1000 { worker.transfers.push(Transfer { id, ..completed.clone() }); }
+        for id in 2..=1000 {
+            worker.transfers.push(Transfer {
+                id,
+                ..completed.clone()
+            });
+        }
         worker.journal_failed = true;
-        worker.mutate_transfers(|transfers| transfers.push(Transfer { id: 1001, state: TransferState::Queued, ..completed }));
+        worker.mutate_transfers(|transfers| {
+            transfers.push(Transfer {
+                id: 1001,
+                state: TransferState::Queued,
+                ..completed
+            })
+        });
         assert_eq!(worker.transfers.len(), MAX_COMPLETED_HISTORY + 1);
-        assert!(matches!(worker.transfers.last().unwrap().state, TransferState::Failed(_)));
+        assert!(matches!(
+            worker.transfers.last().unwrap().state,
+            TransferState::Failed(_)
+        ));
         assert!(worker.running.is_empty());
     }
 
@@ -1110,27 +1458,52 @@ mod remote_change_tests {
         let (bg_tx, bg_rx) = flume::unbounded();
         let (ev_tx, _) = flume::unbounded();
         let mut worker = Worker {
-            rt: tokio::runtime::Handle::current(), bg_tx, ev_tx, provider: None,
+            rt: tokio::runtime::Handle::current(),
+            bg_tx,
+            ev_tx,
+            provider: None,
             transfers: vec![Transfer {
-                id: 1, kind: TransferKind::Upload, label: "backup".into(),
-                remote_id: "drive".into(), remote_path: "backup".into(), local_path: "backup".into(),
-                state: TransferState::Running, bytes_done: 0, bytes_total: 1000, retries: 0,
-                open_on_done: false, delete_source: false,
+                id: 1,
+                kind: TransferKind::Upload,
+                label: "backup".into(),
+                remote_id: "drive".into(),
+                remote_path: "backup".into(),
+                local_path: "backup".into(),
+                state: TransferState::Running,
+                bytes_done: 0,
+                bytes_total: 1000,
+                retries: 0,
+                open_on_done: false,
+                delete_source: false,
                 source: None,
             }],
-            running: HashMap::new(), listings: HashMap::new(), progress_dirty: false, next_id: 2,
-            journal: None, journal_failed: false,
+            running: HashMap::new(),
+            listings: HashMap::new(),
+            progress_dirty: false,
+            next_id: 2,
+            journal: None,
+            journal_failed: false,
             previews: crate::cloud::preview::PreviewQueue::default(),
             configuring: std::collections::HashSet::new(),
         };
         for done in 1..=1000 {
-            worker.handle_ev(Ev::Progress { id: 1, attempt: 0, done, total: 1000 });
+            worker.handle_ev(Ev::Progress {
+                id: 1,
+                attempt: 0,
+                done,
+                total: 1000,
+            });
             worker.pump_queue();
         }
-        assert!(bg_rx.is_empty(), "progress must wait for the bounded publication tick");
+        assert!(
+            bg_rx.is_empty(),
+            "progress must wait for the bounded publication tick"
+        );
         assert!(worker.progress_dirty);
         worker.emit_transfers();
-        let BgResult::TransferUpdate(snapshot) = bg_rx.recv().unwrap() else { panic!("expected snapshot"); };
+        let BgResult::TransferUpdate(snapshot) = bg_rx.recv().unwrap() else {
+            panic!("expected snapshot");
+        };
         assert_eq!(snapshot[0].bytes_done, 1000);
         assert!(bg_rx.is_empty());
     }
@@ -1154,7 +1527,12 @@ fn remote_to_file_entry(e: RemoteEntry) -> FileEntry {
         name: e.name.into(),
         path: PathBuf::from(e.path),
         kind,
-        size: (!e.is_dir && !e.mime.as_deref().is_some_and(|mime| mime.starts_with("application/vnd.google-apps."))).then_some(e.size),
+        size: (!e.is_dir
+            && !e
+                .mime
+                .as_deref()
+                .is_some_and(|mime| mime.starts_with("application/vnd.google-apps.")))
+        .then_some(e.size),
         modified,
         _is_hidden: false,
         _is_symlink: false,

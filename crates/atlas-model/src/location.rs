@@ -41,7 +41,9 @@ impl Location {
             Self::Tag(id) => PathBuf::from(format!("tag:{}", id.0)),
             Self::RecycleBin => PathBuf::from("Recycle Bin"),
             #[cfg(feature = "provider-host")]
-            Self::Remote { id, path } => PathBuf::from(format!("{id}:{}", crate::remote_path::display(path))),
+            Self::Remote { id, path } => {
+                PathBuf::from(format!("{id}:{}", crate::remote_path::display(path)))
+            }
         }
     }
 

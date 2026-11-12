@@ -157,8 +157,7 @@ impl ArchiveProvider for TarProvider {
             file.seek(std::io::SeekFrom::Start(meta.raw_file_pos))?;
             let take_len = meta.size.unwrap_or(0);
             let mut guard = BombGuard::default();
-            let mut buf =
-                Vec::with_capacity(std::cmp::min(take_len, 8 * 1024 * 1024) as usize);
+            let mut buf = Vec::with_capacity(std::cmp::min(take_len, 8 * 1024 * 1024) as usize);
             let mut chunk = [0u8; 64 * 1024];
             let mut limited = file.take(take_len);
             loop {
@@ -259,7 +258,11 @@ mod tests {
         builder.finish().unwrap();
 
         let provider = TarProvider::new(&tar_path, Compression::None);
-        assert!(provider.is_ok(), "TarProvider::new must succeed without loading 10GB into RAM: {:?}", provider.err());
+        assert!(
+            provider.is_ok(),
+            "TarProvider::new must succeed without loading 10GB into RAM: {:?}",
+            provider.err()
+        );
         let p = provider.unwrap();
         let entries = p.list(Path::new("")).unwrap();
         assert_eq!(entries.len(), 1);
@@ -338,5 +341,3 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), b"gz content on demand");
     }
 }
-
-

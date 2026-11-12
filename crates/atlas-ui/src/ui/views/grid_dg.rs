@@ -63,6 +63,7 @@ pub(crate) fn grid_label_bounds(
         ),
     }
 }
+use crate::ui::group_header::GROUP_BAND_H;
 use atlas_model::file_entry::FileKind;
 use atlas_model::pane::TabId;
 use gpui::prelude::*;
@@ -73,7 +74,6 @@ use gpui::{
     IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Refineable,
     ShapedLine, SharedString, Style, StyleRefinement, Styled, TextAlign, WeakEntity, Window,
 };
-use crate::ui::group_header::GROUP_BAND_H;
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{v_flex, ActiveTheme, ElementExt};
 use std::path::PathBuf;
@@ -554,8 +554,11 @@ impl Element for GridDgElement {
                     crate::ui::views::rename::active_input(app, pane_id, entry_idx).is_some();
                 let dimmed = crate::ui::views::rename::dim_other_entry(app, pane_id, entry_idx);
                 let show_cell_check = selected && show_checkboxes;
-                let icon =
-                    app.file_icon_for_entry(&entry.path(), &entry.kind(), entry.extension().as_deref());
+                let icon = app.file_icon_for_entry(
+                    &entry.path(),
+                    &entry.kind(),
+                    entry.extension().as_deref(),
+                );
 
                 items.push(RawCellData {
                     pos,
@@ -618,9 +621,8 @@ impl Element for GridDgElement {
                 )
             })
             .collect();
-        let (bounds_list, moving) = motion.update(cx, |state, _| {
-            state.sample(&targets, epoch, instant, now)
-        });
+        let (bounds_list, moving) =
+            motion.update(cx, |state, _| state.sample(&targets, epoch, instant, now));
         for (cell, (_, b)) in raw_cells.iter_mut().zip(bounds_list) {
             cell.rel_x = b.x;
             cell.rel_y = b.y;
@@ -809,148 +811,173 @@ impl Element for GridDgElement {
             };
 
             // Principle 3: Hardware GPU clipping layer ensures zero bleeding into neighbor cells
-            window.with_element_opacity(Some(cell.opacity * crate::ui::views::rename::cut_path_opacity(&self.app, &cell.path, cx)), |window| {
-                window.paint_layer(cell_bounds, |window| {
-                    // 1. Hover/selection/blinking background highlight
-                    let bg = if cell.selected && !cell.editing {
-                        Some(self.colors.accent)
-                    } else if cell.blinking {
-                        Some(self.colors.accent.opacity(0.38))
-                    } else if cell.hovered {
-                        Some(self.colors.hover)
-                    } else {
-                        None
-                    };
+            window.with_element_opacity(
+                Some(
+                    cell.opacity
+                        * crate::ui::views::rename::cut_path_opacity(&self.app, &cell.path, cx),
+                ),
+                |window| {
+                    window.paint_layer(cell_bounds, |window| {
+                        // 1. Hover/selection/blinking background highlight
+                        let bg = if cell.selected && !cell.editing {
+                            Some(self.colors.accent)
+                        } else if cell.blinking {
+                            Some(self.colors.accent.opacity(0.38))
+                        } else if cell.hovered {
+                            Some(self.colors.hover)
+                        } else {
+                            None
+                        };
 
-                    if let Some(color) = bg {
-                        paint_rounded(window, cell_bounds, 6.0 * zoom, color);
-                    }
-                    if cell.interactive {
-                        crate::ui::operation_feedback::paint_file_feedback(&self.app, &cell.path, cell_bounds, self.colors.accent, 6.0 * zoom, window, cx);
-                    }
-
-                    // Focus cursor outline
-                    if cell.cursor && !cell.selected {
-                        let outline_color =
-                            self.colors
-                                .accent
-                                .opacity(if cell.selected { 0.95 } else { 0.65 });
-                        window.paint_quad(
-                            gpui::outline(cell_bounds, outline_color, Default::default())
-                                .corner_radii(Corners::all(px(6.0 * zoom))),
-                        );
-                    }
-
-                    // Dimming when another item is being renamed
-                    window.with_element_opacity(
-                        cell.dimmed.then_some(crate::ui::views::rename::DIM_OPACITY),
-                        |window| {
-                            // 2. Shared checkbox for selected items during multi-selection.
-                            if let Some(check_slot) = cell.slots.check_slot {
-                                let check_center = point(
-                                    bounds.origin.x + px(check_slot.x + check_slot.w * 0.5),
-                                    bounds.origin.y + px(check_slot.y + check_slot.h * 0.5),
-                                );
-                                selection_checkbox::paint_animated(
-                                    window,
-                                    cx,
-                                    check_center,
-                                    16.0 * zoom,
-                                    cell.selected_at,
-                                );
-                            }
-
-                            // 3. Thumbnail / File icon slot (centered in the upper icon area)
-                            let icon_slot = cell.slots.icon_slot;
-                            let icon_center = point(
-                                bounds.origin.x + px(icon_slot.x + icon_slot.w * 0.5),
-                                bounds.origin.y + px(icon_slot.y + icon_slot.h * 0.5),
+                        if let Some(color) = bg {
+                            paint_rounded(window, cell_bounds, 6.0 * zoom, color);
+                        }
+                        if cell.interactive {
+                            crate::ui::operation_feedback::paint_file_feedback(
+                                &self.app,
+                                &cell.path,
+                                cell_bounds,
+                                self.colors.accent,
+                                6.0 * zoom,
+                                window,
+                                cx,
                             );
+                        }
 
-                            match &cell.icon {
-                                FileIcon::PreviewTexture(tex) => {
-                                    window.with_element_opacity(
-                                        Some(cell.texture_opacity),
-                                        |window| {
-                                            let visual_thumb = (cell.visual_w * 0.9).min(icon_slot.h);
-                                            crate::ui::thumbs::paint_thumbnail_state(window, cx, tex,
-                                                icon_center, visual_thumb, icon_slot.h, cell.hovered);
-                                        },
+                        // Focus cursor outline
+                        if cell.cursor && !cell.selected {
+                            let outline_color =
+                                self.colors
+                                    .accent
+                                    .opacity(if cell.selected { 0.95 } else { 0.65 });
+                            window.paint_quad(
+                                gpui::outline(cell_bounds, outline_color, Default::default())
+                                    .corner_radii(Corners::all(px(6.0 * zoom))),
+                            );
+                        }
+
+                        // Dimming when another item is being renamed
+                        window.with_element_opacity(
+                            cell.dimmed.then_some(crate::ui::views::rename::DIM_OPACITY),
+                            |window| {
+                                // 2. Shared checkbox for selected items during multi-selection.
+                                if let Some(check_slot) = cell.slots.check_slot {
+                                    let check_center = point(
+                                        bounds.origin.x + px(check_slot.x + check_slot.w * 0.5),
+                                        bounds.origin.y + px(check_slot.y + check_slot.h * 0.5),
+                                    );
+                                    selection_checkbox::paint_animated(
+                                        window,
+                                        cx,
+                                        check_center,
+                                        16.0 * zoom,
+                                        cell.selected_at,
                                     );
                                 }
-                                FileIcon::IconTexture(tex) => {
-                                    let sz = ((cell.visual_w * GRID_TEXTURE_ICON_MAX).min(icon_slot.h))
+
+                                // 3. Thumbnail / File icon slot (centered in the upper icon area)
+                                let icon_slot = cell.slots.icon_slot;
+                                let icon_center = point(
+                                    bounds.origin.x + px(icon_slot.x + icon_slot.w * 0.5),
+                                    bounds.origin.y + px(icon_slot.y + icon_slot.h * 0.5),
+                                );
+
+                                match &cell.icon {
+                                    FileIcon::PreviewTexture(tex) => {
+                                        window.with_element_opacity(
+                                            Some(cell.texture_opacity),
+                                            |window| {
+                                                let visual_thumb =
+                                                    (cell.visual_w * 0.9).min(icon_slot.h);
+                                                crate::ui::thumbs::paint_thumbnail_state(
+                                                    window,
+                                                    cx,
+                                                    tex,
+                                                    icon_center,
+                                                    visual_thumb,
+                                                    icon_slot.h,
+                                                    cell.hovered,
+                                                );
+                                            },
+                                        );
+                                    }
+                                    FileIcon::IconTexture(tex) => {
+                                        let sz = ((cell.visual_w * GRID_TEXTURE_ICON_MAX)
+                                            .min(icon_slot.h))
                                         .round();
-                                    let half = (sz * 0.5).round();
-                                    let cx_pos = f32::from(icon_center.x).round();
-                                    let cy_pos = f32::from(icon_center.y).round();
-                                    let icon_bounds = Bounds {
-                                        origin: point(px(cx_pos - half), px(cy_pos - half)),
-                                        size: size(px(sz), px(sz)),
-                                    };
-                                    let resolved = tex.for_size(sz);
-                                    let _ = window.paint_image(
-                                        icon_bounds,
-                                        icon_bounds,
-                                        Corners::default(),
-                                        resolved,
-                                        0,
-                                        false,
-                                    );
+                                        let half = (sz * 0.5).round();
+                                        let cx_pos = f32::from(icon_center.x).round();
+                                        let cy_pos = f32::from(icon_center.y).round();
+                                        let icon_bounds = Bounds {
+                                            origin: point(px(cx_pos - half), px(cy_pos - half)),
+                                            size: size(px(sz), px(sz)),
+                                        };
+                                        let resolved = tex.for_size(sz);
+                                        let _ = window.paint_image(
+                                            icon_bounds,
+                                            icon_bounds,
+                                            Corners::default(),
+                                            resolved,
+                                            0,
+                                            false,
+                                        );
+                                    }
+                                    FileIcon::Builtin { kind, .. } => {
+                                        let icon = if matches!(kind, FileKind::Dir) {
+                                            AtlasIcon::Folder
+                                        } else {
+                                            AtlasIcon::File
+                                        };
+                                        let sz =
+                                            (cell.visual_w * GRID_BUILTIN_ICON).min(icon_slot.h);
+                                        let icon_bounds = Bounds {
+                                            origin: point(
+                                                icon_center.x - px(sz * 0.5),
+                                                icon_center.y - px(sz * 0.5),
+                                            ),
+                                            size: size(px(sz), px(sz)),
+                                        };
+                                        let icon_color = if cell.selected && !cell.editing {
+                                            self.colors.accent_fg
+                                        } else {
+                                            self.colors.muted
+                                        };
+                                        paint_svg_icon(
+                                            window,
+                                            cx,
+                                            icon_bounds,
+                                            icon.path(),
+                                            icon_color,
+                                        );
+                                    }
                                 }
-                                FileIcon::Builtin { kind, .. } => {
-                                    let icon = if matches!(kind, FileKind::Dir) {
-                                        AtlasIcon::Folder
-                                    } else {
-                                        AtlasIcon::File
-                                    };
-                                    let sz = (cell.visual_w * GRID_BUILTIN_ICON).min(icon_slot.h);
-                                    let icon_bounds = Bounds {
-                                        origin: point(
-                                            icon_center.x - px(sz * 0.5),
-                                            icon_center.y - px(sz * 0.5),
-                                        ),
-                                        size: size(px(sz), px(sz)),
-                                    };
-                                    let icon_color = if cell.selected && !cell.editing {
-                                        self.colors.accent_fg
-                                    } else {
-                                        self.colors.muted
-                                    };
-                                    paint_svg_icon(
-                                        window,
-                                        cx,
-                                        icon_bounds,
-                                        icon.path(),
-                                        icon_color,
-                                    );
-                                }
-                            }
 
-                            // 4. Filename slot: UTF-8 binary search truncation (`shape_text_truncated`)
-                            if !cell.editing {
-                                let name_slot = cell.slots.name_slot;
-                                let text_x = bounds.origin.x + px(name_slot.x);
-                                let text_y = bounds.origin.y + px(text_origin_y(name_slot.y, zoom));
-                                let name_bounds = Bounds {
-                                    origin: point(text_x, bounds.origin.y + px(name_slot.y)),
-                                    size: size(px(name_slot.w), px(name_slot.h)),
-                                };
-                                window.paint_layer(name_bounds, |window| {
-                                    let _ = cell.line.paint(
-                                        point(text_x, text_y),
-                                        px(name_slot.h),
-                                        TextAlign::Center,
-                                        Some(px(name_slot.w)),
-                                        window,
-                                        cx,
-                                    );
-                                });
-                            }
-                        },
-                    );
-                });
-            });
+                                // 4. Filename slot: UTF-8 binary search truncation (`shape_text_truncated`)
+                                if !cell.editing {
+                                    let name_slot = cell.slots.name_slot;
+                                    let text_x = bounds.origin.x + px(name_slot.x);
+                                    let text_y =
+                                        bounds.origin.y + px(text_origin_y(name_slot.y, zoom));
+                                    let name_bounds = Bounds {
+                                        origin: point(text_x, bounds.origin.y + px(name_slot.y)),
+                                        size: size(px(name_slot.w), px(name_slot.h)),
+                                    };
+                                    window.paint_layer(name_bounds, |window| {
+                                        let _ = cell.line.paint(
+                                            point(text_x, text_y),
+                                            px(name_slot.h),
+                                            TextAlign::Center,
+                                            Some(px(name_slot.w)),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                }
+                            },
+                        );
+                    });
+                },
+            );
         }
 
         let Some(app_entity) = self.app.upgrade() else {
@@ -1082,15 +1109,11 @@ impl App {
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
         let row_font = window.text_style().font();
         let crumb_strip = self.render_crumb_strip(pane_id, &view, fg, muted, border, header_bg, cx);
-        let count = self
-            .state
-            .tab_states
-            .get_mut(&pane_id)
-            .map_or(0, |ts| {
-                ts.visible_indices();
-                // Collapsed groups hide every file but still show their headers.
-                ts.visible.len()
-            });
+        let count = self.state.tab_states.get_mut(&pane_id).map_or(0, |ts| {
+            ts.visible_indices();
+            // Collapsed groups hide every file but still show their headers.
+            ts.visible.len()
+        });
 
         if count == 0 {
             self.grid_hit.remove(&pane_id);
@@ -1111,7 +1134,9 @@ impl App {
                 &view,
                 pane_id,
             )
-            .when(cfg!(windows), |el| el.on_prepaint_child(zone_recorder(pane_id, &view)))
+            .when(cfg!(windows), |el| {
+                el.on_prepaint_child(zone_recorder(pane_id, &view))
+            })
             .child(timed_layout_region(
                 "pane.crumbs",
                 PANE_CRUMBS_TIMINGS,
@@ -1170,15 +1195,30 @@ impl App {
         // advance 1 row smoothly, matching Details and List views.
         base_scroll.set_line_scroll_height(px(pitch_y / 3.0));
         // Headers are bands between rows, so thumbnails keep their full pitch.
-        let group_cells = self.grouped_cells(pane_id, atlas_model::grouping::GroupFlow::Wrap { cols });
+        let group_cells =
+            self.grouped_cells(pane_id, atlas_model::grouping::GroupFlow::Wrap { cols });
         let cells = match &group_cells {
             Some(groups) => groups.cells.clone(),
-            None => self.state.tab_states.get(&pane_id).map(|ts| ts.visible.clone()).unwrap_or_default(),
+            None => self
+                .state
+                .tab_states
+                .get(&pane_id)
+                .map(|ts| ts.visible.clone())
+                .unwrap_or_default(),
         };
         let band_h = GROUP_BAND_H * zoom_scale;
-        let bands = group_cells.as_ref().map_or_else(Default::default, |groups| {
-            atlas_model::grouping::RowBands::new(groups.headers.iter().map(|header| header.cell / cols).collect(), band_h)
-        });
+        let bands = group_cells
+            .as_ref()
+            .map_or_else(Default::default, |groups| {
+                atlas_model::grouping::RowBands::new(
+                    groups
+                        .headers
+                        .iter()
+                        .map(|header| header.cell / cols)
+                        .collect(),
+                    band_h,
+                )
+            });
         let count = cells.len();
         let rows = count.div_ceil(cols);
         let content_h = if rows == 0 && bands.is_empty() {
@@ -1196,7 +1236,9 @@ impl App {
         // The range is computed from the offset at render time while smooth
         // scrolling keeps moving in prepaint. Overscan one row on *both* edges so
         // scrolling up never exposes an unpainted strip at the top.
-        let start_row = bands.row_at(scroll_y - grid_pad_px, pitch_y).saturating_sub(1);
+        let start_row = bands
+            .row_at(scroll_y - grid_pad_px, pitch_y)
+            .saturating_sub(1);
         let end_row = bands.rows_through(scroll_y + viewport_h - grid_pad_px, pitch_y) + 1;
         let start = (start_row * cols).min(count);
         let end = ((end_row * cols).min(count)).max(start);
@@ -1263,11 +1305,7 @@ impl App {
                     origin: point(px(cell_x), px(cell_y)),
                     size: size(px(thumb_px), px(cell_h_px)),
                 };
-                let label = grid_label_bounds(
-                    cell_bounds,
-                    thumb_px * GRID_ICON_AREA,
-                    zoom_scale,
-                );
+                let label = grid_label_bounds(cell_bounds, thumb_px * GRID_ICON_AREA, zoom_scale);
                 rename_overlay = Some(
                     div()
                         .absolute()
@@ -1334,7 +1372,12 @@ impl App {
                         header,
                         &view,
                         colors,
-                        (px(0.0), px(grid_pad_px + bands.band_top(k, pitch_y)), None, px(band_h)),
+                        (
+                            px(0.0),
+                            px(grid_pad_px + bands.band_top(k, pitch_y)),
+                            None,
+                            px(band_h),
+                        ),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -1444,7 +1487,12 @@ impl App {
         prefetch: std::ops::Range<usize>,
     ) {
         #[cfg(feature = "provider-host")]
-        if self.tab_data_for(pane_id).is_some_and(|pane| matches!(pane.location, atlas_model::location::Location::Remote { .. })) {
+        if self.tab_data_for(pane_id).is_some_and(|pane| {
+            matches!(
+                pane.location,
+                atlas_model::location::Location::Remote { .. }
+            )
+        }) {
             return;
         }
         let windows_theme = self.native_file_icons();
@@ -1530,9 +1578,13 @@ impl App {
         // never cancels another pane's pending thumbnails.
         self.thumb_wanted_by_pane.insert(pane_id, all_visible);
         let panes = &self.state.tab_states;
-        self.thumb_wanted_by_pane.retain(|pane, _| panes.contains_key(pane));
+        self.thumb_wanted_by_pane
+            .retain(|pane, _| panes.contains_key(pane));
         {
-            let mut wanted = self.thumb_wanted.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut wanted = self
+                .thumb_wanted
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             wanted.clear();
             for paths in self.thumb_wanted_by_pane.values() {
                 wanted.extend(paths.iter().cloned());
@@ -1549,18 +1601,23 @@ impl App {
         #[cfg(not(target_os = "windows"))]
         drop(type_icon_paths);
         for (path, ahead) in to_request {
-            if !(ahead && self.native_thumb_inflight + PREFETCH_HEADROOM >= MAX_NATIVE_THUMB_INFLIGHT) {
+            if !(ahead
+                && self.native_thumb_inflight + PREFETCH_HEADROOM >= MAX_NATIVE_THUMB_INFLIGHT)
+            {
                 self.request_thumbnail(&path);
             }
         }
         for (path, run, tools, ahead) in to_request_ext {
-            if !(ahead && self.ext_thumb_inflight.len() + PREFETCH_HEADROOM >= MAX_EXT_THUMB_INFLIGHT) {
+            if !(ahead
+                && self.ext_thumb_inflight.len() + PREFETCH_HEADROOM >= MAX_EXT_THUMB_INFLIGHT)
+            {
                 self.request_ext_thumbnail(&path, run, tools);
             }
         }
         #[cfg(target_os = "windows")]
         for (path, allow_icon, ahead) in to_request_shell {
-            if ahead && self.ext_thumb_inflight.len() + PREFETCH_HEADROOM >= MAX_EXT_THUMB_INFLIGHT {
+            if ahead && self.ext_thumb_inflight.len() + PREFETCH_HEADROOM >= MAX_EXT_THUMB_INFLIGHT
+            {
                 continue;
             }
             if allow_icon {
@@ -1580,10 +1637,7 @@ use crate::ui::thumbs::{MAX_EXT_THUMB_INFLIGHT, MAX_NATIVE_THUMB_INFLIGHT};
 
 /// Cells to request, nearest first: the visible range, then the prefetch margin
 /// alternating below/above so whichever direction the user scrolls is already warm.
-fn prefetch_order(
-    visible: std::ops::Range<usize>,
-    window: std::ops::Range<usize>,
-) -> Vec<usize> {
+fn prefetch_order(visible: std::ops::Range<usize>, window: std::ops::Range<usize>) -> Vec<usize> {
     let mut order: Vec<usize> = visible.clone().collect();
     let mut below = visible.end..window.end.max(visible.end);
     let mut above = window.start.min(visible.start)..visible.start;

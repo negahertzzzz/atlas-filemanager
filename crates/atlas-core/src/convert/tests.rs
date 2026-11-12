@@ -578,7 +578,12 @@ fn independent_ffmpeg_reader_checks_native_ass_and_webvtt_when_installed() {
         assert!(text.contains("\"Hola\""), "{target}: {text}");
         assert!(text.contains("José"), "{target}: {text}");
         // FFmpeg protects literal braces with ASS-style escapes in SRT output.
-        let literal = text.replace("\\{", "{").replace("\\}", "}");
+        // Newer versions also insert WORD JOINER after a literal backslash to
+        // keep it from being interpreted as an ASS control sequence.
+        let literal = text
+            .replace("\\{", "{")
+            .replace("\\}", "}")
+            .replace("\\\u{2060}", "\\");
         assert!(
             literal.contains("{literal} C:\\Windows"),
             "{target}: {text}"
@@ -1310,7 +1315,9 @@ fn wheel_offers_provider_installed_engines_only_when_installed() {
     tools.0.insert(Tool::Pandoc, PathBuf::from("pandoc"));
     assert!(wheel_options(&[source.clone()], &tools, &[]).is_empty());
     let routes = wheel_options(&[source.clone()], &tools, &[Tool::Pandoc]);
-    assert!(routes.iter().any(|o| o.target.extension == "docx" && o.available()));
+    assert!(routes
+        .iter()
+        .any(|o| o.target.extension == "docx" && o.available()));
     assert!(routes.iter().all(|o| o.missing.is_empty()));
     // Not installed: no sector, but the provider is offered as locked.
     let empty = Tools::default();
@@ -1333,13 +1340,22 @@ fn wheel_offers_provider_installed_engines_only_when_installed() {
 #[test]
 fn managed_by_matches_provider_paths_and_portable_names() {
     let mut tools = Tools::default();
-    tools.0.insert(Tool::Pandoc, PathBuf::from("C:/ext/pandoc.exe"));
-    tools.0.insert(Tool::Ghostscript, PathBuf::from("C:/ext/gs.exe"));
-    tools.0.insert(Tool::Ffmpeg, PathBuf::from("C:/path/ffmpeg.exe"));
+    tools
+        .0
+        .insert(Tool::Pandoc, PathBuf::from("C:/ext/pandoc.exe"));
+    tools
+        .0
+        .insert(Tool::Ghostscript, PathBuf::from("C:/ext/gs.exe"));
+    tools
+        .0
+        .insert(Tool::Ffmpeg, PathBuf::from("C:/path/ffmpeg.exe"));
     let managed: std::collections::HashMap<String, PathBuf> = [
         ("pandoc".to_string(), PathBuf::from("C:/ext/pandoc.exe")),
         ("gs".to_string(), PathBuf::from("C:/ext/gs.exe")),
-        ("ffmpeg".to_string(), PathBuf::from("C:/ext/other-ffmpeg.exe")),
+        (
+            "ffmpeg".to_string(),
+            PathBuf::from("C:/ext/other-ffmpeg.exe"),
+        ),
     ]
     .into_iter()
     .collect();

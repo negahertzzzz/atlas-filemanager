@@ -22,5 +22,9 @@ fn main() {
         _ => return,
     };
     println!("cargo:rustc-link-lib=dylib=delayimp");
+    // Standalone examples need not reference the package's library. Cargo only
+    // forwards rustc-link-lib through that library when one exists, so also
+    // pass the helper directly to every target receiving /DELAYLOAD.
+    println!("cargo:rustc-link-arg=delayimp.lib");
     println!("cargo:rustc-link-arg=/DELAYLOAD:{dll}");
 }

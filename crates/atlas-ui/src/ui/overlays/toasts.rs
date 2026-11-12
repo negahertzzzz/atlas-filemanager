@@ -18,21 +18,46 @@ struct ToastPresentation {
 }
 
 #[derive(Default)]
-pub(crate) struct ToastStack { entries: Vec<ToastPresentation> }
+pub(crate) struct ToastStack {
+    entries: Vec<ToastPresentation>,
+}
 
 impl ToastStack {
-    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 
-    fn sync(&mut self, live: &[atlas_model::overlay::Toast], now: Instant, instant: bool) -> Vec<ToastPresentation> {
+    fn sync(
+        &mut self,
+        live: &[atlas_model::overlay::Toast],
+        now: Instant,
+        instant: bool,
+    ) -> Vec<ToastPresentation> {
         for entry in &mut self.entries {
-            if live.iter().any(|toast| toast.created_at == entry.toast.created_at) {
+            if live
+                .iter()
+                .any(|toast| toast.created_at == entry.toast.created_at)
+            {
                 entry.closing = None;
-            } else { entry.closing.get_or_insert(now); }
+            } else {
+                entry.closing.get_or_insert(now);
+            }
         }
-        self.entries.retain(|entry| entry.closing.is_none_or(|at| !instant && now.saturating_duration_since(at) < Duration::from_millis(240)));
+        self.entries.retain(|entry| {
+            entry.closing.is_none_or(|at| {
+                !instant && now.saturating_duration_since(at) < Duration::from_millis(240)
+            })
+        });
         for toast in live {
-            if !self.entries.iter().any(|entry| entry.toast.created_at == toast.created_at) {
-                self.entries.push(ToastPresentation { toast: toast.clone(), closing: None });
+            if !self
+                .entries
+                .iter()
+                .any(|entry| entry.toast.created_at == toast.created_at)
+            {
+                self.entries.push(ToastPresentation {
+                    toast: toast.clone(),
+                    closing: None,
+                });
             }
         }
         self.entries.clone()
@@ -81,10 +106,16 @@ impl App {
             let dismiss_view = view.clone();
             let identity = toast.created_at;
             let id = format!("op-toast-{identity:?}");
-            let openness = if instant { 1.0 } else if let Some(at) = entry.closing {
-                1.0 - crate::ui::motion::ease_out_quart(now.saturating_duration_since(at).as_secs_f32() / 0.12)
+            let openness = if instant {
+                1.0
+            } else if let Some(at) = entry.closing {
+                1.0 - crate::ui::motion::ease_out_quart(
+                    now.saturating_duration_since(at).as_secs_f32() / 0.12,
+                )
             } else {
-                crate::ui::motion::ease_out_quart(now.saturating_duration_since(identity).as_secs_f32() / 0.15)
+                crate::ui::motion::ease_out_quart(
+                    now.saturating_duration_since(identity).as_secs_f32() / 0.15,
+                )
             };
             let tone = match toast.kind {
                 ToastKind::Error => destructive,
@@ -149,18 +180,36 @@ impl App {
                         .child(icon(AtlasIcon::X, 12., muted))
                         .on_mouse_down(MouseButton::Left, move |_ev, _w, cx| {
                             dismiss_view.update(cx, |this, cx| {
-                                this.state.overlay.op_errors.retain(|toast| toast.created_at != identity);
+                                this.state
+                                    .overlay
+                                    .op_errors
+                                    .retain(|toast| toast.created_at != identity);
                                 cx.notify();
                             });
                         }),
                 );
-            stack = stack.child(crate::ui::reveal::DisclosureBody::new(
-                SharedString::from(format!("{id}-presence")), entry.closing.is_none(), div().pb_2().child(card),
-            ).animate_entry());
+            stack = stack.child(
+                crate::ui::reveal::DisclosureBody::new(
+                    SharedString::from(format!("{id}-presence")),
+                    entry.closing.is_none(),
+                    div().pb_2().child(card),
+                )
+                .animate_entry(),
+            );
         }
-        let animating = presentations.iter().any(|entry| entry.closing.is_some() || now.saturating_duration_since(entry.toast.created_at) < Duration::from_millis(180));
+        let animating = presentations.iter().any(|entry| {
+            entry.closing.is_some()
+                || now.saturating_duration_since(entry.toast.created_at)
+                    < Duration::from_millis(180)
+        });
         if animating && !instant {
-            stack = stack.child(gpui::canvas(|_, _, _| {}, |_, _, window, _| window.request_animation_frame()).size(px(0.0)));
+            stack = stack.child(
+                gpui::canvas(
+                    |_, _, _| {},
+                    |_, _, window, _| window.request_animation_frame(),
+                )
+                .size(px(0.0)),
+            );
         }
 
         let dismiss_all_view = view.clone();

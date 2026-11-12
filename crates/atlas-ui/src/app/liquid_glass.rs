@@ -63,16 +63,27 @@ impl LiquidGlassCache {
             .cloned()
             .unwrap_or_else(create_dummy_texture);
 
-        Self { textures, light_textures, fallback }
+        Self {
+            textures,
+            light_textures,
+            fallback,
+        }
     }
 
     #[inline]
     pub(crate) fn texture_for(&self, icon: FileTypeIcon) -> Arc<RenderImage> {
-        self.textures.get(&icon).cloned().unwrap_or_else(|| self.fallback.clone())
+        self.textures
+            .get(&icon)
+            .cloned()
+            .unwrap_or_else(|| self.fallback.clone())
     }
 
     #[inline]
-    pub(crate) fn texture_for_entry(&self, kind: &FileKind, extension: Option<&str>) -> Arc<RenderImage> {
+    pub(crate) fn texture_for_entry(
+        &self,
+        kind: &FileKind,
+        extension: Option<&str>,
+    ) -> Arc<RenderImage> {
         let icon_kind = file_type_icon_kind(kind, extension);
         self.texture_for(icon_kind)
     }
@@ -113,7 +124,11 @@ enum AlphaMap {
 
 /// Decode raw PNG bytes to an Arc<RenderImage> with straight BGRA format,
 /// scaling RGB per channel by `ink` (1.0 = original art) and remapping alpha.
-fn decode_png_to_render_image(bytes: &[u8], ink: [f32; 3], alpha: AlphaMap) -> Option<Arc<RenderImage>> {
+fn decode_png_to_render_image(
+    bytes: &[u8],
+    ink: [f32; 3],
+    alpha: AlphaMap,
+) -> Option<Arc<RenderImage>> {
     let img = image::load_from_memory(bytes).ok()?.to_rgba8();
     let (w, h) = img.dimensions();
     let mut raw = img.into_raw();
@@ -152,20 +167,33 @@ mod tests {
     #[test]
     fn loads_all_eleven_liquid_glass_icons() {
         let cache = LiquidGlassCache::new();
-        assert_eq!(cache.textures.len(), 11, "All 11 Liquid Glass PNGs must decode");
+        assert_eq!(
+            cache.textures.len(),
+            11,
+            "All 11 Liquid Glass PNGs must decode"
+        );
 
         for &kind in ALL_ICONS {
             let tex = cache.texture_for(kind);
             let sz = tex.size(0);
-            assert!(sz.width.0 > 0 && sz.height.0 > 0, "Icon {:?} has invalid dimensions", kind);
+            assert!(
+                sz.width.0 > 0 && sz.height.0 > 0,
+                "Icon {:?} has invalid dimensions",
+                kind
+            );
         }
 
         // Test entry resolution
         let folder_tex = cache.texture_for_entry(&FileKind::Dir, None);
-        assert_eq!(folder_tex.size(0), cache.texture_for(FileTypeIcon::Folder).size(0));
+        assert_eq!(
+            folder_tex.size(0),
+            cache.texture_for(FileTypeIcon::Folder).size(0)
+        );
 
         let code_tex = cache.texture_for_entry(&FileKind::File, Some("rs"));
-        assert_eq!(code_tex.size(0), cache.texture_for(FileTypeIcon::Code).size(0));
+        assert_eq!(
+            code_tex.size(0),
+            cache.texture_for(FileTypeIcon::Code).size(0)
+        );
     }
 }
-

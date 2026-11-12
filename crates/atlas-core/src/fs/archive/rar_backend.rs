@@ -48,7 +48,12 @@ impl RarProvider {
 
         // `lb` can report success for a non-RAR file. Technical listings also
         // provide directory types (bare listings omit directory suffixes).
-        anyhow::ensure!(listing.lines().any(|line| line.trim().starts_with("Details: RAR")), "Invalid or unreadable RAR archive");
+        anyhow::ensure!(
+            listing
+                .lines()
+                .any(|line| line.trim().starts_with("Details: RAR")),
+            "Invalid or unreadable RAR archive"
+        );
 
         let mut index: HashMap<String, Vec<FileEntry>> = HashMap::new();
         let mut exact_names = HashMap::new();
@@ -71,7 +76,9 @@ impl RarProvider {
             let parent_key = inner.parent().map(path_to_dir_key).unwrap_or_default();
             build_synthetic_ancestors(path, &inner, &mut index);
 
-            if is_dir { index.entry(path_to_dir_key(&inner)).or_default(); }
+            if is_dir {
+                index.entry(path_to_dir_key(&inner)).or_default();
+            }
             let siblings = index.entry(parent_key).or_default();
             if !siblings.iter().any(|entry| entry.path() == inner) {
                 siblings.push(make_entry(path, inner, name, is_dir, record.size));
@@ -122,15 +129,22 @@ fn technical_entries(listing: &str) -> Vec<TechnicalEntry<'_>> {
     let mut current = TechnicalEntry::default();
     for line in listing.lines().map(str::trim) {
         if let Some(name) = line.strip_prefix("Name: ") {
-            if !current.name.is_empty() { entries.push(current); }
-            current = TechnicalEntry { name, ..Default::default() };
+            if !current.name.is_empty() {
+                entries.push(current);
+            }
+            current = TechnicalEntry {
+                name,
+                ..Default::default()
+            };
         } else if let Some(kind) = line.strip_prefix("Type: ") {
             current.is_dir = kind == "Directory";
         } else if let Some(bytes) = line.strip_prefix("Size: ") {
             current.size = bytes.parse().ok();
         }
     }
-    if !current.name.is_empty() { entries.push(current); }
+    if !current.name.is_empty() {
+        entries.push(current);
+    }
     entries
 }
 

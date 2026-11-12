@@ -59,7 +59,9 @@ macro_rules! liquid_glass_filetype_icons {
 
 fn app_icon(path: &str) -> Option<&'static [u8]> {
     match path {
-        VAULT_FOLDER_ART => Some(include_bytes!("../assets/illustrations/vault-folder-lock.png")),
+        VAULT_FOLDER_ART => Some(include_bytes!(
+            "../assets/illustrations/vault-folder-lock.png"
+        )),
         "icons/atlas-logo.png" => Some(include_bytes!("../assets/icons/atlas-logo.png")),
         "icons/atlas-app-icon.png" => Some(include_bytes!("../assets/icons/atlas-app-icon.png")),
         _ => None,
@@ -187,7 +189,14 @@ impl AssetSource for AtlasAssets {
             PHOSPHOR_PATHS
                 .iter()
                 .chain(LIQUID_GLASS_PATHS.iter())
-                .chain(["icons/atlas-logo.png", "icons/atlas-app-icon.png", VAULT_FOLDER_ART].iter())
+                .chain(
+                    [
+                        "icons/atlas-logo.png",
+                        "icons/atlas-app-icon.png",
+                        VAULT_FOLDER_ART,
+                    ]
+                    .iter(),
+                )
                 .filter(|name| name.starts_with(path))
                 .map(|name| SharedString::from(*name)),
         );
@@ -207,7 +216,14 @@ mod tests {
         for path in PHOSPHOR_PATHS
             .iter()
             .chain(LIQUID_GLASS_PATHS.iter())
-            .chain(["icons/atlas-logo.png", "icons/atlas-app-icon.png", VAULT_FOLDER_ART].iter())
+            .chain(
+                [
+                    "icons/atlas-logo.png",
+                    "icons/atlas-app-icon.png",
+                    VAULT_FOLDER_ART,
+                ]
+                .iter(),
+            )
         {
             let bytes = registry
                 .load(path)

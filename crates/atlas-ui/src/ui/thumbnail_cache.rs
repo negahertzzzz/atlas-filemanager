@@ -16,7 +16,11 @@ struct Cache<V> {
 
 impl<V> Cache<V> {
     fn new(budget: usize) -> Self {
-        Self { entries: lru::LruCache::unbounded(), bytes: 0, budget }
+        Self {
+            entries: lru::LruCache::unbounded(),
+            bytes: 0,
+            budget,
+        }
     }
 
     fn insert(&mut self, key: PathBuf, value: V, bytes: usize) {
@@ -24,9 +28,13 @@ impl<V> Cache<V> {
             self.bytes = self.bytes.saturating_sub(previous);
         }
         // An image larger than the entire budget must not flush the hot cache.
-        if bytes > self.budget { return; }
+        if bytes > self.budget {
+            return;
+        }
         while self.bytes.saturating_add(bytes) > self.budget {
-            let Some((_, (_, evicted))) = self.entries.pop_lru() else { break; };
+            let Some((_, (_, evicted))) = self.entries.pop_lru() else {
+                break;
+            };
             self.bytes = self.bytes.saturating_sub(evicted);
         }
         self.bytes += bytes;
@@ -36,7 +44,9 @@ impl<V> Cache<V> {
 
 impl ThumbnailCache {
     pub(crate) fn new(megabytes: usize) -> Self {
-        Self { inner: RefCell::new(Cache::new(megabytes.clamp(1, 4096) * 1024 * 1024)) }
+        Self {
+            inner: RefCell::new(Cache::new(megabytes.clamp(1, 4096) * 1024 * 1024)),
+        }
     }
 
     pub(crate) fn contains_key(&self, path: &Path) -> bool {
@@ -47,25 +57,35 @@ impl ThumbnailCache {
         let mut cache = self.inner.borrow_mut();
         cache.budget = megabytes.clamp(1, 4096) * 1024 * 1024;
         while cache.bytes > cache.budget {
-            let Some((_, (_, bytes))) = cache.entries.pop_lru() else { break; };
+            let Some((_, (_, bytes))) = cache.entries.pop_lru() else {
+                break;
+            };
             cache.bytes = cache.bytes.saturating_sub(bytes);
         }
     }
 
     pub(crate) fn get(&self, path: &Path) -> Option<ThumbState> {
-        self.inner.borrow_mut().entries.get(path).map(|(value, _)| value.clone())
+        self.inner
+            .borrow_mut()
+            .entries
+            .get(path)
+            .map(|(value, _)| value.clone())
     }
 
     pub(crate) fn insert(&self, path: PathBuf, state: ThumbState) {
         let bytes = match &state {
             ThumbState::Ready(image) => {
                 let size = image.size(0);
-                (u32::from(size.width) as usize).saturating_mul(u32::from(size.height) as usize).saturating_mul(4)
+                (u32::from(size.width) as usize)
+                    .saturating_mul(u32::from(size.height) as usize)
+                    .saturating_mul(4)
             }
             _ => 0,
         };
         // Charge keys and failed/loading sentinels too, to bound non-image entries.
-        let cost = bytes.saturating_add(path.as_os_str().len().saturating_mul(2)).saturating_add(128);
+        let cost = bytes
+            .saturating_add(path.as_os_str().len().saturating_mul(2))
+            .saturating_add(128);
         self.inner.borrow_mut().insert(path, state, cost);
     }
 

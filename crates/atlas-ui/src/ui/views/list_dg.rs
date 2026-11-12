@@ -479,8 +479,11 @@ impl Element for ListDgElement {
                 let dimmed = crate::ui::views::rename::dim_other_entry(app, pane_id, entry_idx);
                 // Keep names aligned. Hover must never insert a control or shift a file.
                 let show_cell_check = show_checkboxes;
-                let icon =
-                    app.row_icon_for_entry(&entry.path(), &entry.kind(), entry.extension().as_deref());
+                let icon = app.row_icon_for_entry(
+                    &entry.path(),
+                    &entry.kind(),
+                    entry.extension().as_deref(),
+                );
 
                 items.push(RawCellData {
                     pos,
@@ -692,112 +695,133 @@ impl Element for ListDgElement {
             };
 
             // Principle 3: Hardware GPU clipping layer ensures zero bleeding into neighbor cells
-            window.with_element_opacity(Some(cell.opacity * crate::ui::views::rename::cut_path_opacity(&self.app, &cell.path, cx)), |window| {
-                window.paint_layer(cell_bounds, |window| {
-                    // 1. Hover/selection/blinking background highlight
-                    let bg = if cell.selected && !cell.editing {
-                        Some(self.colors.accent)
-                    } else if cell.blinking {
-                        Some(self.colors.accent.opacity(0.38))
-                    } else if cell.hovered {
-                        Some(self.colors.hover)
-                    } else {
-                        None
-                    };
+            window.with_element_opacity(
+                Some(
+                    cell.opacity
+                        * crate::ui::views::rename::cut_path_opacity(&self.app, &cell.path, cx),
+                ),
+                |window| {
+                    window.paint_layer(cell_bounds, |window| {
+                        // 1. Hover/selection/blinking background highlight
+                        let bg = if cell.selected && !cell.editing {
+                            Some(self.colors.accent)
+                        } else if cell.blinking {
+                            Some(self.colors.accent.opacity(0.38))
+                        } else if cell.hovered {
+                            Some(self.colors.hover)
+                        } else {
+                            None
+                        };
 
-                    if let Some(color) = bg {
-                        paint_rounded(window, cell_bounds, 4.0 * zoom, color);
-                    }
-                    if cell.interactive {
-                        crate::ui::operation_feedback::paint_file_feedback(&self.app, &cell.path, cell_bounds, self.colors.accent, 4.0 * zoom, window, cx);
-                    }
+                        if let Some(color) = bg {
+                            paint_rounded(window, cell_bounds, 4.0 * zoom, color);
+                        }
+                        if cell.interactive {
+                            crate::ui::operation_feedback::paint_file_feedback(
+                                &self.app,
+                                &cell.path,
+                                cell_bounds,
+                                self.colors.accent,
+                                4.0 * zoom,
+                                window,
+                                cx,
+                            );
+                        }
 
-                    // Focus cursor outline
-                    if cell.cursor && !cell.selected {
-                        let outline_color =
-                            self.colors
-                                .accent
-                                .opacity(if cell.selected { 0.95 } else { 0.65 });
-                        window.paint_quad(
-                            gpui::outline(cell_bounds, outline_color, Default::default())
-                                .corner_radii(Corners::all(px(4.0 * zoom))),
-                        );
-                    }
+                        // Focus cursor outline
+                        if cell.cursor && !cell.selected {
+                            let outline_color =
+                                self.colors
+                                    .accent
+                                    .opacity(if cell.selected { 0.95 } else { 0.65 });
+                            window.paint_quad(
+                                gpui::outline(cell_bounds, outline_color, Default::default())
+                                    .corner_radii(Corners::all(px(4.0 * zoom))),
+                            );
+                        }
 
-                    // Dimming when another item is being renamed
-                    window.with_element_opacity(
-                        cell.dimmed.then_some(crate::ui::views::rename::DIM_OPACITY),
-                        |window| {
-                            // 2/3. Icon slot: during a multi-selection the shared
-                            // checkbox takes the icon's place on selected items
-                            // (`selected_at` is set exactly while it is shown).
-                            let icon_slot = cell.slots.icon_slot;
-                            let icon_sz = 16.0 * zoom;
-                            let icon_bounds = Bounds {
-                                origin: point(
-                                    bounds.origin.x
-                                        + px(icon_slot.x + (icon_slot.w - icon_sz) * 0.5),
-                                    bounds.origin.y
-                                        + px(icon_slot.y + (icon_slot.h - icon_sz) * 0.5),
-                                ),
-                                size: size(px(icon_sz), px(icon_sz)),
-                            };
-
-                            if cell.selected && !cell.editing && cell.selected_at.is_some() {
-                                selection_checkbox::paint_animated(
-                                    window,
-                                    cx,
-                                    icon_bounds.center(),
-                                    selection_checkbox::ROW_SIZE * zoom,
-                                    cell.selected_at,
-                                );
-                            } else if let Some(tex) = cell.icon.texture_for_size(icon_sz) {
-                                let _ = window.paint_image(
-                                    icon_bounds,
-                                    icon_bounds,
-                                    Corners::default(),
-                                    tex,
-                                    0,
-                                    false,
-                                );
-                            } else {
-                                let icon = if cell.is_dir {
-                                    AtlasIcon::Folder
-                                } else {
-                                    AtlasIcon::File
+                        // Dimming when another item is being renamed
+                        window.with_element_opacity(
+                            cell.dimmed.then_some(crate::ui::views::rename::DIM_OPACITY),
+                            |window| {
+                                // 2/3. Icon slot: during a multi-selection the shared
+                                // checkbox takes the icon's place on selected items
+                                // (`selected_at` is set exactly while it is shown).
+                                let icon_slot = cell.slots.icon_slot;
+                                let icon_sz = 16.0 * zoom;
+                                let icon_bounds = Bounds {
+                                    origin: point(
+                                        bounds.origin.x
+                                            + px(icon_slot.x + (icon_slot.w - icon_sz) * 0.5),
+                                        bounds.origin.y
+                                            + px(icon_slot.y + (icon_slot.h - icon_sz) * 0.5),
+                                    ),
+                                    size: size(px(icon_sz), px(icon_sz)),
                                 };
-                                let icon_color = if cell.selected && !cell.editing {
-                                    self.colors.accent_fg
-                                } else {
-                                    self.colors.accent
-                                };
-                                paint_svg_icon(window, cx, icon_bounds, icon.path(), icon_color);
-                            }
 
-                            // 4. Filename slot: UTF-8 binary search truncation (`shape_text_truncated`)
-                            if !cell.editing {
-                                let name_slot = cell.slots.name_slot;
-                                let text_x = bounds.origin.x + px(name_slot.x);
-                                let text_y = bounds.origin.y + px(text_origin_y(name_slot.y, zoom));
-                                let name_bounds = Bounds {
-                                    origin: point(text_x, bounds.origin.y + px(name_slot.y)),
-                                    size: size(px(name_slot.w), px(name_slot.h)),
-                                };
-                                window.paint_layer(name_bounds, |window| {
-                                    let _ = cell.line.paint(
-                                        point(text_x, text_y),
-                                        px(name_slot.h),
-                                        TextAlign::Left,
-                                        None,
+                                if cell.selected && !cell.editing && cell.selected_at.is_some() {
+                                    selection_checkbox::paint_animated(
                                         window,
                                         cx,
+                                        icon_bounds.center(),
+                                        selection_checkbox::ROW_SIZE * zoom,
+                                        cell.selected_at,
                                     );
-                                });
-                            }
-                        },
-                    );
-                });
-            });
+                                } else if let Some(tex) = cell.icon.texture_for_size(icon_sz) {
+                                    let _ = window.paint_image(
+                                        icon_bounds,
+                                        icon_bounds,
+                                        Corners::default(),
+                                        tex,
+                                        0,
+                                        false,
+                                    );
+                                } else {
+                                    let icon = if cell.is_dir {
+                                        AtlasIcon::Folder
+                                    } else {
+                                        AtlasIcon::File
+                                    };
+                                    let icon_color = if cell.selected && !cell.editing {
+                                        self.colors.accent_fg
+                                    } else {
+                                        self.colors.accent
+                                    };
+                                    paint_svg_icon(
+                                        window,
+                                        cx,
+                                        icon_bounds,
+                                        icon.path(),
+                                        icon_color,
+                                    );
+                                }
+
+                                // 4. Filename slot: UTF-8 binary search truncation (`shape_text_truncated`)
+                                if !cell.editing {
+                                    let name_slot = cell.slots.name_slot;
+                                    let text_x = bounds.origin.x + px(name_slot.x);
+                                    let text_y =
+                                        bounds.origin.y + px(text_origin_y(name_slot.y, zoom));
+                                    let name_bounds = Bounds {
+                                        origin: point(text_x, bounds.origin.y + px(name_slot.y)),
+                                        size: size(px(name_slot.w), px(name_slot.h)),
+                                    };
+                                    window.paint_layer(name_bounds, |window| {
+                                        let _ = cell.line.paint(
+                                            point(text_x, text_y),
+                                            px(name_slot.h),
+                                            TextAlign::Left,
+                                            None,
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                }
+                            },
+                        );
+                    });
+                },
+            );
         }
 
         let Some(app_entity) = self.app.upgrade() else {
@@ -955,15 +979,11 @@ impl App {
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
         let row_font = window.text_style().font();
         let crumb_strip = self.render_crumb_strip(pane_id, &view, fg, muted, border, header_bg, cx);
-        let count = self
-            .state
-            .tab_states
-            .get_mut(&pane_id)
-            .map_or(0, |ts| {
-                ts.visible_indices();
-                // Collapsed groups hide every file but still show their headers.
-                ts.visible.len()
-            });
+        let count = self.state.tab_states.get_mut(&pane_id).map_or(0, |ts| {
+            ts.visible_indices();
+            // Collapsed groups hide every file but still show their headers.
+            ts.visible.len()
+        });
 
         if count == 0 {
             self.list_hit.remove(&pane_id);
@@ -984,7 +1004,9 @@ impl App {
                 &view,
                 pane_id,
             )
-            .when(cfg!(windows), |el| el.on_prepaint_child(zone_recorder(pane_id, &view)))
+            .when(cfg!(windows), |el| {
+                el.on_prepaint_child(zone_recorder(pane_id, &view))
+            })
             .child(timed_layout_region(
                 "pane.crumbs",
                 PANE_CRUMBS_TIMINGS,
@@ -1036,10 +1058,16 @@ impl App {
         };
         let rows = list_row_count(viewport_h, pitch);
         // Each group opens a fresh column topped by its header cell.
-        let group_cells = self.grouped_cells(pane_id, atlas_model::grouping::GroupFlow::Columns { rows });
+        let group_cells =
+            self.grouped_cells(pane_id, atlas_model::grouping::GroupFlow::Columns { rows });
         let visible_arc = match &group_cells {
             Some(groups) => groups.cells.clone(),
-            None => self.state.tab_states.get(&pane_id).map(|ts| ts.visible.clone()).unwrap_or_default(),
+            None => self
+                .state
+                .tab_states
+                .get(&pane_id)
+                .map(|ts| ts.visible.clone())
+                .unwrap_or_default(),
         };
         let count = visible_arc.len();
         let total_cols = count.div_ceil(rows);
@@ -1048,7 +1076,11 @@ impl App {
         let (_, boost) = crate::app::scroll_smooth_params(self.state.settings.scroll_smoothness);
         base_scroll.set_line_scroll_height(px((cell_stride / 3.0) / boost.max(1.0)));
         let content_w = total_cols as f32 * cell_stride;
-        let overscroll_margin = if content_w > viewport_w { 20.0 * zoom_scale } else { 0.0 };
+        let overscroll_margin = if content_w > viewport_w {
+            20.0 * zoom_scale
+        } else {
+            0.0
+        };
         let max_scroll = (content_w + overscroll_margin - viewport_w).max(0.0);
         crate::ui::dg::scroll::apply_deferred(&scroll, false, viewport_w, max_scroll, |pos| {
             (pos < count).then(|| ((pos / rows) as f32 * cell_stride, CELL_W * zoom_scale))
@@ -1137,10 +1169,7 @@ impl App {
                     origin: point(px(cell_x), px(cell_y)),
                     size: size(px(CELL_W * zoom_scale), px(cell_h_px)),
                 };
-                let label = list_name_bounds(
-                    cell_bounds,
-                    zoom_scale,
-                );
+                let label = list_name_bounds(cell_bounds, zoom_scale);
                 rename_overlay = Some(
                     div()
                         .absolute()
@@ -1201,13 +1230,19 @@ impl App {
                 .headers
                 .iter()
                 .map(|header| {
-                    let (_, _, x, y) = list_cell_projection(header.cell, rows, cell_stride, pitch, 0.0, 0.0);
+                    let (_, _, x, y) =
+                        list_cell_projection(header.cell, rows, cell_stride, pitch, 0.0, 0.0);
                     crate::ui::group_header::group_header(
                         pane_id,
                         header,
                         &view,
                         colors,
-                        (px(x), px(y), Some(px(header.span as f32 * cell_stride - gap)), px(cell_h_px)),
+                        (
+                            px(x),
+                            px(y),
+                            Some(px(header.span as f32 * cell_stride - gap)),
+                            px(cell_h_px),
+                        ),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -1329,11 +1364,26 @@ mod tests {
         let pitch = 24.0;
 
         // Items flow down the first column, then wrap into the next one.
-        assert_eq!(list_cell_projection(0, rows, cell_stride, pitch, 0.0, 0.0), (0, 0, 0.0, 0.0));
-        assert_eq!(list_cell_projection(1, rows, cell_stride, pitch, 0.0, 0.0), (1, 0, 0.0, 24.0));
-        assert_eq!(list_cell_projection(2, rows, cell_stride, pitch, 0.0, 0.0), (2, 0, 0.0, 48.0));
-        assert_eq!(list_cell_projection(3, rows, cell_stride, pitch, 0.0, 0.0), (0, 1, 226.0, 0.0));
-        assert_eq!(list_cell_projection(7, rows, cell_stride, pitch, 0.0, 0.0), (1, 2, 452.0, 24.0));
+        assert_eq!(
+            list_cell_projection(0, rows, cell_stride, pitch, 0.0, 0.0),
+            (0, 0, 0.0, 0.0)
+        );
+        assert_eq!(
+            list_cell_projection(1, rows, cell_stride, pitch, 0.0, 0.0),
+            (1, 0, 0.0, 24.0)
+        );
+        assert_eq!(
+            list_cell_projection(2, rows, cell_stride, pitch, 0.0, 0.0),
+            (2, 0, 0.0, 48.0)
+        );
+        assert_eq!(
+            list_cell_projection(3, rows, cell_stride, pitch, 0.0, 0.0),
+            (0, 1, 226.0, 0.0)
+        );
+        assert_eq!(
+            list_cell_projection(7, rows, cell_stride, pitch, 0.0, 0.0),
+            (1, 2, 452.0, 24.0)
+        );
     }
 
     #[test]
@@ -1371,7 +1421,10 @@ mod tests {
         // cell_bounds is the inverse of the hit test.
         for pos in 3..8 {
             let b = model.cell_bounds(pos);
-            assert_eq!(model.hit_visible_pos(point(b.left() + px(1.0), b.top() + px(1.0))), Some(pos));
+            assert_eq!(
+                model.hit_visible_pos(point(b.left() + px(1.0), b.top() + px(1.0))),
+                Some(pos)
+            );
         }
         assert_eq!(model.slot(7), (1, 2));
     }

@@ -79,7 +79,10 @@ pub(crate) fn plan_batch_renames(
     use std::path::PathBuf;
     let moving: Vec<&PathBuf> = pairs.iter().map(|(from, _)| from).collect();
     let clashes = |from: &PathBuf, to: &PathBuf| {
-        from != to && moving.iter().any(|other| crate::app::ops::same_path(other, to))
+        from != to
+            && moving
+                .iter()
+                .any(|other| crate::app::ops::same_path(other, to))
     };
     let mut parked = Vec::new();
     let mut direct = Vec::new();
@@ -158,11 +161,16 @@ impl App {
         let steps = plan_batch_renames(&pairs);
         for (from, to) in &pairs {
             if from != to {
-                self.state.ops.undo_stack.push(UndoEntry::Rename { from: from.clone(), to: to.clone() });
-                let _ = self.tag_db_tx.send(atlas_core::fs::tag_db::TagDbCmd::RenamePath {
-                    old: from.clone(),
-                    new: to.clone(),
+                self.state.ops.undo_stack.push(UndoEntry::Rename {
+                    from: from.clone(),
+                    to: to.clone(),
                 });
+                let _ = self
+                    .tag_db_tx
+                    .send(atlas_core::fs::tag_db::TagDbCmd::RenamePath {
+                        old: from.clone(),
+                        new: to.clone(),
+                    });
             }
         }
         let jobs: Vec<_> = steps
@@ -179,7 +187,15 @@ impl App {
         self.rt.spawn(async move {
             for (from, to, op_id, affected) in jobs {
                 #[cfg(windows)]
-                crate::shell_file_operation::rename_file(from, to, op_id, tx.clone(), affected, owner).await;
+                crate::shell_file_operation::rename_file(
+                    from,
+                    to,
+                    op_id,
+                    tx.clone(),
+                    affected,
+                    owner,
+                )
+                .await;
                 #[cfg(not(windows))]
                 atlas_core::fs::ops::rename_file(from, to, op_id, tx.clone(), affected).await;
             }
@@ -188,32 +204,68 @@ impl App {
 
     #[cfg(windows)]
     pub(crate) fn paste_shortcuts_focused(&mut self) {
-        let Some(dest) = self.tab_data_for(self.state.focused_tile).and_then(|tab| tab.location.fs_dir()).map(std::path::Path::to_path_buf) else { return; };
-        let Some(files) = crate::dnd::windows::ole_clipboard::get_clipboard_files() else { return; };
-        if files.paths.is_empty() { return; }
+        let Some(dest) = self
+            .tab_data_for(self.state.focused_tile)
+            .and_then(|tab| tab.location.fs_dir())
+            .map(std::path::Path::to_path_buf)
+        else {
+            return;
+        };
+        let Some(files) = crate::dnd::windows::ole_clipboard::get_clipboard_files() else {
+            return;
+        };
+        if files.paths.is_empty() {
+            return;
+        }
         let affected_tabs = self.affected_tabs_for_path(&dest);
-        let (id, cancel) = self.state.ops.start_op_labeled(files.paths.len(), rust_i18n::t!("op_creating_shortcuts").to_string());
+        let (id, cancel) = self.state.ops.start_op_labeled(
+            files.paths.len(),
+            rust_i18n::t!("op_creating_shortcuts").to_string(),
+        );
         let tx = self.tx.clone();
         self.rt.spawn(async move {
             let total = files.paths.len() as u64;
             let mut errors = Vec::new();
             for (index, source) in files.paths.into_iter().enumerate() {
                 if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                    errors.push(atlas_model::ops::OpError { path: source, kind: atlas_model::ops::OpErrorKind::Cancelled });
+                    errors.push(atlas_model::ops::OpError {
+                        path: source,
+                        kind: atlas_model::ops::OpErrorKind::Cancelled,
+                    });
                     break;
                 }
-                let _ = tx.send(atlas_model::app_state::BgResult::OpProgress { id, done: index as u64,
-                    total, bytes_done: 0, bytes_total: 0, current_file: source.clone() });
+                let _ = tx.send(atlas_model::app_state::BgResult::OpProgress {
+                    id,
+                    done: index as u64,
+                    total,
+                    bytes_done: 0,
+                    bytes_total: 0,
+                    current_file: source.clone(),
+                });
                 let target = dest.clone();
                 let error_path = source.clone();
-                match tokio::task::spawn_blocking(move || crate::shell_file_operation::create_shortcut(source, target)).await {
-                    Ok(Ok(_)) => {},
+                match tokio::task::spawn_blocking(move || {
+                    crate::shell_file_operation::create_shortcut(source, target)
+                })
+                .await
+                {
+                    Ok(Ok(_)) => {}
                     Ok(Err(error)) => errors.push(error),
-                    Err(error) => errors.push(atlas_model::ops::OpError { path: error_path, kind: atlas_model::ops::OpErrorKind::Msg(error.to_string()) }),
+                    Err(error) => errors.push(atlas_model::ops::OpError {
+                        path: error_path,
+                        kind: atlas_model::ops::OpErrorKind::Msg(error.to_string()),
+                    }),
                 }
             }
-            let _ = tx.send(atlas_model::app_state::BgResult::OpComplete { id,
-                result: if errors.is_empty() { Ok(()) } else { Err(errors) }, affected_tabs });
+            let _ = tx.send(atlas_model::app_state::BgResult::OpComplete {
+                id,
+                result: if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors)
+                },
+                affected_tabs,
+            });
         });
     }
 
@@ -342,11 +394,14 @@ impl App {
             return;
         };
         if let Some(policy) = policy {
-            let built = transfer::build_pairs(&state.clean, &state.conflicts, &policy, &state.request.dest);
+            let built =
+                transfer::build_pairs(&state.clean, &state.conflicts, &policy, &state.request.dest);
             self.spawn_transfer(built.pairs, state.request.kind, state.request.origin);
         }
         while self.state.overlay.transfer_conflict.is_none() {
-            let Some(next) = self.pending_transfers.pop_front() else { break; };
+            let Some(next) = self.pending_transfers.pop_front() else {
+                break;
+            };
             self.request_transfer(next);
         }
     }
@@ -385,12 +440,20 @@ impl App {
             .start_op_labeled(pairs.len(), label.to_string());
         let tx = self.tx.clone();
         let affected: Vec<_> = affected.into_iter().collect();
-        self.operation_feedback.borrow_mut().begin(op_id, pairs.iter().flat_map(|pair| [pair.src.clone(), pair.dst.clone()]));
+        self.operation_feedback.borrow_mut().begin(
+            op_id,
+            pairs
+                .iter()
+                .flat_map(|pair| [pair.src.clone(), pair.dst.clone()]),
+        );
         #[cfg(windows)]
         let owner = self.hwnd;
         self.rt.spawn(async move {
             #[cfg(windows)]
-            crate::shell_file_operation::transfer_with_fallback(pairs, kind, origin, op_id, tx, cancel, affected, owner).await;
+            crate::shell_file_operation::transfer_with_fallback(
+                pairs, kind, origin, op_id, tx, cancel, affected, owner,
+            )
+            .await;
             #[cfg(not(windows))]
             transfer::execute(pairs, kind, origin, op_id, tx, cancel, affected).await;
         });
@@ -459,13 +522,17 @@ impl App {
 
             #[cfg(unix)]
             {
-                let uri_list = crate::dnd::format_uri_list_with_cut(&paths, is_cut).replace('\0', "");
+                let uri_list =
+                    crate::dnd::format_uri_list_with_cut(&paths, is_cut).replace('\0', "");
                 if let Ok(mut cb) = arboard::Clipboard::new() {
                     let _ = cb.set_text(uri_list.clone());
                     #[cfg(target_os = "linux")]
                     {
                         use arboard::{LinuxClipboardKind, SetExtLinux};
-                        let _ = cb.set().clipboard(LinuxClipboardKind::Primary).text(uri_list);
+                        let _ = cb
+                            .set()
+                            .clipboard(LinuxClipboardKind::Primary)
+                            .text(uri_list);
                     }
                 }
             }
@@ -661,7 +728,10 @@ impl App {
         to_trash: bool,
         record_undo: bool,
     ) {
-        let to_trash = to_trash && !paths.iter().any(|path| atlas_core::vault::live::is_private(path));
+        let to_trash = to_trash
+            && !paths
+                .iter()
+                .any(|path| atlas_core::vault::live::is_private(path));
         if record_undo && to_trash && !paths.is_empty() {
             self.state.ops.undo_stack.push(UndoEntry::Trash {
                 paths: paths.clone(),
@@ -683,7 +753,10 @@ impl App {
         let owner = self.hwnd;
         self.rt.spawn(async move {
             #[cfg(windows)]
-            crate::shell_file_operation::delete_files(paths, to_trash, op_id, tx, cancel, affected, owner).await;
+            crate::shell_file_operation::delete_files(
+                paths, to_trash, op_id, tx, cancel, affected, owner,
+            )
+            .await;
             #[cfg(not(windows))]
             atlas_core::fs::ops::delete_files(paths, to_trash, op_id, tx, cancel, affected).await;
         });
@@ -746,13 +819,9 @@ impl App {
             .iter()
             .filter_map(|&i| ts.entries.get(i))
             .filter_map(|e| {
-                e.recycle_info().as_ref().map(|info| {
-                    (
-                        e.path(),
-                        info.i_file.clone(),
-                        info.original_path.clone(),
-                    )
-                })
+                e.recycle_info()
+                    .as_ref()
+                    .map(|info| (e.path(), info.i_file.clone(), info.original_path.clone()))
             })
             .collect()
     }
@@ -907,7 +976,10 @@ impl App {
                     let owner = self.hwnd;
                     self.rt.spawn(async move {
                         #[cfg(windows)]
-                        crate::shell_file_operation::rename_file(to, from, op_id, tx, affected, owner).await;
+                        crate::shell_file_operation::rename_file(
+                            to, from, op_id, tx, affected, owner,
+                        )
+                        .await;
                         #[cfg(not(windows))]
                         atlas_core::fs::ops::rename_file(to, from, op_id, tx, affected).await;
                     });
@@ -943,10 +1015,10 @@ impl App {
                         }
                     }
                     if !items.is_empty() {
-                        let (op_id, _cancel) = self
-                            .state
-                            .ops
-                            .start_op_labeled(items.len(), rust_i18n::t!("op_restoring").to_string());
+                        let (op_id, _cancel) = self.state.ops.start_op_labeled(
+                            items.len(),
+                            rust_i18n::t!("op_restoring").to_string(),
+                        );
                         let tx = self.tx.clone();
                         self.rt.spawn(async move {
                             atlas_core::fs::recycle_bin::restore_items(items, op_id, tx, affected)
@@ -978,7 +1050,10 @@ impl App {
                     let owner = self.hwnd;
                     self.rt.spawn(async move {
                         #[cfg(windows)]
-                        crate::shell_file_operation::rename_file(from, to, op_id, tx, affected, owner).await;
+                        crate::shell_file_operation::rename_file(
+                            from, to, op_id, tx, affected, owner,
+                        )
+                        .await;
                         #[cfg(not(windows))]
                         atlas_core::fs::ops::rename_file(from, to, op_id, tx, affected).await;
                     });

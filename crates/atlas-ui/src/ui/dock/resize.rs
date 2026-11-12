@@ -32,14 +32,26 @@ pub(crate) fn splitter(
             .h_full()
             .flex_none()
             .cursor_col_resize()
-            .child(div().w(px(line)).h_full().mx(px(margin)).group_hover("dock-splitter", |s| s.bg(border))),
+            .child(
+                div()
+                    .w(px(line))
+                    .h_full()
+                    .mx(px(margin))
+                    .group_hover("dock-splitter", |s| s.bg(border)),
+            ),
         LinearDir::Vertical => div()
             .group("dock-splitter")
             .h(px(thickness))
             .w_full()
             .flex_none()
             .cursor_row_resize()
-            .child(div().h(px(line)).w_full().my(px(margin)).group_hover("dock-splitter", |s| s.bg(border))),
+            .child(
+                div()
+                    .h(px(line))
+                    .w_full()
+                    .my(px(margin))
+                    .group_hover("dock-splitter", |s| s.bg(border)),
+            ),
     };
     el.on_mouse_down(MouseButton::Left, move |ev, _window, cx| {
         view.update(cx, |this, _cx| {

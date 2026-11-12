@@ -23,6 +23,14 @@ def read(path: Path) -> str:
     return path.read_bytes().decode("utf-8-sig", errors="replace").replace("\r\n", "\n").strip()
 
 
+def text_hash_matches(path: Path, expected: str) -> bool:
+    """Accept Git's LF/CRLF conversion, including legacy Windows receipts."""
+    raw = path.read_bytes()
+    lf = raw.replace(b"\r\n", b"\n")
+    return any(hashlib.sha256(data).hexdigest() == expected
+               for data in (raw, lf, lf.replace(b"\n", b"\r\n")))
+
+
 def own_notices(directory: Path) -> list[Path]:
     files = []
     for path in sorted(directory.iterdir()):
@@ -212,23 +220,35 @@ def main() -> None:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--allow-missing", action="store_true", help="Audit only; never use for release packaging.")
     parser.add_argument("--verify-release", action="store_true", help="Verify committed inventory inputs and distributed copies without requiring installed npm packages.")
+    parser.add_argument("--scope", choices=("all", "desktop"), default="all",
+                        help="Desktop packaging verifies desktop inputs and copies; web publication still uses all.")
     args = parser.parse_args()
     if args.verify_release:
         report = json.loads(read(LEGAL / "dependency-inventory.json"))
         for file, digest in report["inputHashes"].items():
-            if hashlib.sha256((ROOT / file).read_bytes()).hexdigest() != digest:
+            if args.scope == "desktop" and file.startswith(("website/", "website-edge/")):
+                continue
+            if not text_hash_matches(ROOT / file, digest):
                 raise SystemExit(f"License inventory is stale: {file}. Regenerate before packaging.")
         for override in json.loads(read(LEGAL / "notice-overrides.json")).values():
             for item in override.get("notices", []):
-                if item.get("sha256") and hashlib.sha256((ROOT / item["path"]).read_bytes()).hexdigest() != item["sha256"]:
+                if item.get("sha256") and not text_hash_matches(ROOT / item["path"], item["sha256"]):
                     raise SystemExit(f"License evidence changed: {item['path']}")
         for asset in json.loads(read(LEGAL / "assets.json")):
             for item in asset.get("files", []):
-                if hashlib.sha256((ROOT / item["path"]).read_bytes()).hexdigest() != item["sha256"]:
+                if args.scope == "desktop" and item["path"].startswith(("website/", "website-edge/")):
+                    continue
+                resource = ROOT / item["path"]
+                matches = (text_hash_matches(resource, item["sha256"]) if resource.suffix.lower() == ".svg"
+                           else hashlib.sha256(resource.read_bytes()).hexdigest() == item["sha256"])
+                if not matches:
                     raise SystemExit(f"Resource changed: {item['path']}")
         expected = (LEGAL / "THIRD-PARTY-NOTICES.txt").read_bytes()
-        for file in ["packaging/windows/msix/THIRD-PARTY-NOTICES.txt", "website/public/legal/THIRD-PARTY-NOTICES.txt", "website-edge/public/legal/THIRD-PARTY-NOTICES.txt"]:
-            if (ROOT / file).read_bytes() != expected:
+        copies = ["packaging/windows/msix/THIRD-PARTY-NOTICES.txt"]
+        if args.scope == "all":
+            copies += ["website/public/legal/THIRD-PARTY-NOTICES.txt", "website-edge/public/legal/THIRD-PARTY-NOTICES.txt"]
+        for file in copies:
+            if (ROOT / file).read_bytes().replace(b"\r\n", b"\n") != expected.replace(b"\r\n", b"\n"):
                 raise SystemExit(f"Distributed notices are stale: {file}")
         if report["missingNotices"]:
             raise SystemExit("Missing license notices block packaging.")

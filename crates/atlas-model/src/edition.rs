@@ -129,7 +129,9 @@ mod tests {
         // Single test owns the global so parallel tests never observe it flipped.
         set_entitled(true);
         assert_eq!(current(), Edition::Full);
-        assert!(current().check(Feature::BatchConversion, usize::MAX).is_ok());
+        assert!(current()
+            .check(Feature::BatchConversion, usize::MAX)
+            .is_ok());
         set_entitled(false);
         assert_eq!(current(), BUILD);
     }

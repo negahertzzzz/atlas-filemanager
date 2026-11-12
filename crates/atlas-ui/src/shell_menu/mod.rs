@@ -132,7 +132,12 @@ impl ShellMenuHandle {
     /// yet (the request stays queued and is drained when `WM_ATLAS_SHELLMENU`
     /// next fires; a `Build` always posts so the first one is never lost).
     pub fn send(&self, req: ShellMenuRequest) {
-        if let Some(mut q) = self.requests.lock().or_else(atlas_model::sync::recover).ok() {
+        if let Some(mut q) = self
+            .requests
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+        {
             q.push_back(req);
         }
         let hwnd = self.worker_hwnd.load(Ordering::Acquire);
@@ -160,11 +165,17 @@ impl ShellMenuHandle {
                 if std::fs::create_dir_all(&folder).is_err() {
                     return;
                 }
-                handle.send(ShellMenuRequest::Prewarm { key: "dir".into(), path: folder });
+                handle.send(ShellMenuRequest::Prewarm {
+                    key: "dir".into(),
+                    path: folder,
+                });
                 for ext in ["txt", "zip", "png"] {
                     let file = root.join(format!("a.{ext}"));
                     if file.exists() || std::fs::write(&file, b"").is_ok() {
-                        handle.send(ShellMenuRequest::Prewarm { key: format!(".{ext}"), path: file });
+                        handle.send(ShellMenuRequest::Prewarm {
+                            key: format!(".{ext}"),
+                            path: file,
+                        });
                     }
                 }
             });

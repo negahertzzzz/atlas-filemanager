@@ -9,8 +9,8 @@
 pub mod cut;
 pub mod input;
 mod input_bridge;
-pub(crate) mod menu_panel;
 pub(crate) mod menu;
+pub(crate) mod menu_panel;
 pub(crate) mod motion;
 pub(crate) mod scroll;
 pub(crate) mod table;

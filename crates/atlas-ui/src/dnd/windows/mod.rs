@@ -15,24 +15,26 @@
 
 pub mod clipboard_formats;
 pub mod data_object;
+mod drop_description;
 pub mod drop_source;
 pub mod drop_target;
 pub mod ole_clipboard;
-mod drop_description;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
+use windows::Win32::System::DataExchange::{
+    AddClipboardFormatListener, RemoveClipboardFormatListener,
+};
 use windows::Win32::System::Ole::IDropTarget;
-use windows::Win32::System::DataExchange::{AddClipboardFormatListener, RemoveClipboardFormatListener};
 use windows::Win32::System::Ole::{
     DoDragDrop, DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_MOVE, DROPEFFECT_NONE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, GetCursorPos, PostMessageW, SetWindowLongPtrW, GWLP_WNDPROC, WM_LBUTTONUP,
-    WM_USER, WM_CLIPBOARDUPDATE,
+    CallWindowProcW, GetCursorPos, PostMessageW, SetWindowLongPtrW, GWLP_WNDPROC,
+    WM_CLIPBOARDUPDATE, WM_LBUTTONUP, WM_USER,
 };
 
 use crate::dnd::DropZones;
@@ -43,17 +45,26 @@ use drop_target::DropPayload;
 /// Events pushed by the OLE layer and drained by `App::drain_dnd_queue`.
 pub enum DndEvent {
     DevicesChanged,
-    ClipboardChanged { cut_paths: Vec<PathBuf> },
-    TabTransferAccepted { tab: atlas_model::layout_tree::TileId },
+    ClipboardChanged {
+        cut_paths: Vec<PathBuf>,
+    },
+    TabTransferAccepted {
+        tab: atlas_model::layout_tree::TileId,
+    },
     /// Current drag cursor position over the Atlas window.
-    DragOver { x: f32, y: f32 },
+    DragOver {
+        x: f32,
+        y: f32,
+    },
     /// The external/native drag left the Atlas window.
     DragLeave,
     /// Something was dropped onto an Atlas window.
     DropIn(DropPayload),
     /// A drag *out of* Atlas ended with the target reporting MOVE: the source
     /// files must now be deleted (to trash, recoverable).
-    DragOutMoved { paths: Vec<PathBuf> },
+    DragOutMoved {
+        paths: Vec<PathBuf>,
+    },
     /// An OLE-layer failure the user should see as a toast.
     Error(String),
 }
@@ -117,7 +128,8 @@ unsafe extern "system" fn atlas_wndproc(
         if let Some((_, queue)) = &hook {
             let cut_paths = ole_clipboard::get_clipboard_files()
                 .filter(|contents| contents.preferred_move)
-                .map(|contents| contents.paths).unwrap_or_default();
+                .map(|contents| contents.paths)
+                .unwrap_or_default();
             push_event(Some(queue), DndEvent::ClipboardChanged { cut_paths });
         }
     }
@@ -247,7 +259,9 @@ pub struct DndState {
 
 impl Drop for DndState {
     fn drop(&mut self) {
-        unsafe { let _ = RemoveClipboardFormatListener(HWND(self.hwnd as *mut _)); }
+        unsafe {
+            let _ = RemoveClipboardFormatListener(HWND(self.hwnd as *mut _));
+        }
         // The original procedure remains installed until GPUI destroys the HWND.
     }
 }
@@ -274,8 +288,12 @@ pub fn setup_dnd(hwnd_raw: isize, scale_factor: f32) -> Option<DndState> {
             install_wndproc_hook(hwnd, action_queue.clone());
             let cut_paths = ole_clipboard::get_clipboard_files()
                 .filter(|contents| contents.preferred_move)
-                .map(|contents| contents.paths).unwrap_or_default();
-            push_event(Some(&action_queue), DndEvent::ClipboardChanged { cut_paths });
+                .map(|contents| contents.paths)
+                .unwrap_or_default();
+            push_event(
+                Some(&action_queue),
+                DndEvent::ClipboardChanged { cut_paths },
+            );
             Some(DndState {
                 hwnd: hwnd_raw,
                 target,
@@ -308,7 +326,6 @@ pub fn setup_dnd(hwnd_raw: isize, scale_factor: f32) -> Option<DndState> {
 /// - WM_PAINT is serviced by DirectX/gpui's existing compositor; no re-entrant
 ///   `&mut App` access occurs (render is a separate path from event dispatch).
 pub fn start_drag_real(hwnd_raw: isize, paths: &[PathBuf], allowed: DROPEFFECT) -> DROPEFFECT {
-
     let performed = Arc::new(std::sync::atomic::AtomicU32::new(0));
     let Some(data_obj) = AtlasDataObject::new(paths, allowed, performed.clone()) else {
         tracing::error!("drag aborted: CF_HDROP allocation failed");
@@ -316,9 +333,14 @@ pub fn start_drag_real(hwnd_raw: isize, paths: &[PathBuf], allowed: DROPEFFECT) 
     };
     let source: windows::Win32::System::Ole::IDropSource = AtlasDropSource.into();
     unsafe {
-        use windows::Win32::UI::Shell::{IDragSourceHelper2, CLSID_DragDropHelper, DSH_ALLOWDROPDESCRIPTIONTEXT};
+        use windows::Win32::UI::Shell::{
+            CLSID_DragDropHelper, IDragSourceHelper2, DSH_ALLOWDROPDESCRIPTIONTEXT,
+        };
         if let Ok(helper) = windows::Win32::System::Com::CoCreateInstance::<_, IDragSourceHelper2>(
-            &CLSID_DragDropHelper, None, windows::Win32::System::Com::CLSCTX_INPROC_SERVER) {
+            &CLSID_DragDropHelper,
+            None,
+            windows::Win32::System::Com::CLSCTX_INPROC_SERVER,
+        ) {
             let _ = helper.SetFlags(DSH_ALLOWDROPDESCRIPTIONTEXT.0 as u32);
             let _ = helper.InitializeFromWindow(Some(HWND(hwnd_raw as *mut _)), None, &data_obj);
         }

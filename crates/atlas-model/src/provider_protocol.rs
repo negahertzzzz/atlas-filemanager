@@ -26,7 +26,9 @@ impl Request {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Operation {
     PrepareShutdown,
-    CancelRequest { request_id: u64 },
+    CancelRequest {
+        request_id: u64,
+    },
     Initialize {
         data_dir: String,
     },
@@ -69,8 +71,18 @@ pub enum Operation {
         entries: Vec<EntryRef>,
         destination: String,
     },
-    CopyObject { remote_id: String, from: String, to: String },
-    CopyBetween { transfer_id: String, source_id: String, source: String, destination_id: String, destination: String },
+    CopyObject {
+        remote_id: String,
+        from: String,
+        to: String,
+    },
+    CopyBetween {
+        transfer_id: String,
+        source_id: String,
+        source: String,
+        destination_id: String,
+        destination: String,
+    },
     Download {
         transfer_id: String,
         remote_id: String,

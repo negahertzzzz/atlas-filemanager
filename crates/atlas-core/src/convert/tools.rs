@@ -115,11 +115,17 @@ impl Tools {
         self
     }
     /// Tools whose discovered path is the one supplied by an extension package.
-    pub fn managed_by<'a>(&self, managed: impl IntoIterator<Item = (&'a String, &'a PathBuf)>) -> Vec<Tool> {
+    pub fn managed_by<'a>(
+        &self,
+        managed: impl IntoIterator<Item = (&'a String, &'a PathBuf)>,
+    ) -> Vec<Tool> {
         let mut found = Vec::new();
         for (name, path) in managed {
             for tool in Tool::ALL {
-                if tool.matches_name(name) && self.get(tool) == Some(path.as_path()) && !found.contains(&tool) {
+                if tool.matches_name(name)
+                    && self.get(tool) == Some(path.as_path())
+                    && !found.contains(&tool)
+                {
                     found.push(tool);
                 }
             }

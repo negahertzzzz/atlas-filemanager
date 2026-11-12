@@ -89,7 +89,13 @@ pub fn execute(
     if !policy::is_cleanup_root(&plan.temp_root) {
         return Err(io::Error::other("cleanup_scope_changed"));
     }
-    execute_in(plan, cancel, &mut progress, &history_dir()?, &plan.temp_root)
+    execute_in(
+        plan,
+        cancel,
+        &mut progress,
+        &history_dir()?,
+        &plan.temp_root,
+    )
 }
 
 // The trusted root is supplied exclusively by the production Known Folder

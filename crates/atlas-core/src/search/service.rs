@@ -303,16 +303,17 @@ mod tests {
     use super::*;
 
     #[test]
-
     #[ignore = "needs a built atlas-search-service executable"]
 
     fn test_find_search_service_exe() {
         let exe = find_search_service_exe();
-        assert!(exe.is_some(), "should locate atlas-search-service.exe in workspace target");
+        assert!(
+            exe.is_some(),
+            "should locate atlas-search-service.exe in workspace target"
+        );
     }
 
     #[test]
-
     #[ignore = "needs the search service and real drives"]
 
     fn test_ensure_service_and_multi_drive_search() {
@@ -323,7 +324,10 @@ mod tests {
         let backend = WindowsServiceBackend::new();
         let query = SearchQuery::text("ghidra");
         let batch = backend.search(&query);
-        assert!(!batch.results.is_empty(), "search for 'ghidra' should return results");
+        assert!(
+            !batch.results.is_empty(),
+            "search for 'ghidra' should return results"
+        );
 
         let drive_letters: std::collections::HashSet<char> = batch
             .results
@@ -331,6 +335,10 @@ mod tests {
             .filter_map(|r| r.path.to_str()?.chars().next())
             .collect();
         println!("Drives found in search results: {:?}", drive_letters);
-        assert!(drive_letters.contains(&'C') || drive_letters.contains(&'F') || drive_letters.contains(&'E'));
+        assert!(
+            drive_letters.contains(&'C')
+                || drive_letters.contains(&'F')
+                || drive_letters.contains(&'E')
+        );
     }
 }

@@ -127,7 +127,8 @@ impl FolderViewPrefs {
 
     pub fn remove_subtree(&mut self, root: &std::path::Path) {
         self.entries.retain(|(path, _)| !path.starts_with(root));
-        self.records.retain(|record| !record.location.path.starts_with(root));
+        self.records
+            .retain(|record| !record.location.path.starts_with(root));
     }
 
     pub fn retain_paths(&mut self, mut keep: impl FnMut(&std::path::Path) -> bool) {
@@ -136,24 +137,45 @@ impl FolderViewPrefs {
     }
 
     pub fn get_exact(&self, path: &std::path::Path) -> Option<FolderViewPref> {
-        self.entries.iter().map(|(p, v)| (p, v))
-            .chain(self.records.iter().filter(|r| r.available).map(|r| (&r.location.path, &r.pref)))
-            .find(|(p, _)| *p == path).map(|(_, pref)| pref.clone())
+        self.entries
+            .iter()
+            .map(|(p, v)| (p, v))
+            .chain(
+                self.records
+                    .iter()
+                    .filter(|r| r.available)
+                    .map(|r| (&r.location.path, &r.pref)),
+            )
+            .find(|(p, _)| *p == path)
+            .map(|(_, pref)| pref.clone())
     }
 
     pub fn get(&self, path: &std::path::Path) -> Option<FolderViewPref> {
-        let candidates = self.entries.iter().map(|(p, v)| (p, v))
-            .chain(self.records.iter().filter(|record| record.available).map(|r| (&r.location.path, &r.pref)));
-        candidates.clone().find(|(p, _)| *p == path)
-            .or_else(|| candidates.filter(|(p, pref)| pref.recursive && path.starts_with(p))
-                .max_by_key(|(p, _)| p.components().count()))
+        let candidates = self.entries.iter().map(|(p, v)| (p, v)).chain(
+            self.records
+                .iter()
+                .filter(|record| record.available)
+                .map(|r| (&r.location.path, &r.pref)),
+        );
+        candidates
+            .clone()
+            .find(|(p, _)| *p == path)
+            .or_else(|| {
+                candidates
+                    .filter(|(p, pref)| pref.recursive && path.starts_with(p))
+                    .max_by_key(|(p, _)| p.components().count())
+            })
             .map(|(_, pref)| pref.clone())
     }
 
     /// Insert/update `path`, bumping it to most-recently-used and evicting the
     /// oldest entry past [`Self::CAP`].
     pub fn set(&mut self, path: PathBuf, pref: FolderViewPref) {
-        if let Some(record) = self.records.iter_mut().find(|r| r.available && r.location.path == path) {
+        if let Some(record) = self
+            .records
+            .iter_mut()
+            .find(|r| r.available && r.location.path == path)
+        {
             record.pref = pref;
             return;
         }
@@ -178,9 +200,22 @@ impl FolderViewPrefs {
         for (path, pref) in self.entries.drain(..) {
             let mut location = Bookmark::new(String::new(), path.clone());
             location.reconcile_volume(volumes);
-            if location.volume_serial.is_none() { unbound.push((path, pref)); continue; }
-            self.records.retain(|r| r.location.volume_serial != location.volume_serial || r.location.path != location.path);
-            self.records.insert(0, FolderViewRecord { location, pref, available: true });
+            if location.volume_serial.is_none() {
+                unbound.push((path, pref));
+                continue;
+            }
+            self.records.retain(|r| {
+                r.location.volume_serial != location.volume_serial
+                    || r.location.path != location.path
+            });
+            self.records.insert(
+                0,
+                FolderViewRecord {
+                    location,
+                    pref,
+                    available: true,
+                },
+            );
         }
         self.entries = unbound;
         self.records.truncate(Self::CAP);
@@ -191,8 +226,7 @@ impl FolderViewPrefs {
 fn same_drive(a: &std::path::Path, b: &std::path::Path) -> bool {
     let (a, b) = (a.to_string_lossy(), b.to_string_lossy());
     let (a, b) = (a.as_bytes(), b.as_bytes());
-    a.len() >= 3 && b.len() >= 3 && a[1] == b':' && b[1] == b':'
-        && a[0].eq_ignore_ascii_case(&b[0])
+    a.len() >= 3 && b.len() >= 3 && a[1] == b':' && b[1] == b':' && a[0].eq_ignore_ascii_case(&b[0])
 }
 
 /// Marker for [`ProfileScoped`] — stores [`FolderViewPrefs`] under key `"folder_view"`.
@@ -251,7 +285,11 @@ impl ThemeAppearancePrefs {
     /// Remember `name` as the theme for its appearance. Returns whether the
     /// stored pairing changed (and so needs saving).
     pub fn remember(&mut self, name: &str, dark: bool) -> bool {
-        let slot = if dark { &mut self.dark } else { &mut self.light };
+        let slot = if dark {
+            &mut self.dark
+        } else {
+            &mut self.light
+        };
         if slot.as_deref() == Some(name) {
             return false;
         }
@@ -481,11 +519,13 @@ mod private_identity_tests {
     #[test]
     fn identity_survives_rename_and_serde_and_legacy_profiles_get_distinct_ids() {
         let mut profile = Profile::new("Personal");
-        let id = profile.id.clone(); profile.name = "Renamed".into();
+        let id = profile.id.clone();
+        profile.name = "Renamed".into();
         let serialized = serde_json::to_value(&profile).unwrap();
         let restored: Profile = serde_json::from_value(serialized.clone()).unwrap();
         assert_eq!(restored.id, id);
-        let mut legacy = serialized; legacy.as_object_mut().unwrap().remove("id");
+        let mut legacy = serialized;
+        legacy.as_object_mut().unwrap().remove("id");
         let first: Profile = serde_json::from_value(legacy.clone()).unwrap();
         let second: Profile = serde_json::from_value(legacy).unwrap();
         assert_ne!(first.id, second.id);
@@ -524,7 +564,9 @@ impl ProfileManager {
             for bookmark in &mut profile.bookmarks {
                 let old = bookmark.path.clone();
                 result.changed |= bookmark.reconcile_volume(volumes);
-                if old != bookmark.path { result.moved.push((old, bookmark.path.clone())); }
+                if old != bookmark.path {
+                    result.moved.push((old, bookmark.path.clone()));
+                }
             }
             if let Some(tree) = &mut profile.tree {
                 for (_, tile) in tree.tiles.iter_mut() {
@@ -532,13 +574,18 @@ impl ProfileManager {
                         let old = tab.volume_path().map(std::path::Path::to_path_buf);
                         result.changed |= tab.reconcile_volume(volumes);
                         if let (Some(old), Some(new)) = (old, tab.volume_path()) {
-                            if old != new { result.moved.push((old, new.to_path_buf())); }
+                            if old != new {
+                                result.moved.push((old, new.to_path_buf()));
+                            }
                         }
                     }
                 }
             }
             let mut recent = profile.scoped::<RecentFoldersFeature>();
-            let saved: HashMap<PathBuf, u32> = profile.prefs.get("recent_folder_volumes").unwrap_or_default();
+            let saved: HashMap<PathBuf, u32> = profile
+                .prefs
+                .get("recent_folder_volumes")
+                .unwrap_or_default();
             let mut identities = HashMap::new();
             for path in &mut recent {
                 let old = path.clone();
@@ -546,8 +593,12 @@ impl ProfileManager {
                 identity.volume_serial = saved.get(&old).copied();
                 result.changed |= identity.reconcile_volume(volumes);
                 *path = identity.path;
-                if let Some(serial) = identity.volume_serial { identities.insert(path.clone(), serial); }
-                if old != *path { result.moved.push((old, path.clone())); }
+                if let Some(serial) = identity.volume_serial {
+                    identities.insert(path.clone(), serial);
+                }
+                if old != *path {
+                    result.moved.push((old, path.clone()));
+                }
             }
             profile.set_scoped::<RecentFoldersFeature>(&recent);
             profile.prefs.set("recent_folder_volumes", &identities);
@@ -655,59 +706,126 @@ mod tests {
         profiles.profiles.push(Profile::new("Inactive"));
         let profile = &mut profiles.profiles[1];
         let mut tree = Tree::empty();
-        let tab = tree.tiles.insert_pane(TabData::with_view(PathBuf::from(r"E:\Music"), ViewMode::List, 128.0, false));
+        let tab = tree.tiles.insert_pane(TabData::with_view(
+            PathBuf::from(r"E:\Music"),
+            ViewMode::List,
+            128.0,
+            false,
+        ));
         tree.root = Some(tree.tiles.insert_tab_tile(vec![tab]));
         profile.tree = Some(tree);
         profile.set_scoped::<RecentFoldersFeature>(&vec![PathBuf::from(r"E:\Music\日本語")]);
-        assert!(profiles.reconcile_volume_paths(&[(PathBuf::from(r"E:\"), 42)]).changed);
+        assert!(
+            profiles
+                .reconcile_volume_paths(&[(PathBuf::from(r"E:\"), 42)])
+                .changed
+        );
         let json = serde_json::to_string(&profiles).unwrap();
         let mut profiles: ProfileManager = serde_json::from_str(&json).unwrap();
         // Another disk reuses E: while the original USB is disconnected.
         let disconnected = profiles.reconcile_volume_paths(&[(PathBuf::from(r"E:\"), 99)]);
         assert!(disconnected.moved.is_empty());
-        let changed = profiles.reconcile_volume_paths(&[(PathBuf::from(r"E:\"), 99), (PathBuf::from(r"F:\"), 42)]);
+        let changed = profiles
+            .reconcile_volume_paths(&[(PathBuf::from(r"E:\"), 99), (PathBuf::from(r"F:\"), 42)]);
         assert_eq!(changed.moved.len(), 2);
         let profile = &profiles.profiles[1];
-        assert_eq!(profile.scoped::<RecentFoldersFeature>(), [PathBuf::from(r"F:\Music\日本語")]);
+        assert_eq!(
+            profile.scoped::<RecentFoldersFeature>(),
+            [PathBuf::from(r"F:\Music\日本語")]
+        );
         let restored = profile.tree.as_ref().unwrap().tiles.get_pane(&tab).unwrap();
-        assert_eq!(restored.location, crate::location::Location::Directory(PathBuf::from(r"F:\Music")));
+        assert_eq!(
+            restored.location,
+            crate::location::Location::Directory(PathBuf::from(r"F:\Music"))
+        );
         assert_eq!(restored.volume_serial, Some(42));
         // Capture survives a second roundtrip and can follow another letter.
-        let mut profiles: ProfileManager = serde_json::from_str(&serde_json::to_string(&profiles).unwrap()).unwrap();
-        assert_eq!(profiles.reconcile_volume_paths(&[(PathBuf::from(r"G:\"), 42)]).moved.len(), 2);
+        let mut profiles: ProfileManager =
+            serde_json::from_str(&serde_json::to_string(&profiles).unwrap()).unwrap();
+        assert_eq!(
+            profiles
+                .reconcile_volume_paths(&[(PathBuf::from(r"G:\"), 42)])
+                .moved
+                .len(),
+            2
+        );
     }
 
     fn folder_pref(mode: crate::settings::ViewMode, recursive: bool) -> FolderViewPref {
-        FolderViewPref { view_mode: mode, sort_col: crate::file_entry::SortColumn::Name,
-            sort_dir: crate::file_entry::SortDir::Asc, recursive, columns: None }
+        FolderViewPref {
+            view_mode: mode,
+            sort_col: crate::file_entry::SortColumn::Name,
+            sort_dir: crate::file_entry::SortDir::Asc,
+            recursive,
+            columns: None,
+        }
     }
 
     #[test]
     fn folder_views_follow_the_partition_and_do_not_leak_to_a_reused_letter() {
         let mut prefs = FolderViewPrefs::default();
-        prefs.set(PathBuf::from(r"E:\photos"), folder_pref(crate::settings::ViewMode::Grid, true));
+        prefs.set(
+            PathBuf::from(r"E:\photos"),
+            folder_pref(crate::settings::ViewMode::Grid, true),
+        );
         prefs.reconcile_volumes(&[(PathBuf::from(r"E:\"), 42)]);
         let json = serde_json::to_string(&prefs).unwrap();
         let mut prefs: FolderViewPrefs = serde_json::from_str(&json).unwrap();
         prefs.reconcile_volumes(&[(PathBuf::from(r"E:\"), 99)]);
         assert!(prefs.get(std::path::Path::new(r"E:\photos")).is_none());
-        prefs.set(PathBuf::from(r"E:\photos"), folder_pref(crate::settings::ViewMode::List, false));
+        prefs.set(
+            PathBuf::from(r"E:\photos"),
+            folder_pref(crate::settings::ViewMode::List, false),
+        );
         prefs.reconcile_volumes(&[(PathBuf::from(r"E:\"), 99), (PathBuf::from(r"H:\"), 42)]);
-        assert_eq!(prefs.get(std::path::Path::new(r"E:\photos")).unwrap().view_mode, crate::settings::ViewMode::List);
-        assert_eq!(prefs.get(std::path::Path::new(r"H:\photos")).unwrap().view_mode, crate::settings::ViewMode::Grid);
+        assert_eq!(
+            prefs
+                .get(std::path::Path::new(r"E:\photos"))
+                .unwrap()
+                .view_mode,
+            crate::settings::ViewMode::List
+        );
+        assert_eq!(
+            prefs
+                .get(std::path::Path::new(r"H:\photos"))
+                .unwrap()
+                .view_mode,
+            crate::settings::ViewMode::Grid
+        );
     }
 
     #[test]
     fn closest_recursive_folder_wins_and_exact_children_override_it() {
         let mut prefs = FolderViewPrefs::default();
-        prefs.set(PathBuf::from("/a"), folder_pref(crate::settings::ViewMode::Grid, true));
-        prefs.set(PathBuf::from("/a/b"), folder_pref(crate::settings::ViewMode::List, true));
-        assert_eq!(prefs.get(std::path::Path::new("/a/b/c")).unwrap().view_mode, crate::settings::ViewMode::List);
-        prefs.set(PathBuf::from("/a/b/c"), folder_pref(crate::settings::ViewMode::Details, false));
-        assert_eq!(prefs.get(std::path::Path::new("/a/b/c")).unwrap().view_mode, crate::settings::ViewMode::Details);
+        prefs.set(
+            PathBuf::from("/a"),
+            folder_pref(crate::settings::ViewMode::Grid, true),
+        );
+        prefs.set(
+            PathBuf::from("/a/b"),
+            folder_pref(crate::settings::ViewMode::List, true),
+        );
+        assert_eq!(
+            prefs.get(std::path::Path::new("/a/b/c")).unwrap().view_mode,
+            crate::settings::ViewMode::List
+        );
+        prefs.set(
+            PathBuf::from("/a/b/c"),
+            folder_pref(crate::settings::ViewMode::Details, false),
+        );
+        assert_eq!(
+            prefs.get(std::path::Path::new("/a/b/c")).unwrap().view_mode,
+            crate::settings::ViewMode::Details
+        );
         assert!(prefs.get(std::path::Path::new("/ab")).is_none());
         assert!(prefs.get_exact(std::path::Path::new("/a/b/c/d")).is_none());
-        assert_eq!(prefs.get(std::path::Path::new("/a/b/c/d")).unwrap().view_mode, crate::settings::ViewMode::List);
+        assert_eq!(
+            prefs
+                .get(std::path::Path::new("/a/b/c/d"))
+                .unwrap()
+                .view_mode,
+            crate::settings::ViewMode::List
+        );
     }
 
     #[test]
@@ -804,7 +922,10 @@ mod tests {
 
         let mut prefs = prefs;
         assert!(prefs.remember("Atlas Nord", true));
-        assert!(!prefs.remember("Atlas Nord", true), "unchanged picks need no save");
+        assert!(
+            !prefs.remember("Atlas Nord", true),
+            "unchanged picks need no save"
+        );
         assert!(prefs.remember("Atlas Rosé", false));
         prefs.follow_system = true;
         profile.set_scoped::<ThemeAppearanceFeature>(&prefs);

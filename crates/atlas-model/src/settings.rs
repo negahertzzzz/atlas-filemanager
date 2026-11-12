@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-const fn default_thumbnail_cache_mb() -> usize { 256 }
+const fn default_thumbnail_cache_mb() -> usize {
+    256
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub enum CharacterKeyAction {
@@ -207,7 +209,12 @@ impl RingPrefs {
     pub fn set_shown(&mut self, id: &str, shown: bool) {
         self.actions.retain(|action| action != id);
         if shown {
-            let rank = |a: &str| RING_ACTION_IDS.iter().position(|x| *x == a).unwrap_or(usize::MAX);
+            let rank = |a: &str| {
+                RING_ACTION_IDS
+                    .iter()
+                    .position(|x| *x == a)
+                    .unwrap_or(usize::MAX)
+            };
             let at = self
                 .actions
                 .iter()
@@ -228,7 +235,11 @@ pub fn default_grid_spacing() -> f32 {
 
 impl Settings {
     pub fn scroll_overscroll_fraction(&self) -> f32 {
-        if self.scroll_overscroll.is_finite() { self.scroll_overscroll.clamp(0.0, 0.9) } else { 0.4 }
+        if self.scroll_overscroll.is_finite() {
+            self.scroll_overscroll.clamp(0.0, 0.9)
+        } else {
+            0.4
+        }
     }
     pub fn single_click_opens_folder(&self, is_dir: bool, clicks: usize, modified: bool) -> bool {
         self.single_click_folders_only && is_dir && clicks == 1 && !modified
@@ -323,7 +334,13 @@ mod tests {
     fn scroll_margin_defaults_to_forty_percent_and_rejects_invalid_extents() {
         let mut settings: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(settings.scroll_overscroll_fraction(), 0.4);
-        for (value, expected) in [(-1.0, 0.0), (0.0, 0.0), (0.4, 0.4), (5.0, 0.9), (f32::NAN, 0.4)] {
+        for (value, expected) in [
+            (-1.0, 0.0),
+            (0.0, 0.0),
+            (0.4, 0.4),
+            (5.0, 0.9),
+            (f32::NAN, 0.4),
+        ] {
             settings.scroll_overscroll = value;
             assert_eq!(settings.scroll_overscroll_fraction(), expected);
         }
@@ -339,7 +356,11 @@ mod tests {
         assert!(!settings.single_click_opens_folder(true, 1, true));
         assert!(!settings.single_click_opens_folder(true, 2, false));
         let saved = serde_json::to_string(&settings).unwrap();
-        assert!(serde_json::from_str::<Settings>(&saved).unwrap().single_click_folders_only);
+        assert!(
+            serde_json::from_str::<Settings>(&saved)
+                .unwrap()
+                .single_click_folders_only
+        );
     }
 
     #[test]
@@ -347,7 +368,8 @@ mod tests {
         let old: Settings = serde_json::from_str(r#"{"font_size": 13.0}"#).unwrap();
         assert_eq!(old.ring, RingPrefs::default());
         let partial: Settings =
-            serde_json::from_str(r#"{"ring": {"actions": ["compress", "future-action"]}}"#).unwrap();
+            serde_json::from_str(r#"{"ring": {"actions": ["compress", "future-action"]}}"#)
+                .unwrap();
         assert_eq!(partial.ring.actions, ["compress", "future-action"]);
         assert_eq!(partial.ring.resize_edge, 1920);
         let mut ring = partial.ring;
@@ -420,7 +442,8 @@ mod tests {
         let old: Settings = serde_json::from_str(r#"{"font_size": 13.0}"#).unwrap();
         assert_eq!(old.cpu_limit, 100);
         assert!(old.check_updates);
-        let set: Settings = serde_json::from_str(r#"{"cpu_limit": 50, "check_updates": false}"#).unwrap();
+        let set: Settings =
+            serde_json::from_str(r#"{"cpu_limit": 50, "check_updates": false}"#).unwrap();
         assert_eq!(set.cpu_limit, 50);
         assert!(!set.check_updates);
     }
@@ -438,4 +461,3 @@ mod tests {
         assert!(s2.vim_mode);
     }
 }
-

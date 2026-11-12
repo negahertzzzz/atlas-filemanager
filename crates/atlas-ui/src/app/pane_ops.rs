@@ -10,7 +10,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 impl App {
-    pub(crate) fn select_spatial_panel(&mut self, direction: crate::ui::tab_reorder::PanelDirection) {
+    pub(crate) fn select_spatial_panel(
+        &mut self,
+        direction: crate::ui::tab_reorder::PanelDirection,
+    ) {
         if let Some(id) = self.spatial_panel(direction) {
             self.activate_tab(id);
         }
@@ -19,8 +22,13 @@ impl App {
     /// Move the focused tab into the neighbouring panel's tab group (the same
     /// tree operation as dropping a tab on another panel). The source group is
     /// removed when it empties.
-    pub(crate) fn move_tab_to_spatial_panel(&mut self, direction: crate::ui::tab_reorder::PanelDirection) {
-        let Some(target) = self.spatial_panel(direction) else { return; };
+    pub(crate) fn move_tab_to_spatial_panel(
+        &mut self,
+        direction: crate::ui::tab_reorder::PanelDirection,
+    ) {
+        let Some(target) = self.spatial_panel(direction) else {
+            return;
+        };
         let cur = self.state.focused_tile;
         if self.state.find_tabs_container(cur) == self.state.find_tabs_container(target) {
             return;
@@ -30,12 +38,20 @@ impl App {
     }
 
     fn spatial_panel(&self, direction: crate::ui::tab_reorder::PanelDirection) -> Option<TileId> {
-        let center = |id: TileId| self.pane_layout_bounds.get(&id).map(|b| (
-            f32::from(b.origin.x + b.size.width / 2.0),
-            f32::from(b.origin.y + b.size.height / 2.0),
-        ));
+        let center = |id: TileId| {
+            self.pane_layout_bounds.get(&id).map(|b| {
+                (
+                    f32::from(b.origin.x + b.size.width / 2.0),
+                    f32::from(b.origin.y + b.size.height / 2.0),
+                )
+            })
+        };
         let origin = center(self.state.focused_tile)?;
-        let panes = self.state.pane_tree.visible_panes().into_iter()
+        let panes = self
+            .state
+            .pane_tree
+            .visible_panes()
+            .into_iter()
             .filter(|id| !self.pane_closing.contains_key(id) && !self.tab_closing.contains_key(id))
             .filter_map(|id| center(id).map(|p| (id, p)));
         crate::ui::tab_reorder::spatial_neighbor(origin, panes, direction)
@@ -46,8 +62,14 @@ impl App {
         // would be given space again by the balance operation.
         let closing: Vec<_> = self.pane_closing.keys().copied().collect();
         self.pane_closing.clear();
-        if !closing.is_empty() { self.remove_panes_from_tree(&closing); }
-        for id in self.state.pane_tree.even_panes(self.state.focused_tile, all) {
+        if !closing.is_empty() {
+            self.remove_panes_from_tree(&closing);
+        }
+        for id in self
+            .state
+            .pane_tree
+            .even_panes(self.state.focused_tile, all)
+        {
             self.dock_split_animations.remove(&id);
         }
     }
@@ -72,7 +94,9 @@ impl App {
             };
             let focused = self.state.focused_tile;
             let id = self.duplicate_tab(source)?;
-            if let Some(Tile::Container(Container::Tabs(tabs))) = self.state.pane_tree.tiles.get_mut(group) {
+            if let Some(Tile::Container(Container::Tabs(tabs))) =
+                self.state.pane_tree.tiles.get_mut(group)
+            {
                 tabs.active = active;
             }
             self.state.focused_tile = focused;
@@ -88,9 +112,18 @@ impl App {
         if self.drag_adds_pane(dragged) && !self.allow_new_pane() {
             return;
         }
-        let Some(linear) = self.state.pane_tree.split_tab_at_root(dragged, vertical, before) else { return; };
+        let Some(linear) = self
+            .state
+            .pane_tree
+            .split_tab_at_root(dragged, vertical, before)
+        else {
+            return;
+        };
         if !self.state.settings.disable_animations {
-            self.dock_split_animations.insert(linear, DockSplitAnimation::new(vec![1.0, 1.0], if before { 0 } else { 1 }));
+            self.dock_split_animations.insert(
+                linear,
+                DockSplitAnimation::new(vec![1.0, 1.0], if before { 0 } else { 1 }),
+            );
         }
         self.push_focus_history();
         self.state.focused_tile = dragged;
@@ -127,8 +160,12 @@ impl App {
 
     pub(crate) fn animate_pane_drag(&mut self, pane_id: TileId, is_starting: bool) {
         if let Some(tabs_id) = self.state.find_tabs_container(pane_id) {
-            if is_starting && !matches!(self.state.pane_tree.tiles.get(tabs_id),
-                Some(Tile::Container(Container::Tabs(tabs))) if tabs.children.len() == 1) { return; }
+            if is_starting
+                && !matches!(self.state.pane_tree.tiles.get(tabs_id),
+                Some(Tile::Container(Container::Tabs(tabs))) if tabs.children.len() == 1)
+            {
+                return;
+            }
             if let Some(parent_id) = self.state.find_parent_of(tabs_id) {
                 if let Some(Tile::Container(Container::Linear(linear))) =
                     self.state.pane_tree.tiles.get(parent_id)
@@ -151,9 +188,13 @@ impl App {
 
                         let anim = DockSplitAnimation {
                             close_duration: None,
-                            from_gap_factors: self.dock_split_animations.get(&parent_id)
+                            from_gap_factors: self
+                                .dock_split_animations
+                                .get(&parent_id)
                                 .map(DockSplitAnimation::gap_factors)
-                                .unwrap_or_else(|| vec![1.0; current_shares.len().saturating_sub(1)]),
+                                .unwrap_or_else(|| {
+                                    vec![1.0; current_shares.len().saturating_sub(1)]
+                                }),
                             started: Instant::now(),
                             from: current_shares,
                             to: target_shares,
@@ -414,9 +455,9 @@ impl App {
             .iter()
             .filter(|(_, tile)| {
                 matches!(tile, Tile::Container(Container::Tabs(tabs))
-                    if tabs.children.iter().any(|id| {
-                        !self.pane_closing.contains_key(id) && !self.tab_closing.contains_key(id)
-                    }))
+                if tabs.children.iter().any(|id| {
+                    !self.pane_closing.contains_key(id) && !self.tab_closing.contains_key(id)
+                }))
             })
             .count()
     }
@@ -550,10 +591,15 @@ impl App {
         };
         let from = self.split_shares_now(parent_id, &base);
         let from_gap_factors = self.split_gaps_now(parent_id, old_len);
-        let mut closing_indices: Vec<_> = linear.children.iter().enumerate()
-            .filter(|(_, child)| self.pane_closing.keys().any(|pane| {
-                self.state.container_contains_pane(**child, *pane)
-            }))
+        let mut closing_indices: Vec<_> = linear
+            .children
+            .iter()
+            .enumerate()
+            .filter(|(_, child)| {
+                self.pane_closing
+                    .keys()
+                    .any(|pane| self.state.container_contains_pane(**child, *pane))
+            })
             .map(|(ix, _)| ix)
             .collect();
         closing_indices.push(pos);
@@ -726,9 +772,16 @@ impl App {
     }
 
     pub(crate) fn reopen_closed_tab(&mut self) {
-        let Some(closed) = self.state.closed_tabs.pop_back() else { return };
+        let Some(closed) = self.state.closed_tabs.pop_back() else {
+            return;
+        };
         if let Some(id) = self.insert_tab(self.state.focused_tile, closed.data.clone()) {
-            self.dispatch_list(id, closed.data.location, closed.data.sort_col, closed.data.sort_dir);
+            self.dispatch_list(
+                id,
+                closed.data.location,
+                closed.data.sort_col,
+                closed.data.sort_dir,
+            );
         } else {
             self.state.closed_tabs.push_back(closed);
         }
@@ -811,12 +864,17 @@ impl App {
         let new_tabs = self.state.pane_tree.tiles.insert_tab_tile(vec![new_pane]);
 
         if let Some(parent_id) = self.state.find_parent_of(source_tabs) {
-            let from_gap_factors = self.state.pane_tree.tiles.get(parent_id)
-                .and_then(|tile| match tile {
-                    Tile::Container(Container::Linear(linear)) if linear.dir == dir =>
-                        Some(self.split_gaps_now(parent_id, linear.children.len())),
-                    _ => None,
-                });
+            let from_gap_factors =
+                self.state
+                    .pane_tree
+                    .tiles
+                    .get(parent_id)
+                    .and_then(|tile| match tile {
+                        Tile::Container(Container::Linear(linear)) if linear.dir == dir => {
+                            Some(self.split_gaps_now(parent_id, linear.children.len()))
+                        }
+                        _ => None,
+                    });
             let from = self
                 .state
                 .pane_tree
@@ -911,7 +969,8 @@ impl App {
     }
 
     fn split_gaps_now(&self, linear_id: TileId, child_count: usize) -> Vec<f32> {
-        self.dock_split_animations.get(&linear_id)
+        self.dock_split_animations
+            .get(&linear_id)
             .filter(|animation| animation.to.len() == child_count)
             .map(DockSplitAnimation::gap_factors)
             .unwrap_or_else(|| vec![1.0; child_count.saturating_sub(1)])
@@ -1052,13 +1111,27 @@ impl App {
         self.cleanup_empty_tabs();
     }
 
-    pub(crate) fn commit_tab_reorder(&mut self, dragged: TileId, children: &[TileId], boundary: usize) {
-        let Some(anchor) = children.iter().find(|id| **id != dragged).copied() else { return; };
-        let Some(group) = self.resolve_tabs_container(anchor) else { return; };
-        let Some(Tile::Container(Container::Tabs(tabs))) = self.state.pane_tree.tiles.get(group) else { return; };
+    pub(crate) fn commit_tab_reorder(
+        &mut self,
+        dragged: TileId,
+        children: &[TileId],
+        boundary: usize,
+    ) {
+        let Some(anchor) = children.iter().find(|id| **id != dragged).copied() else {
+            return;
+        };
+        let Some(group) = self.resolve_tabs_container(anchor) else {
+            return;
+        };
+        let Some(Tile::Container(Container::Tabs(tabs))) = self.state.pane_tree.tiles.get(group)
+        else {
+            return;
+        };
         let order = crate::ui::tab_reorder::projected_order(&tabs.children, dragged, boundary);
         self.detach_tab_for_move(dragged);
-        if let Some(Tile::Container(Container::Tabs(tabs))) = self.state.pane_tree.tiles.get_mut(group) {
+        if let Some(Tile::Container(Container::Tabs(tabs))) =
+            self.state.pane_tree.tiles.get_mut(group)
+        {
             tabs.children = order;
             tabs.active = Some(dragged);
         }

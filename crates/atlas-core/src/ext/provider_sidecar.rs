@@ -29,7 +29,10 @@ impl ProviderSidecar {
         let program = confined_program(extension_dir, command)?;
         let mut cmd = Command::new(program);
         // Provider extensions (cloud) follow the user's resource limit.
-        cmd.env(crate::resources::ENV_VAR, crate::resources::percent().to_string());
+        cmd.env(
+            crate::resources::ENV_VAR,
+            crate::resources::percent().to_string(),
+        );
         cmd.args(args)
             .current_dir(extension_dir)
             .stdin(Stdio::piped())
@@ -56,7 +59,8 @@ impl ProviderSidecar {
                     if let Ok(response) = serde_json::from_str::<Response>(&line) {
                         if let Some(tx) = reader_pending
                             .lock()
-                            .or_else(atlas_model::sync::recover).ok()
+                            .or_else(atlas_model::sync::recover)
+                            .ok()
                             .and_then(|mut pending| pending.remove(&response.id))
                         {
                             let _ = tx.send(response);
@@ -67,7 +71,11 @@ impl ProviderSidecar {
                         tracing::warn!(bytes = line.len(), "provider emitted invalid JSON");
                     }
                 }
-                if let Some(mut pending) = reader_pending.lock().or_else(atlas_model::sync::recover).ok() {
+                if let Some(mut pending) = reader_pending
+                    .lock()
+                    .or_else(atlas_model::sync::recover)
+                    .ok()
+                {
                     for (id, tx) in pending.drain() {
                         let _ = tx.send(Response {
                             version: VERSION,
@@ -95,15 +103,26 @@ impl ProviderSidecar {
         operation: atlas_model::provider_protocol::Operation,
     ) -> Result<Response> {
         let (id, rx) = self.begin_request(operation)?;
-        let result = rx.recv_timeout(REQUEST_TIMEOUT)
+        let result = rx
+            .recv_timeout(REQUEST_TIMEOUT)
             .with_context(|| format!("provider request {id} timed out"));
-        self.pending.lock().or_else(atlas_model::sync::recover).ok().map(|mut pending| pending.remove(&id));
+        self.pending
+            .lock()
+            .or_else(atlas_model::sync::recover)
+            .ok()
+            .map(|mut pending| pending.remove(&id));
         let response = result?;
-        anyhow::ensure!(response.version == VERSION, "Cloud extension protocol mismatch: update the installed Cloud extension");
+        anyhow::ensure!(
+            response.version == VERSION,
+            "Cloud extension protocol mismatch: update the installed Cloud extension"
+        );
         Ok(response)
     }
 
-    fn begin_request(&self, operation: atlas_model::provider_protocol::Operation) -> Result<(u64, flume::Receiver<Response>)> {
+    fn begin_request(
+        &self,
+        operation: atlas_model::provider_protocol::Operation,
+    ) -> Result<(u64, flume::Receiver<Response>)> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let request = Request::new(id, operation);
         let (tx, rx) = flume::bounded(1);
@@ -122,7 +141,11 @@ impl ProviderSidecar {
             },
         );
         if let Err(error) = write_result {
-            self.pending.lock().or_else(atlas_model::sync::recover).ok().map(|mut p| p.remove(&id));
+            self.pending
+                .lock()
+                .or_else(atlas_model::sync::recover)
+                .ok()
+                .map(|mut p| p.remove(&id));
             return Err(error);
         }
 
@@ -131,21 +154,46 @@ impl ProviderSidecar {
 
     /// Transfer lifetime is not bounded by the control RPC timeout. The reader
     /// fails all waiters on process exit. Cancellation waits for backend ack.
-    pub async fn request_async(&self, operation: atlas_model::provider_protocol::Operation,
-        control: Option<crate::cloud::control::TransferControl>) -> Result<Response> {
+    pub async fn request_async(
+        &self,
+        operation: atlas_model::provider_protocol::Operation,
+        control: Option<crate::cloud::control::TransferControl>,
+    ) -> Result<Response> {
         use atlas_model::provider_protocol::Operation;
-        if control.as_ref().is_some_and(|control| control.is_cancelled()) {
+        if control
+            .as_ref()
+            .is_some_and(|control| control.is_cancelled())
+        {
             return Err(crate::cloud::control::TransferCancelled.into());
         }
-        let long_running = matches!(operation, Operation::Upload { .. } | Operation::Download { .. }
-            | Operation::Copy { .. } | Operation::CopyObject { .. } | Operation::CopyBetween { .. });
-        let cancellable_read = matches!(operation, Operation::List { .. } | Operation::Stat { .. } | Operation::Quota { .. });
+        let long_running = matches!(
+            operation,
+            Operation::Upload { .. }
+                | Operation::Download { .. }
+                | Operation::Copy { .. }
+                | Operation::CopyObject { .. }
+                | Operation::CopyBetween { .. }
+        );
+        let cancellable_read = matches!(
+            operation,
+            Operation::List { .. } | Operation::Stat { .. } | Operation::Quota { .. }
+        );
         let (id, rx) = self.begin_request(operation).map_err(|error| {
-            if long_running { crate::cloud::control::OutcomeUnknown(format!("Provider connection failed while submitting a job: {error}")).into() }
-            else { error }
+            if long_running {
+                crate::cloud::control::OutcomeUnknown(format!(
+                    "Provider connection failed while submitting a job: {error}"
+                ))
+                .into()
+            } else {
+                error
+            }
         })?;
         let pending = self.pending.clone();
-        let mut cleanup = PendingRequest { id, pending, cancel_on_drop: cancellable_read.then(|| self.stdin.clone()) };
+        let mut cleanup = PendingRequest {
+            id,
+            pending,
+            cancel_on_drop: cancellable_read.then(|| self.stdin.clone()),
+        };
         let response = if let Some(control) = control {
             tokio::select! {
                 biased;
@@ -167,26 +215,43 @@ impl ProviderSidecar {
         } else if long_running {
             rx.recv_async().await?
         } else {
-            tokio::time::timeout(REQUEST_TIMEOUT, rx.recv_async()).await
+            tokio::time::timeout(REQUEST_TIMEOUT, rx.recv_async())
+                .await
                 .context("provider control request timed out")??
         };
         if long_running && response.version != VERSION {
-            return Err(crate::cloud::control::OutcomeUnknown("Provider response version changed; the transfer outcome is unknown".into()).into());
+            return Err(crate::cloud::control::OutcomeUnknown(
+                "Provider response version changed; the transfer outcome is unknown".into(),
+            )
+            .into());
         }
-        anyhow::ensure!(response.version == VERSION, "Cloud extension protocol mismatch: update the installed Cloud extension");
+        anyhow::ensure!(
+            response.version == VERSION,
+            "Cloud extension protocol mismatch: update the installed Cloud extension"
+        );
         cleanup.cancel_on_drop = None;
         Ok(response)
     }
 }
 
-struct PendingRequest { id: u64, pending: Arc<Mutex<HashMap<u64, flume::Sender<Response>>>>,
-    cancel_on_drop: Option<Arc<Mutex<ChildStdin>>> }
+struct PendingRequest {
+    id: u64,
+    pending: Arc<Mutex<HashMap<u64, flume::Sender<Response>>>>,
+    cancel_on_drop: Option<Arc<Mutex<ChildStdin>>>,
+}
 impl Drop for PendingRequest {
     fn drop(&mut self) {
-        if let Some(mut pending) = self.pending.lock().or_else(atlas_model::sync::recover).ok() { pending.remove(&self.id); }
+        if let Some(mut pending) = self.pending.lock().or_else(atlas_model::sync::recover).ok() {
+            pending.remove(&self.id);
+        }
         if let Some(stdin) = &self.cancel_on_drop {
             if let Some(mut stdin) = stdin.lock().or_else(atlas_model::sync::recover).ok() {
-                let request = Request::new(0, atlas_model::provider_protocol::Operation::CancelRequest { request_id: self.id });
+                let request = Request::new(
+                    0,
+                    atlas_model::provider_protocol::Operation::CancelRequest {
+                        request_id: self.id,
+                    },
+                );
                 let _ = serde_json::to_writer(&mut *stdin, &request);
                 let _ = stdin.write_all(b"\n");
                 let _ = stdin.flush();

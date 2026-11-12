@@ -177,10 +177,23 @@ pub struct Tree<Pane> {
 impl<Pane> Tree<Pane> {
     /// Detach a tab and wrap the surviving root in a two-child, equal split.
     /// Prune its empty source branch without changing the tab's identity.
-    pub fn split_tab_at_root(&mut self, pane: TileId, vertical: bool, before: bool) -> Option<TileId>
-    where Pane: Clone {
+    pub fn split_tab_at_root(
+        &mut self,
+        pane: TileId,
+        vertical: bool,
+        before: bool,
+    ) -> Option<TileId>
+    where
+        Pane: Clone,
+    {
         if !matches!(self.tiles.get(pane), Some(Tile::Pane(_)))
-            || self.tiles.iter().filter(|(_, t)| matches!(t, Tile::Pane(_))).count() < 2 {
+            || self
+                .tiles
+                .iter()
+                .filter(|(_, t)| matches!(t, Tile::Pane(_)))
+                .count()
+                < 2
+        {
             return None;
         }
         let source = self.tiles.iter().find_map(|(id, tile)| match tile {
@@ -191,12 +204,16 @@ impl<Pane> Tree<Pane> {
         match self.tiles.get_mut(source) {
             Some(Tile::Container(Container::Tabs(tabs))) => {
                 tabs.children.retain(|id| *id != pane);
-                if tabs.active == Some(pane) { tabs.active = tabs.children.last().copied(); }
+                if tabs.active == Some(pane) {
+                    tabs.active = tabs.children.last().copied();
+                }
             }
             Some(Tile::Container(Container::Linear(linear))) => {
                 if let Some(ix) = linear.children.iter().position(|id| *id == pane) {
                     linear.children.remove(ix);
-                    if ix < linear.shares.len() { linear.shares.remove(ix); }
+                    if ix < linear.shares.len() {
+                        linear.shares.remove(ix);
+                    }
                 }
             }
             _ => return None,
@@ -206,9 +223,16 @@ impl<Pane> Tree<Pane> {
         self.tiles.map.insert(pane, data);
         let root = self.root?;
         let new_tabs = self.tiles.insert_tab_tile(vec![pane]);
-        let children = if before { vec![new_tabs, root] } else { vec![root, new_tabs] };
-        let split = if vertical { self.tiles.insert_vertical_tile(children) }
-            else { self.tiles.insert_horizontal_tile(children) };
+        let children = if before {
+            vec![new_tabs, root]
+        } else {
+            vec![root, new_tabs]
+        };
+        let split = if vertical {
+            self.tiles.insert_vertical_tile(children)
+        } else {
+            self.tiles.insert_horizontal_tile(children)
+        };
         self.root = Some(split);
         Some(split)
     }
@@ -219,12 +243,17 @@ impl<Pane> Tree<Pane> {
         let mut pending: Vec<_> = self.root.into_iter().collect();
         let mut visited = HashSet::new();
         while let Some(id) = pending.pop() {
-            if !visited.insert(id) { continue; }
+            if !visited.insert(id) {
+                continue;
+            }
             match self.tiles.get(id) {
                 Some(Tile::Pane(_)) => result.push(id),
                 Some(Tile::Container(Container::Tabs(tabs))) => {
-                    pending.extend(tabs.active.filter(|id| tabs.children.contains(id))
-                        .or_else(|| tabs.children.first().copied()));
+                    pending.extend(
+                        tabs.active
+                            .filter(|id| tabs.children.contains(id))
+                            .or_else(|| tabs.children.first().copied()),
+                    );
                 }
                 Some(Tile::Container(Container::Linear(linear))) => {
                     pending.extend(linear.children.iter().rev().copied());
@@ -240,19 +269,29 @@ impl<Pane> Tree<Pane> {
     pub fn even_panes(&mut self, pane: TileId, all: bool) -> Vec<TileId> {
         let mut ids = Vec::new();
         if all {
-            ids.extend(self.tiles.iter().filter_map(|(id, tile)|
-                matches!(tile, Tile::Container(Container::Linear(_))).then_some(*id)));
+            ids.extend(self.tiles.iter().filter_map(|(id, tile)| {
+                matches!(tile, Tile::Container(Container::Linear(_))).then_some(*id)
+            }));
         } else {
             let mut child = pane;
             let mut visited = HashSet::new();
             while visited.insert(child) {
                 let parent = self.tiles.iter().find_map(|(id, tile)| match tile {
-                    Tile::Container(Container::Tabs(t)) if t.children.contains(&child) => Some((*id, false)),
-                    Tile::Container(Container::Linear(l)) if l.children.contains(&child) => Some((*id, true)),
+                    Tile::Container(Container::Tabs(t)) if t.children.contains(&child) => {
+                        Some((*id, false))
+                    }
+                    Tile::Container(Container::Linear(l)) if l.children.contains(&child) => {
+                        Some((*id, true))
+                    }
                     _ => None,
                 });
-                let Some((id, linear)) = parent else { break; };
-                if linear { ids.push(id); break; }
+                let Some((id, linear)) = parent else {
+                    break;
+                };
+                if linear {
+                    ids.push(id);
+                    break;
+                }
                 child = id;
             }
         }
@@ -328,9 +367,7 @@ impl<Pane> Tree<Pane> {
                 visiting.remove(&id);
                 return Some(id);
             }
-            Tile::Container(Container::Tabs(tabs)) => {
-                Ok((tabs.children.clone(), tabs.active))
-            }
+            Tile::Container(Container::Tabs(tabs)) => Ok((tabs.children.clone(), tabs.active)),
             Tile::Container(Container::Linear(linear)) => {
                 Err((linear.children.clone(), linear.shares.clone()))
             }
@@ -488,12 +525,24 @@ mod tests {
                 let split = tree.split_tab_at_root(a, vertical, before).unwrap();
                 tree.sanitize();
                 assert_eq!(tree.root, Some(split));
-                let Some(Tile::Container(Container::Linear(linear))) = tree.tiles.get(split) else { panic!() };
-                assert_eq!(linear.dir, if vertical { LinearDir::Vertical } else { LinearDir::Horizontal });
+                let Some(Tile::Container(Container::Linear(linear))) = tree.tiles.get(split) else {
+                    panic!()
+                };
+                assert_eq!(
+                    linear.dir,
+                    if vertical {
+                        LinearDir::Vertical
+                    } else {
+                        LinearDir::Horizontal
+                    }
+                );
                 assert_eq!(linear.shares, [1.0, 1.0]);
                 assert_eq!(linear.children[if before { 1 } else { 0 }], nested);
                 assert_eq!(tree.tiles.get_pane(&a), Some(&"a"));
-                assert_eq!(tree.visible_panes(), if before { vec![a, b, c] } else { vec![b, c, a] });
+                assert_eq!(
+                    tree.visible_panes(),
+                    if before { vec![a, b, c] } else { vec![b, c, a] }
+                );
                 assert!(tree.tiles.get(ta).is_none());
                 assert!(tree.tiles.get(hidden).is_some());
             }
@@ -510,12 +559,18 @@ mod tests {
         let nested = tree.tiles.insert_vertical_tile(vec![ta, b]);
         let root = tree.tiles.insert_horizontal_tile(vec![nested, c]);
         tree.root = Some(root);
-        if let Some(Tile::Container(Container::Linear(l))) = tree.tiles.get_mut(root) { l.shares = vec![0.2, 0.8]; }
+        if let Some(Tile::Container(Container::Linear(l))) = tree.tiles.get_mut(root) {
+            l.shares = vec![0.2, 0.8];
+        }
         assert_eq!(tree.even_panes(a, false), [nested]);
-        if let Some(Tile::Container(Container::Linear(l))) = tree.tiles.get(root) { assert_eq!(l.shares, [0.2, 0.8]); }
+        if let Some(Tile::Container(Container::Linear(l))) = tree.tiles.get(root) {
+            assert_eq!(l.shares, [0.2, 0.8]);
+        }
         tree.even_panes(a, true);
         for id in [root, nested] {
-            let Some(Tile::Container(Container::Linear(l))) = tree.tiles.get(id) else { panic!() };
+            let Some(Tile::Container(Container::Linear(l))) = tree.tiles.get(id) else {
+                panic!()
+            };
             assert_eq!(l.shares, [0.5, 0.5]);
         }
     }
@@ -670,7 +725,10 @@ mod tests {
 
         assert_eq!(tree.root, Some(tabs));
         assert_eq!(tree.tiles.iter().count(), 2);
-        assert!(matches!(tree.tiles.get(tabs), Some(Tile::Container(Container::Tabs(_)))));
+        assert!(matches!(
+            tree.tiles.get(tabs),
+            Some(Tile::Container(Container::Tabs(_)))
+        ));
         assert!(matches!(tree.tiles.get(pane), Some(Tile::Pane(_))));
     }
 

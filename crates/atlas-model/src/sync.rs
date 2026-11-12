@@ -24,7 +24,9 @@ mod tests {
         let shared = Arc::new(Mutex::new(7));
         let worker = Arc::clone(&shared);
         let _ = std::thread::spawn(move || {
-            let _guard = worker.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let _guard = worker
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             panic!("poison");
         })
         .join();

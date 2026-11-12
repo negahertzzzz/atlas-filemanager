@@ -23,7 +23,6 @@
 //!    - Keyboard navigation: Left arrow (parent column), Right arrow (child column), Up/Down arrows (change selection).
 //!    - Inline rename input integration (`active_input_for_path`).
 
-use atlas_model::clamp::ClampLenient;
 use super::should_suppress_loading;
 use crate::app::{App, RubberTarget};
 use crate::input::action::Action;
@@ -41,6 +40,7 @@ use crate::ui::surface::{
     text_origin_y, Slot,
 };
 use atlas_core::util::display::display_name;
+use atlas_model::clamp::ClampLenient;
 use atlas_model::file_entry::{FileEntry, FileKind};
 use atlas_model::pane::TabId;
 use atlas_model::tab::LoadState;
@@ -50,8 +50,8 @@ use gpui::{
     div, point, px, size, AnyElement, App as GpuiApp, Bounds, Context, Corners, CursorStyle,
     DispatchPhase, Element, ElementId, Font, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    Refineable, ScrollWheelEvent, ShapedLine, SharedString, Style, StyleRefinement,
-    Styled, TextAlign, WeakEntity, Window,
+    Refineable, ScrollWheelEvent, ShapedLine, SharedString, Style, StyleRefinement, Styled,
+    TextAlign, WeakEntity, Window,
 };
 use gpui_component::{v_flex, ActiveTheme, ElementExt};
 use std::path::PathBuf;
@@ -67,8 +67,16 @@ pub const MILLER_PAD_Y: f32 = 2.0;
 
 fn with_miller_clip(window: &mut Window, bounds: Bounds<Pixels>, draw: impl FnOnce(&mut Window)) {
     let bounds = bounds.intersect(&window.content_mask().bounds);
-    if bounds.is_empty() { return; }
-    window.with_content_mask(Some(gpui::ContentMask { bounds, fade_out: Default::default() }), |window| window.paint_layer(bounds, draw));
+    if bounds.is_empty() {
+        return;
+    }
+    window.with_content_mask(
+        Some(gpui::ContentMask {
+            bounds,
+            fade_out: Default::default(),
+        }),
+        |window| window.paint_layer(bounds, draw),
+    );
 }
 
 /// Arithmetic layout slots for a Miller column.
@@ -713,50 +721,100 @@ impl Element for MillerDgElement {
             col.identity.hash(&mut hash);
             let row_epoch = hash.finish();
             let viewport = [col.scroll_y, row_h, col.slots.body_slot.h];
-            let presence_epoch = crate::ui::dg::motion::presentation_epoch(row_epoch, &[
-                col.scroll_y, row_h, col.slots.body_slot.x, col.slots.body_slot.y,
-                col.slots.body_slot.w, col.slots.body_slot.h,
-            ]);
+            let presence_epoch = crate::ui::dg::motion::presentation_epoch(
+                row_epoch,
+                &[
+                    col.scroll_y,
+                    row_h,
+                    col.slots.body_slot.x,
+                    col.slots.body_slot.y,
+                    col.slots.body_slot.w,
+                    col.slots.body_slot.h,
+                ],
+            );
             let state = window.use_keyed_state(
-                SharedString::from(format!("miller-rows-{}-{}", pane_id.0, col.col_idx)), cx,
-                |_, _| (
-                    crate::ui::dg::motion::RowMotion::<PathBuf>::new(row_epoch, viewport),
-                    crate::ui::dg::motion::PresenceMotion::<PathBuf, MillerPreparedRow>::new(),
-                ),
+                SharedString::from(format!("miller-rows-{}-{}", pane_id.0, col.col_idx)),
+                cx,
+                |_, _| {
+                    (
+                        crate::ui::dg::motion::RowMotion::<PathBuf>::new(row_epoch, viewport),
+                        crate::ui::dg::motion::PresenceMotion::<PathBuf, MillerPreparedRow>::new(),
+                    )
+                },
             );
             let now = std::time::Instant::now();
-            let targets: Vec<_> = col.rows.iter().map(|row| (row.entry.path(), row.row_idx, row.slots.row_slot.y)).collect();
+            let targets: Vec<_> = col
+                .rows
+                .iter()
+                .map(|row| (row.entry.path(), row.row_idx, row.slots.row_slot.y))
+                .collect();
             let rows = std::mem::take(&mut col.rows);
             let (samples, active) = state.update(cx, |state, _| {
-                let (positions, moving) = state.0.sample(&targets, row_epoch, viewport, instant, now);
-                let values = rows.into_iter().zip(positions).map(|(mut row, (_, y, opacity))| {
-                    row.slots = miller_checkbox_in_icon(
-                        miller_row_cut(col.slots.body_slot.x, y, col.slots.body_slot.w, row_h, zoom, row.is_dir, false),
-                        row.slots.check_slot.is_some(),
-                    );
-                    row.opacity = opacity;
-                    (row.entry.path(), row)
-                }).collect();
+                let (positions, moving) =
+                    state.0.sample(&targets, row_epoch, viewport, instant, now);
+                let values = rows
+                    .into_iter()
+                    .zip(positions)
+                    .map(|(mut row, (_, y, opacity))| {
+                        row.slots = miller_checkbox_in_icon(
+                            miller_row_cut(
+                                col.slots.body_slot.x,
+                                y,
+                                col.slots.body_slot.w,
+                                row_h,
+                                zoom,
+                                row.is_dir,
+                                false,
+                            ),
+                            row.slots.check_slot.is_some(),
+                        );
+                        row.opacity = opacity;
+                        (row.entry.path(), row)
+                    })
+                    .collect();
                 let (samples, fading) = state.1.sample(values, presence_epoch, instant, now);
                 (samples, moving || fading)
             });
-            col.rows = samples.into_iter().map(|sample| {
-                let mut row = sample.value;
-                row.opacity *= sample.opacity;
-                row.interactive = sample.interactive;
-                if !row.interactive { row.cursor = false; row.blinking = false; row.hovered = false; }
-                row
-            }).collect();
-            if active { window.request_animation_frame(); }
+            col.rows = samples
+                .into_iter()
+                .map(|sample| {
+                    let mut row = sample.value;
+                    row.opacity *= sample.opacity;
+                    row.interactive = sample.interactive;
+                    if !row.interactive {
+                        row.cursor = false;
+                        row.blinking = false;
+                        row.hovered = false;
+                    }
+                    row
+                })
+                .collect();
+            if active {
+                window.request_animation_frame();
+            }
         }
         app_entity.update(cx, |app, _| {
             let dragging = app.is_drag_active(has_gpui_drag);
             for col in &prepaint_cols {
-                let body = col.slots.body_slot.to_bounds(bounds.origin).intersect(&content_mask);
-                let rows: Vec<_> = col.rows.iter().filter(|row| row.interactive).map(|row| {
-                    (row.row_idx, row.slots.row_slot.to_bounds(bounds.origin).intersect(&body))
-                }).collect();
-                app.miller_row_rects.borrow_mut().insert((pane_id, col.col_idx), rows);
+                let body = col
+                    .slots
+                    .body_slot
+                    .to_bounds(bounds.origin)
+                    .intersect(&content_mask);
+                let rows: Vec<_> = col
+                    .rows
+                    .iter()
+                    .filter(|row| row.interactive)
+                    .map(|row| {
+                        (
+                            row.row_idx,
+                            row.slots.row_slot.to_bounds(bounds.origin).intersect(&body),
+                        )
+                    })
+                    .collect();
+                app.miller_row_rects
+                    .borrow_mut()
+                    .insert((pane_id, col.col_idx), rows);
                 if dragging {
                     for row in col.rows.iter().filter(|row| row.interactive && row.is_dir) {
                         app.register_drag_hover_target(DragHoverTarget {
@@ -1243,9 +1301,15 @@ impl Element for MillerDgElement {
                                 if this.rename_edit.is_some() {
                                     this.commit_rename(cx);
                                 }
-                                let preserve_group = this.state.tab_states.get(&pane_id)
+                                let preserve_group = this
+                                    .state
+                                    .tab_states
+                                    .get(&pane_id)
                                     .and_then(|state| state.miller.columns.get(ci))
-                                    .is_some_and(|col| col.selection.selected.len() > 1 && col.selection.selected.contains(&idx));
+                                    .is_some_and(|col| {
+                                        col.selection.selected.len() > 1
+                                            && col.selection.selected.contains(&idx)
+                                    });
                                 this.selection_left_mouse_down(
                                     RubberTarget::MillerColumn(pane_id, ci),
                                     Some(idx),
@@ -1274,9 +1338,15 @@ impl Element for MillerDgElement {
                             if this.rename_edit.is_some() {
                                 this.commit_rename(cx);
                             }
-                            this.selection_left_mouse_down(RubberTarget::MillerColumn(pane_id, ci), None,
-                                ev.position, ev.modifiers.shift, ev.modifiers.control || ev.modifiers.platform,
-                                ev.click_count, cx);
+                            this.selection_left_mouse_down(
+                                RubberTarget::MillerColumn(pane_id, ci),
+                                None,
+                                ev.position,
+                                ev.modifiers.shift,
+                                ev.modifiers.control || ev.modifiers.platform,
+                                ev.click_count,
+                                cx,
+                            );
                             this.notify_pane(pane_id, cx);
                             cx.notify();
                         });
@@ -1498,19 +1568,16 @@ impl App {
 
                 for (position, idx) in ts.miller_visible_indices(ci).iter().copied().enumerate() {
                     let entry = &col.entries[idx];
-                    if let Some(input) =
-                        crate::ui::views::rename::active_input_for_path(self, pane_id, &entry.path())
-                    {
+                    if let Some(input) = crate::ui::views::rename::active_input_for_path(
+                        self,
+                        pane_id,
+                        &entry.path(),
+                    ) {
                         let is_dir = matches!(entry.kind(), FileKind::Dir);
                         let row_y = header_h + (position as f32 * row_h) - scroll_y;
                         let col_x = ci as f32 * col_w;
                         let row_slots = miller_row_cut(
-                            col_x,
-                            row_y,
-                            col_w,
-                            row_h,
-                            zoom,
-                            is_dir,
+                            col_x, row_y, col_w, row_h, zoom, is_dir,
                             false, // checkbox lives in the icon slot; no gutter
                         );
                         let name_slot = row_slots.name_slot;
@@ -1644,19 +1711,22 @@ impl App {
             .size_full()
             .overflow_x_scroll()
             .track_scroll(&horizontal)
-            .when_some(hovered_entry.filter(|_| self.ctx_menu.is_none()), |el, (name, path, is_dir, size, modified)| {
-                el.tooltip(move |window, cx| {
-                    crate::ui::tooltips::entry_hover_tooltip(
-                        name.clone(),
-                        path.clone(),
-                        is_dir,
-                        size,
-                        modified,
-                        window,
-                        cx,
-                    )
-                })
-            })
+            .when_some(
+                hovered_entry.filter(|_| self.ctx_menu.is_none()),
+                |el, (name, path, is_dir, size, modified)| {
+                    el.tooltip(move |window, cx| {
+                        crate::ui::tooltips::entry_hover_tooltip(
+                            name.clone(),
+                            path.clone(),
+                            is_dir,
+                            size,
+                            modified,
+                            window,
+                            cx,
+                        )
+                    })
+                },
+            )
             .child(
                 div()
                     .w(px(total_w))
@@ -1700,7 +1770,10 @@ impl App {
 fn miller_drag_layer(view: &gpui::Entity<App>, pane_id: TabId, total_w: f32) -> AnyElement {
     let drag_view = view.clone();
     div()
-        .id(SharedString::from(format!("miller-dg-drag-layer-{}", pane_id.0)))
+        .id(SharedString::from(format!(
+            "miller-dg-drag-layer-{}",
+            pane_id.0
+        )))
         .absolute()
         .top_0()
         .left_0()
@@ -1720,7 +1793,13 @@ fn miller_drag_layer(view: &gpui::Entity<App>, pane_id: TabId, total_w: f32) -> 
                             .map(|(idx, _)| (*column, *idx))
                     })
                     .and_then(|(column, idx)| {
-                        let col = app.state.tab_states.get(&pane_id)?.miller.columns.get(column)?;
+                        let col = app
+                            .state
+                            .tab_states
+                            .get(&pane_id)?
+                            .miller
+                            .columns
+                            .get(column)?;
                         let entry = col.entries.get(idx)?;
                         col.selection
                             .selected

@@ -203,7 +203,12 @@ pub fn wheel_options(paths: &[PathBuf], tools: &Tools, extra: &[Tool]) -> Vec<Co
 
 /// Engines a provider package could install that would add wheel routes for
 /// `paths`. The wheel hides those routes; the side panel offers the package.
-pub fn locked_engines(paths: &[PathBuf], tools: &Tools, extra: &[Tool], installable: &[Tool]) -> Vec<Tool> {
+pub fn locked_engines(
+    paths: &[PathBuf],
+    tools: &Tools,
+    extra: &[Tool],
+    installable: &[Tool],
+) -> Vec<Tool> {
     let allowed = tools.clone().native_and(extra);
     let mut locked = Vec::new();
     for option in options(paths, &allowed) {

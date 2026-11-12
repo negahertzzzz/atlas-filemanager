@@ -1,10 +1,10 @@
 //! Pane interactions: rubber-band selection, inline rename, type-to-filter, ctrl-scroll.
 #![allow(clippy::too_many_lines)] // reason: cohesive UI block kept whole
 
-use atlas_model::clamp::ClampLenient;
 use crate::app::{App, RubberTarget};
 use crate::input::action::Action;
 use crate::ui::edge_autoscroll;
+use atlas_model::clamp::ClampLenient;
 use atlas_model::layout_tree::Tile;
 use atlas_model::pane::TabId;
 use atlas_model::settings::ViewMode;
@@ -20,18 +20,39 @@ use std::time::Instant;
 mod selection_geometry;
 
 impl App {
-    pub(crate) fn suppress_navigation_double_click(&self, pane: TabId, position: gpui::Point<gpui::Pixels>, clicks: usize) -> bool {
+    pub(crate) fn suppress_navigation_double_click(
+        &self,
+        pane: TabId,
+        position: gpui::Point<gpui::Pixels>,
+        clicks: usize,
+    ) -> bool {
         #[cfg(windows)]
-        let interval = std::time::Duration::from_millis(u64::from(atlas_win_space::integration::double_click_interval_ms()));
+        let interval = std::time::Duration::from_millis(u64::from(
+            atlas_win_space::integration::double_click_interval_ms(),
+        ));
         #[cfg(not(windows))]
         let interval = std::time::Duration::from_millis(500);
-        self.recent_folder_navigation.as_ref().is_some_and(|click| click.suppresses(pane, position, clicks, Instant::now(), interval))
+        self.recent_folder_navigation
+            .as_ref()
+            .is_some_and(|click| click.suppresses(pane, position, clicks, Instant::now(), interval))
     }
-    pub(crate) fn queue_tree_folder_click(&mut self, pane: TabId, index: usize,
-        path: std::path::PathBuf, origin: gpui::Point<gpui::Pixels>) {
-        self.pending_folder_click = self.tab_data_for(pane).map(|tab| crate::ui::click_navigation::FolderClick {
-            pane, index, tree: true, source: tab.location.clone(), path, origin,
-        });
+    pub(crate) fn queue_tree_folder_click(
+        &mut self,
+        pane: TabId,
+        index: usize,
+        path: std::path::PathBuf,
+        origin: gpui::Point<gpui::Pixels>,
+    ) {
+        self.pending_folder_click =
+            self.tab_data_for(pane)
+                .map(|tab| crate::ui::click_navigation::FolderClick {
+                    pane,
+                    index,
+                    tree: true,
+                    source: tab.location.clone(),
+                    path,
+                    origin,
+                });
         self.activate_tab(pane);
         if let Some(tab) = self.state.tab_states.get_mut(&pane) {
             tab.selection.select(index, &[index], false, false);
@@ -41,24 +62,44 @@ impl App {
         self.navigate_entry(pane, path);
     }
 
-    fn finish_folder_click(&mut self, position: gpui::Point<gpui::Pixels>, cx: &mut Context<Self>) -> bool {
-        let Some(click) = self.pending_folder_click.take() else { return false; };
+    fn finish_folder_click(
+        &mut self,
+        position: gpui::Point<gpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(click) = self.pending_folder_click.take() else {
+            return false;
+        };
         let valid = self.state.settings.single_click_folders_only
-            && self.tab_data_for(click.pane).is_some_and(|tab| click.accepts_release(position, &tab.location,
-                self.rubber.as_ref().is_some_and(|rubber| rubber.started)))
+            && self.tab_data_for(click.pane).is_some_and(|tab| {
+                click.accepts_release(
+                    position,
+                    &tab.location,
+                    self.rubber.as_ref().is_some_and(|rubber| rubber.started),
+                )
+            })
             && self.state.tab_states.get(&click.pane).is_some_and(|tab| {
                 let rows;
                 let entry = if click.tree {
                     rows = tab.visible_tree_rows_snapshot();
                     rows.get(click.index).map(|row| row.0)
-                } else { tab.entries.get(click.index) };
-                entry.is_some_and(|entry| entry.kind() == atlas_model::file_entry::FileKind::Dir && entry.path() == click.path)
+                } else {
+                    tab.entries.get(click.index)
+                };
+                entry.is_some_and(|entry| {
+                    entry.kind() == atlas_model::file_entry::FileKind::Dir
+                        && entry.path() == click.path
+                })
             });
-        if !valid { return false; }
+        if !valid {
+            return false;
+        }
         self.rubber = None;
         self.navigate_clicked_folder(click.pane, click.path);
         self.recent_folder_navigation = Some(crate::ui::click_navigation::NavigationClick {
-            pane: click.pane, origin: position, at: Instant::now(),
+            pane: click.pane,
+            origin: position,
+            at: Instant::now(),
         });
         self.notify_pane(click.pane, cx);
         cx.notify();
@@ -98,11 +139,20 @@ impl App {
     pub(crate) fn set_pane_view_mode(&mut self, pane_id: TabId, mode: ViewMode) -> bool {
         #[cfg(feature = "provider-host")]
         if matches!(mode, ViewMode::Tree | ViewMode::Miller)
-            && self.tab_data_for(pane_id).is_some_and(|pane| matches!(pane.location, atlas_model::location::Location::Remote { .. })) {
+            && self.tab_data_for(pane_id).is_some_and(|pane| {
+                matches!(
+                    pane.location,
+                    atlas_model::location::Location::Remote { .. }
+                )
+            })
+        {
             self.toast_info(rust_i18n::t!("cloud_flat_views_only").into_owned());
             return false;
         }
-        if self.tab_data_for(pane_id).is_some_and(|pane| pane.view_mode != mode) {
+        if self
+            .tab_data_for(pane_id)
+            .is_some_and(|pane| pane.view_mode != mode)
+        {
             self.capture_view_selection(pane_id);
         }
         let mut folder_pref_write = None;
@@ -137,8 +187,15 @@ impl App {
         true
     }
 
-    pub(crate) fn set_pane_grid_thumbnail_size(&mut self, pane_id: TabId, thumbnail_size: f32) -> bool {
-        if self.tab_data_for(pane_id).is_some_and(|pane| pane.view_mode != ViewMode::Grid) {
+    pub(crate) fn set_pane_grid_thumbnail_size(
+        &mut self,
+        pane_id: TabId,
+        thumbnail_size: f32,
+    ) -> bool {
+        if self
+            .tab_data_for(pane_id)
+            .is_some_and(|pane| pane.view_mode != ViewMode::Grid)
+        {
             self.capture_view_selection(pane_id);
         }
         let thumbnail_size = thumbnail_size.clamp(64.0, 384.0);
@@ -183,7 +240,13 @@ impl App {
         let pane_id = self.state.focused_tile;
         #[cfg(feature = "provider-host")]
         if matches!(mode, ViewMode::Tree | ViewMode::Miller)
-            && self.tab_data_for(pane_id).is_some_and(|pane| matches!(pane.location, atlas_model::location::Location::Remote { .. })) {
+            && self.tab_data_for(pane_id).is_some_and(|pane| {
+                matches!(
+                    pane.location,
+                    atlas_model::location::Location::Remote { .. }
+                )
+            })
+        {
             return;
         }
         let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(pane_id) else {
@@ -307,8 +370,12 @@ impl App {
             return pos;
         };
         gpui::point(
-            gpui::px(f32::from(pos.x).clamp_lenient(f32::from(bounds.left()), f32::from(bounds.right()))),
-            gpui::px(f32::from(pos.y).clamp_lenient(f32::from(bounds.top()), f32::from(bounds.bottom()))),
+            gpui::px(
+                f32::from(pos.x).clamp_lenient(f32::from(bounds.left()), f32::from(bounds.right())),
+            ),
+            gpui::px(
+                f32::from(pos.y).clamp_lenient(f32::from(bounds.top()), f32::from(bounds.bottom())),
+            ),
         )
     }
 
@@ -317,15 +384,25 @@ impl App {
         pos: gpui::Point<gpui::Pixels>,
     ) -> gpui::Point<gpui::Pixels> {
         gpui::point(
-            gpui::px(f32::from(pos.x).clamp_lenient(f32::from(bounds.left()), f32::from(bounds.right()))),
-            gpui::px(f32::from(pos.y).clamp_lenient(f32::from(bounds.top()), f32::from(bounds.bottom()))),
+            gpui::px(
+                f32::from(pos.x).clamp_lenient(f32::from(bounds.left()), f32::from(bounds.right())),
+            ),
+            gpui::px(
+                f32::from(pos.y).clamp_lenient(f32::from(bounds.top()), f32::from(bounds.bottom())),
+            ),
         )
     }
 
     /// A deferred selected-item click is a possible file drag, not a marquee.
     /// Consume it before the source hands the existing group to GPUI/OLE.
     pub(crate) fn prepare_selection_file_drag(&mut self) -> bool {
-        if self.rubber.as_ref().is_some_and(|r| r.selected_click.is_some()) { self.rubber = None; }
+        if self
+            .rubber
+            .as_ref()
+            .is_some_and(|r| r.selected_click.is_some())
+        {
+            self.rubber = None;
+        }
         self.rubber.is_none()
     }
     pub(crate) fn ensure_drag_selection(&mut self, pane: TabId, entry_idx: usize) {
@@ -424,7 +501,9 @@ impl App {
     ) {
         self.pending_folder_click = None;
         if let RubberTarget::Pane(pane) | RubberTarget::MillerColumn(pane, _) = target {
-            if self.suppress_navigation_double_click(pane, pos, click_count) { return; }
+            if self.suppress_navigation_double_click(pane, pos, click_count) {
+                return;
+            }
         }
         if self.rename_edit.is_some() {
             self.commit_rename(cx);
@@ -437,25 +516,48 @@ impl App {
                 self.rubber = None;
                 self.activate_tab(pane);
                 let parent = match target {
-                    RubberTarget::MillerColumn(_, index) => self.state.tab_states.get(&pane)
-                        .and_then(|state| state.miller.columns.get(index)).and_then(|column| column.location.ascend()),
-                    _ => self.tab_data_for(pane).and_then(|tab| tab.location.ascend()),
+                    RubberTarget::MillerColumn(_, index) => self
+                        .state
+                        .tab_states
+                        .get(&pane)
+                        .and_then(|state| state.miller.columns.get(index))
+                        .and_then(|column| column.location.ascend()),
+                    _ => self
+                        .tab_data_for(pane)
+                        .and_then(|tab| tab.location.ascend()),
                 };
                 if let Some(location) = parent {
-                    self.process_actions([Action::NavigateLocation { tab: pane, location }]);
+                    self.process_actions([Action::NavigateLocation {
+                        tab: pane,
+                        location,
+                    }]);
                 }
                 self.notify_pane(pane, cx);
                 return;
             }
         }
         if let (RubberTarget::Pane(pane), Some(index)) = (target, entry_idx) {
-            if let Some(entry) = self.state.tab_states.get(&pane).and_then(|tab| tab.entries.get(index)) {
-                if self.state.settings.single_click_opens_folder(entry.kind() == atlas_model::file_entry::FileKind::Dir,
-                    click_count, shift || ctrl) {
+            if let Some(entry) = self
+                .state
+                .tab_states
+                .get(&pane)
+                .and_then(|tab| tab.entries.get(index))
+            {
+                if self.state.settings.single_click_opens_folder(
+                    entry.kind() == atlas_model::file_entry::FileKind::Dir,
+                    click_count,
+                    shift || ctrl,
+                ) {
                     if let Some(tab) = self.tab_data_for(pane) {
-                        self.pending_folder_click = Some(crate::ui::click_navigation::FolderClick {
-                            pane, index, tree: false, source: tab.location.clone(), path: entry.path(), origin: pos,
-                        });
+                        self.pending_folder_click =
+                            Some(crate::ui::click_navigation::FolderClick {
+                                pane,
+                                index,
+                                tree: false,
+                                source: tab.location.clone(),
+                                path: entry.path(),
+                                origin: pos,
+                            });
                     }
                 }
             }
@@ -479,7 +581,9 @@ impl App {
             if let Some(ts) = self.state.tab_states.get_mut(&pane) {
                 if let Some(idx) = entry_idx {
                     let eligible = click_count == 1 && !shift && !ctrl && !single_folder_click;
-                    let rename = ts.selection.slow_rename_click(idx, std::time::Instant::now(), eligible);
+                    let rename =
+                        ts.selection
+                            .slow_rename_click(idx, std::time::Instant::now(), eligible);
                     if rename && selected && ts.selection.selected.len() == 1 {
                         // Tree selection indexes visible tree rows, not `entries`.
                         let is_tree = self.state.pane_tree.tiles.get(pane).is_some_and(|tile| {
@@ -495,23 +599,49 @@ impl App {
             }
         }
         if let RubberTarget::MillerColumn(pane, column) = target {
-            if let Some(col) = self.state.tab_states.get_mut(&pane).and_then(|state| state.miller.columns.get_mut(column)) {
+            if let Some(col) = self
+                .state
+                .tab_states
+                .get_mut(&pane)
+                .and_then(|state| state.miller.columns.get_mut(column))
+            {
                 if let Some(index) = entry_idx {
-                    let slow = col.selection.slow_rename_click(index, std::time::Instant::now(), click_count == 1 && !shift && !ctrl);
+                    let slow = col.selection.slow_rename_click(
+                        index,
+                        std::time::Instant::now(),
+                        click_count == 1 && !shift && !ctrl,
+                    );
                     if slow && selected && col.selection.selected.len() == 1 {
                         if let Some(entry) = col.entries.get(index) {
                             self.pending_rename = Some((pane, entry.path(), false));
                         }
                     }
-                } else { col.selection.last_pointer_click = None; }
+                } else {
+                    col.selection.last_pointer_click = None;
+                }
             }
         }
-        let selected_click = selected && !shift && !ctrl && click_count == 1 && match target {
-            RubberTarget::Pane(pane) => self.state.tab_states.get(&pane).is_some_and(|ts| ts.selection.selected.len() > 1),
-            RubberTarget::MillerColumn(pane, column) => self.state.tab_states.get(&pane).and_then(|ts| ts.miller.columns.get(column)).is_some_and(|col| col.selection.selected.len() > 1),
-            RubberTarget::Dropzone => self.dropzone_selection.selected.len() > 1,
-        };
-        if click_count < 2 && ((!selected && (entry_idx.is_none() || (!shift && !ctrl))) || selected_click) {
+        let selected_click = selected
+            && !shift
+            && !ctrl
+            && click_count == 1
+            && match target {
+                RubberTarget::Pane(pane) => self
+                    .state
+                    .tab_states
+                    .get(&pane)
+                    .is_some_and(|ts| ts.selection.selected.len() > 1),
+                RubberTarget::MillerColumn(pane, column) => self
+                    .state
+                    .tab_states
+                    .get(&pane)
+                    .and_then(|ts| ts.miller.columns.get(column))
+                    .is_some_and(|col| col.selection.selected.len() > 1),
+                RubberTarget::Dropzone => self.dropzone_selection.selected.len() > 1,
+            };
+        if click_count < 2
+            && ((!selected && (entry_idx.is_none() || (!shift && !ctrl))) || selected_click)
+        {
             match target {
                 RubberTarget::Pane(pane) => self.begin_rubber(pane, pos, shift || ctrl),
                 RubberTarget::MillerColumn(pane, column) => {
@@ -519,17 +649,30 @@ impl App {
                 }
                 RubberTarget::Dropzone => self.begin_dropzone_rubber(pos, shift || ctrl),
             }
-            if selected_click { if let Some(r) = self.rubber.as_mut() { r.selected_click = entry_idx; } }
+            if selected_click {
+                if let Some(r) = self.rubber.as_mut() {
+                    r.selected_click = entry_idx;
+                }
+            }
         }
         // Preserve the pre-press snapshot for Escape, then clear background clicks
         // immediately so cached panes never display the old focus cursor.
         if entry_idx.is_none() && !shift && !ctrl {
             match target {
                 RubberTarget::Pane(pane) => {
-                    if let Some(ts) = self.state.tab_states.get_mut(&pane) { ts.selection.clear(); }
+                    if let Some(ts) = self.state.tab_states.get_mut(&pane) {
+                        ts.selection.clear();
+                    }
                 }
                 RubberTarget::MillerColumn(pane, column) => {
-                    if let Some(col) = self.state.tab_states.get_mut(&pane).and_then(|ts| ts.miller.columns.get_mut(column)) { col.selection.clear(); }
+                    if let Some(col) = self
+                        .state
+                        .tab_states
+                        .get_mut(&pane)
+                        .and_then(|ts| ts.miller.columns.get_mut(column))
+                    {
+                        col.selection.clear();
+                    }
                 }
                 RubberTarget::Dropzone => self.dropzone_selection.clear(),
             }
@@ -557,7 +700,8 @@ impl App {
                     ts.miller.focused = column;
                     if let (Some(col), Some(idx)) = (ts.miller.columns.get_mut(column), entry_idx) {
                         if !selected || shift || ctrl {
-                            let visible = col.visible_indices(&ts.filter, ts.show_files, ts.show_folders);
+                            let visible =
+                                col.visible_indices(&ts.filter, ts.show_files, ts.show_folders);
                             col.selection.select(idx, &visible, shift, ctrl);
                         }
                     }
@@ -647,10 +791,22 @@ impl App {
             return (1, 0);
         };
         // Grouped Details/List scroll over headers + files, as published by the view.
-        let count = match (&td.view_mode, ts.group_by != atlas_model::tab::GroupBy::None) {
-            (ViewMode::Details, true) => self.details_hit.get(&pane).map_or(ts.visible.len(), |model| model.total_count),
-            (ViewMode::List, true) => self.list_hit.get(&pane).map_or(ts.visible.len(), |model| model.total_count),
-            (ViewMode::Grid, true) => self.grid_hit.get(&pane).map_or(ts.visible.len(), |model| model.total_count),
+        let count = match (
+            &td.view_mode,
+            ts.group_by != atlas_model::tab::GroupBy::None,
+        ) {
+            (ViewMode::Details, true) => self
+                .details_hit
+                .get(&pane)
+                .map_or(ts.visible.len(), |model| model.total_count),
+            (ViewMode::List, true) => self
+                .list_hit
+                .get(&pane)
+                .map_or(ts.visible.len(), |model| model.total_count),
+            (ViewMode::Grid, true) => self
+                .grid_hit
+                .get(&pane)
+                .map_or(ts.visible.len(), |model| model.total_count),
             _ => ts.visible.len(),
         };
         match &td.view_mode {
@@ -731,17 +887,29 @@ impl App {
                 sel.extend(hits);
                 if let Some(ts) = self.state.tab_states.get_mut(&pane) {
                     let changed = ts.selection.selected != sel;
-                    ts.selection.keyboard_cursor = r.base.keyboard_cursor.filter(|i| sel.contains(i)).or_else(|| sel.iter().min().copied());
+                    ts.selection.keyboard_cursor = r
+                        .base
+                        .keyboard_cursor
+                        .filter(|i| sel.contains(i))
+                        .or_else(|| sel.iter().min().copied());
                     ts.selection.selected = sel;
                     return changed;
                 }
                 false
             }
             RubberTarget::MillerColumn(pane, column) => {
-                let Some(r) = self.rubber.as_ref() else { return false; };
+                let Some(r) = self.rubber.as_ref() else {
+                    return false;
+                };
                 let cursor = r.base.keyboard_cursor;
-                let mut sel = if r.additive { r.base.selected.clone() } else { std::collections::HashSet::new() };
-                if rr > rl && rb > rt { sel.extend(self.rubber_content_hits_for_miller(pane, column, rt, rb)); }
+                let mut sel = if r.additive {
+                    r.base.selected.clone()
+                } else {
+                    std::collections::HashSet::new()
+                };
+                if rr > rl && rb > rt {
+                    sel.extend(self.rubber_content_hits_for_miller(pane, column, rt, rb));
+                }
                 if let Some(col) = self
                     .state
                     .tab_states
@@ -749,7 +917,9 @@ impl App {
                     .and_then(|ts| ts.miller.columns.get_mut(column))
                 {
                     let changed = col.selection.selected != sel;
-                    col.selection.keyboard_cursor = cursor.filter(|i| sel.contains(i)).or_else(|| sel.iter().min().copied());
+                    col.selection.keyboard_cursor = cursor
+                        .filter(|i| sel.contains(i))
+                        .or_else(|| sel.iter().min().copied());
                     col.selection.selected = sel;
                     return changed;
                 }
@@ -774,7 +944,11 @@ impl App {
                 };
                 sel.extend(hits);
                 let changed = self.dropzone_selection.selected != sel;
-                self.dropzone_selection.keyboard_cursor = r.dropzone_base.keyboard_cursor.clone().filter(|i| sel.contains(i));
+                self.dropzone_selection.keyboard_cursor = r
+                    .dropzone_base
+                    .keyboard_cursor
+                    .clone()
+                    .filter(|i| sel.contains(i));
                 self.dropzone_selection.selected = sel;
                 changed
             }
@@ -784,21 +958,47 @@ impl App {
     /// Called after live geometry is published, before a view reads selection.
     /// This also tracks smooth wheel frames without waiting for mouse movement.
     pub(crate) fn refresh_rubber_for_pane(&mut self, pane: TabId, cx: &mut Context<Self>) {
-        let active = self.rubber.as_ref().is_some_and(|r| r.started && matches!(r.target,
-            RubberTarget::Pane(p) | RubberTarget::MillerColumn(p, _) if p == pane));
-        if active && self.apply_rubber() { self.notify_pane(pane, cx); cx.notify(); }
+        let active = self.rubber.as_ref().is_some_and(|r| {
+            r.started
+                && matches!(r.target,
+            RubberTarget::Pane(p) | RubberTarget::MillerColumn(p, _) if p == pane)
+        });
+        if active && self.apply_rubber() {
+            self.notify_pane(pane, cx);
+            cx.notify();
+        }
     }
 
     /// Only the current layout can consume a background click.
     fn pane_selection_hit(&self, pane: TabId, pos: gpui::Point<gpui::Pixels>) -> bool {
-        let Some(tab) = self.tab_data_for(pane) else { return false; };
+        let Some(tab) = self.tab_data_for(pane) else {
+            return false;
+        };
         match tab.view_mode {
-            ViewMode::Details => return self.details_hit.get(&pane).is_some_and(|m| m.hit_entry(pos).is_some()),
-            ViewMode::Grid => return self.grid_hit.get(&pane).is_some_and(|m| m.hit_entry(pos).is_some()),
-            ViewMode::List => return self.list_hit.get(&pane).is_some_and(|m| m.hit_entry(pos).is_some()),
+            ViewMode::Details => {
+                return self
+                    .details_hit
+                    .get(&pane)
+                    .is_some_and(|m| m.hit_entry(pos).is_some())
+            }
+            ViewMode::Grid => {
+                return self
+                    .grid_hit
+                    .get(&pane)
+                    .is_some_and(|m| m.hit_entry(pos).is_some())
+            }
+            ViewMode::List => {
+                return self
+                    .list_hit
+                    .get(&pane)
+                    .is_some_and(|m| m.hit_entry(pos).is_some())
+            }
             _ => {}
         }
-        self.row_rects.borrow().get(&pane).is_some_and(|rects| rects.iter().any(|(_, b)| b.contains(&pos)))
+        self.row_rects
+            .borrow()
+            .get(&pane)
+            .is_some_and(|rects| rects.iter().any(|(_, b)| b.contains(&pos)))
     }
 
     fn rubber_content_point(
@@ -846,7 +1046,9 @@ impl App {
         rb: f32,
     ) -> std::collections::HashSet<usize> {
         let mut hits = std::collections::HashSet::new();
-        if rr <= rl || rb <= rt { return hits; }
+        if rr <= rl || rb <= rt {
+            return hits;
+        }
         let zoom = self.state.settings.global_zoom;
         let Some((mode, thumbnail_size)) = self
             .tab_data_for(pane)
@@ -855,12 +1057,24 @@ impl App {
             return hits;
         };
         {
-            let model = match mode { ViewMode::Grid => self.grid_hit.get(&pane), ViewMode::List => self.list_hit.get(&pane), _ => None };
-            if let Some(model) = model { return selection_geometry::grid_hits(model, rl, rr, rt, rb); }
+            let model = match mode {
+                ViewMode::Grid => self.grid_hit.get(&pane),
+                ViewMode::List => self.list_hit.get(&pane),
+                _ => None,
+            };
+            if let Some(model) = model {
+                return selection_geometry::grid_hits(model, rl, rr, rt, rb);
+            }
             if mode == ViewMode::Tree {
                 let row_h = crate::ui::views::tree_dg::TREE_ROW_H * zoom;
-                let count = self.state.tab_states.get(&pane).map_or(0, |ts| ts.visible_tree_rows_snapshot().len());
-                if rr > 0.0 { hits.extend(selection_geometry::row_span(rt, rb, row_h, count)); }
+                let count = self
+                    .state
+                    .tab_states
+                    .get(&pane)
+                    .map_or(0, |ts| ts.visible_tree_rows_snapshot().len());
+                if rr > 0.0 {
+                    hits.extend(selection_geometry::row_span(rt, rb, row_h, count));
+                }
                 return hits;
             }
         }
@@ -871,12 +1085,19 @@ impl App {
         match mode {
             ViewMode::Details => {
                 let row_h = crate::ui::views::details::DETAILS_ROW_H * zoom;
-                hits.extend(visible[selection_geometry::row_span(rt, rb, row_h, visible.len())].iter().copied()
-                    .filter(|cell| !atlas_model::grouping::is_virtual_cell(*cell)));
+                hits.extend(
+                    visible[selection_geometry::row_span(rt, rb, row_h, visible.len())]
+                        .iter()
+                        .copied()
+                        .filter(|cell| !atlas_model::grouping::is_virtual_cell(*cell)),
+                );
             }
             ViewMode::Grid => {
                 let gap = self.state.settings.grid_spacing.clamp(4.0, 48.0) * zoom;
-                let pad = (self.state.settings.grid_spacing.clamp(4.0, 48.0) * 0.75).round().max(4.0) * zoom;
+                let pad = (self.state.settings.grid_spacing.clamp(4.0, 48.0) * 0.75)
+                    .round()
+                    .max(4.0)
+                    * zoom;
                 let thumb = thumbnail_size * zoom;
                 let cell_h = thumb * crate::ui::views::grid_dg::GRID_ICON_AREA
                     + crate::ui::views::grid_dg::GRID_LABEL_H * zoom;
@@ -936,7 +1157,11 @@ impl App {
             return hits;
         };
         let visible = state.miller_visible_indices(column);
-        hits.extend(visible[selection_geometry::row_span(rt, rb, row_h, visible.len())].iter().copied());
+        hits.extend(
+            visible[selection_geometry::row_span(rt, rb, row_h, visible.len())]
+                .iter()
+                .copied(),
+        );
         hits
     }
 
@@ -966,13 +1191,21 @@ impl App {
         };
         let offset = handle.offset();
         let horizontal = self.rubber_scrolls_horizontally(target);
-        let max = f32::from(if horizontal { handle.max_offset().x } else { handle.max_offset().y });
+        let max = f32::from(if horizontal {
+            handle.max_offset().x
+        } else {
+            handle.max_offset().y
+        });
         let cur = f32::from(if horizontal { offset.x } else { offset.y });
         let next = (cur + delta_y).clamp_lenient(-max, 0.0);
         if (next - cur).abs() < 0.5 {
             return false;
         }
-        handle.set_offset(if horizontal { gpui::point(gpui::px(next), offset.y) } else { gpui::point(offset.x, gpui::px(next)) });
+        handle.set_offset(if horizontal {
+            gpui::point(gpui::px(next), offset.y)
+        } else {
+            gpui::point(offset.x, gpui::px(next))
+        });
         self.dirty_panes.insert(pane);
         true
     }
@@ -1031,7 +1264,13 @@ impl App {
         let direction = activation.direction;
         // The intent origin stores the pointer coordinate along the scroll axis.
         let along = |p: gpui::Point<gpui::Pixels>| if horizontal { p.x } else { p.y };
-        let with_along = |v: gpui::Pixels| if horizontal { gpui::point(v, current.y) } else { gpui::point(current.x, v) };
+        let with_along = |v: gpui::Pixels| {
+            if horizontal {
+                gpui::point(v, current.y)
+            } else {
+                gpui::point(current.x, v)
+            }
+        };
         if rubber.edge_intent != Some(direction) && rubber.edge_intent_origin_y.is_none() {
             rubber.edge_intent_origin_y = Some(along(previous));
         }
@@ -1052,17 +1291,37 @@ impl App {
     }
 
     fn rubber_edge_can_scroll(&self) -> bool {
-        let Some(r) = self.rubber.as_ref().filter(|r| r.started) else { return false; };
+        let Some(r) = self.rubber.as_ref().filter(|r| r.started) else {
+            return false;
+        };
         let activation = if self.rubber_scrolls_horizontally(r.target) {
             edge_autoscroll::activation_at_horizontal(r.target_bounds, r.current)
-        } else { edge_autoscroll::activation_at(r.target_bounds, r.current) };
-        let Some(activation) = activation.filter(|a| r.edge_intent == Some(a.direction)) else { return false; };
-        let Some((_, handle)) = self.rubber_scroll_handle(r.target) else { return false; };
+        } else {
+            edge_autoscroll::activation_at(r.target_bounds, r.current)
+        };
+        let Some(activation) = activation.filter(|a| r.edge_intent == Some(a.direction)) else {
+            return false;
+        };
+        let Some((_, handle)) = self.rubber_scroll_handle(r.target) else {
+            return false;
+        };
         let horizontal = activation.direction.is_horizontal();
         let offset = handle.offset();
         let current = f32::from(if horizontal { offset.x } else { offset.y });
-        let max = f32::from(if horizontal { handle.max_offset().x } else { handle.max_offset().y });
-        (edge_autoscroll::next_offset(current, max, activation.direction, activation.strength, 1.0 / 60.0) - current).abs() >= 0.01
+        let max = f32::from(if horizontal {
+            handle.max_offset().x
+        } else {
+            handle.max_offset().y
+        });
+        (edge_autoscroll::next_offset(
+            current,
+            max,
+            activation.direction,
+            activation.strength,
+            1.0 / 60.0,
+        ) - current)
+            .abs()
+            >= 0.01
     }
 
     /// Advance one RubberSelect frame after directional intent has armed it.
@@ -1112,15 +1371,20 @@ impl App {
 
     fn rubber_wheel_delta(&self, ev: &ScrollWheelEvent) -> f32 {
         let handle = match self.rubber.as_ref().map(|rubber| rubber.target) {
-            Some(RubberTarget::MillerColumn(pane, column)) => self.miller_scroll_handles.get(&(pane, column)),
+            Some(RubberTarget::MillerColumn(pane, column)) => {
+                self.miller_scroll_handles.get(&(pane, column))
+            }
             Some(RubberTarget::Pane(pane)) => self.scroll_handles.get(&pane),
             _ => self.scroll_handles.get(&self.state.focused_tile),
         };
-        let row_h = handle.and_then(|handle| handle.0.borrow().base_handle.line_scroll_height())
+        let row_h = handle
+            .and_then(|handle| handle.0.borrow().base_handle.line_scroll_height())
             .unwrap_or(gpui::px(20.0));
         match ev.delta {
             gpui::ScrollDelta::Pixels(p) => f32::from(p.y),
-            gpui::ScrollDelta::Lines(l) | gpui::ScrollDelta::PreciseLines(l) => l.y * f32::from(row_h),
+            gpui::ScrollDelta::Lines(l) | gpui::ScrollDelta::PreciseLines(l) => {
+                l.y * f32::from(row_h)
+            }
         }
     }
 
@@ -1151,7 +1415,11 @@ impl App {
             |model| (model.pad_y, model.pitch_y, model.cell_h),
         );
         let gap = (row_pitch - row_h).max(0.0);
-        let bands = self.grid_hit.get(&pane).map(|model| model.bands.clone()).unwrap_or_default();
+        let bands = self
+            .grid_hit
+            .get(&pane)
+            .map(|model| model.bands.clone())
+            .unwrap_or_default();
         let (_, row_count) = self.rubber_scroll_dims(pane);
         if row_count == 0 {
             return true;
@@ -1257,7 +1525,9 @@ impl App {
         let mode = self.tab_data_for(pane).map(|tab| tab.view_mode.clone());
         if mode == Some(ViewMode::Tree) {
             let row = self.state.tab_states.get(&pane).and_then(|tab| {
-                tab.selection.keyboard_cursor.filter(|row| *row < tab.visible_tree_rows_snapshot().len())
+                tab.selection
+                    .keyboard_cursor
+                    .filter(|row| *row < tab.visible_tree_rows_snapshot().len())
             });
             if let (Some(row), Some(scroll)) = (row, self.scroll_handles.get(&pane)) {
                 scroll.scroll_to_item(row, strategy);
@@ -1267,8 +1537,15 @@ impl App {
         }
         if mode == Some(ViewMode::Miller) {
             let selected = self.state.tab_states.get(&pane).and_then(|tab| {
-                tab.miller.columns.get(tab.miller.focused)?.primary_selected()
-                    .and_then(|row| tab.miller_visible_indices(tab.miller.focused).iter().position(|i| *i == row))
+                tab.miller
+                    .columns
+                    .get(tab.miller.focused)?
+                    .primary_selected()
+                    .and_then(|row| {
+                        tab.miller_visible_indices(tab.miller.focused)
+                            .iter()
+                            .position(|i| *i == row)
+                    })
                     .map(|row| (tab.miller.focused, row))
             });
             if let Some((column, row)) = selected {
@@ -1325,7 +1602,11 @@ impl App {
     }
 
     /// Selected, renamable files of `pane` in display order (empty below 2).
-    pub(crate) fn selected_rename_paths(&self, pane: TabId, visible: &[usize]) -> Vec<std::path::PathBuf> {
+    pub(crate) fn selected_rename_paths(
+        &self,
+        pane: TabId,
+        visible: &[usize],
+    ) -> Vec<std::path::PathBuf> {
         let Some(ts) = self.state.tab_states.get(&pane) else {
             return Vec::new();
         };
@@ -1336,12 +1617,18 @@ impl App {
             .filter(|e| e.archive_root().is_none())
             .map(|e| e.path())
             .collect();
-        if paths.len() < 2 { Vec::new() } else { paths }
+        if paths.len() < 2 {
+            Vec::new()
+        } else {
+            paths
+        }
     }
 
     /// Keep the other selected names in lockstep with the rename input.
     pub(crate) fn sync_batch_from_input(&mut self, cx: &mut Context<Self>) {
-        let (Some(edit), Some(batch)) = (self.rename_edit.as_ref(), self.state.batch_rename.as_mut()) else {
+        let (Some(edit), Some(batch)) =
+            (self.rename_edit.as_ref(), self.state.batch_rename.as_mut())
+        else {
             return;
         };
         let input = edit.input.read(cx);
@@ -1364,7 +1651,9 @@ impl App {
 
     /// Write the primary line (after a token command) back into the real input.
     pub(crate) fn push_batch_to_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(edit), Some(batch)) = (self.rename_edit.as_ref(), self.state.batch_rename.as_ref()) else {
+        let (Some(edit), Some(batch)) =
+            (self.rename_edit.as_ref(), self.state.batch_rename.as_ref())
+        else {
             return;
         };
         let Some(text) = batch.multi_lines.get(batch.primary).cloned() else {
@@ -1380,7 +1669,14 @@ impl App {
     }
 
     /// `#`, Alt+N, Alt+D, Tab while a multi-file rename is live. True if handled.
-    pub(crate) fn batch_rename_key(&mut self, key: &str, alt: bool, shift: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn batch_rename_key(
+        &mut self,
+        key: &str,
+        alt: bool,
+        shift: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(batch) = self.state.batch_rename.as_mut() else {
             return false;
         };
@@ -1403,7 +1699,11 @@ impl App {
     }
 
     fn commit_batch_rename(&mut self, cx: &mut Context<Self>) -> bool {
-        let count = self.state.batch_rename.as_ref().map_or(0, |batch| batch.files.len());
+        let count = self
+            .state
+            .batch_rename
+            .as_ref()
+            .map_or(0, |batch| batch.files.len());
         // This also protects the remote path, which dispatches individual actions.
         if !self.allow_edition_action(atlas_model::edition::Feature::BatchRename, count) {
             cx.notify();
@@ -1485,8 +1785,17 @@ impl App {
                     return None;
                 }
                 let stem_chars = Some(rename_selection_chars(&entry.name, &entry.kind()));
-                let position = ts.miller_visible_indices(ts.miller.focused).iter().position(|i| *i == idx)?;
-                return Some((idx, position, entry.path(), entry.name.to_string(), stem_chars));
+                let position = ts
+                    .miller_visible_indices(ts.miller.focused)
+                    .iter()
+                    .position(|i| *i == idx)?;
+                return Some((
+                    idx,
+                    position,
+                    entry.path(),
+                    entry.name.to_string(),
+                    stem_chars,
+                ));
             }
             let idx = ts
                 .selection
@@ -1502,8 +1811,7 @@ impl App {
                 let stem_chars = Some(rename_selection_chars(&entry.name, &entry.kind()));
                 return Some((idx, idx, entry.path(), entry.name.to_string(), stem_chars));
             }
-            let visible_pos = flat_visible.iter()
-                .position(|&visible| visible == idx)?;
+            let visible_pos = flat_visible.iter().position(|&visible| visible == idx)?;
             let entry = ts.entries.get(idx)?;
             if entry.archive_root().is_some() {
                 return None;
@@ -1521,7 +1829,10 @@ impl App {
         };
 
         if batch_paths.contains(&path)
-            && !self.allow_edition_action(atlas_model::edition::Feature::BatchRename, batch_paths.len())
+            && !self.allow_edition_action(
+                atlas_model::edition::Feature::BatchRename,
+                batch_paths.len(),
+            )
         {
             cx.notify();
             return;
@@ -1541,11 +1852,7 @@ impl App {
             ViewMode::Grid => {
                 let (cols, _) = self.rubber_scroll_dims(pane);
                 let cell = self.cell_position(pane, visible_pos);
-                self.scroll_grid_row_to(
-                    pane,
-                    cell / cols.max(1),
-                    gpui::ScrollStrategy::Center,
-                );
+                self.scroll_grid_row_to(pane, cell / cols.max(1), gpui::ScrollStrategy::Center);
             }
             ViewMode::Details => {
                 self.scroll_details_row_to(pane, visible_pos, gpui::ScrollStrategy::Center);
@@ -1559,7 +1866,9 @@ impl App {
             ViewMode::Miller => {
                 // Reveal the edited row inside its (focused) column.
                 let column = self.state.tab_states.get(&pane).map(|ts| ts.miller.focused);
-                if let Some(handle) = column.and_then(|c| self.miller_scroll_handles.get(&(pane, c))) {
+                if let Some(handle) =
+                    column.and_then(|c| self.miller_scroll_handles.get(&(pane, c)))
+                {
                     handle.scroll_to_item(visible_pos, gpui::ScrollStrategy::Center);
                 }
             }
@@ -1578,7 +1887,10 @@ impl App {
             input,
             initial_select_chars,
         });
-        let edited = self.rename_edit.as_ref().map(|e| (e.path.clone(), e.input.clone()));
+        let edited = self
+            .rename_edit
+            .as_ref()
+            .map(|e| (e.path.clone(), e.input.clone()));
         if let Some((edited, input)) = edited {
             if let Some(primary) = batch_paths.iter().position(|p| *p == edited) {
                 let mut batch = atlas_model::batch_rename::BatchRenameState::new(batch_paths);
@@ -1985,23 +2297,40 @@ impl App {
                 CharacterKeyAction::TriggerHotkey => return,
                 CharacterKeyAction::SelectTypedItem => {
                     let now = Instant::now();
-                    let previous = self.typed_selection.take().filter(|(pane, _, at)| *pane == pane_id
-                        && now.duration_since(*at) < std::time::Duration::from_millis(900));
+                    let previous = self.typed_selection.take().filter(|(pane, _, at)| {
+                        *pane == pane_id
+                            && now.duration_since(*at) < std::time::Duration::from_millis(900)
+                    });
                     let mut query = previous.map_or_else(String::new, |(_, query, _)| query);
                     query.push_str(&seed);
-                    let mode = self.tab_data_for(pane_id).map(|tab| tab.view_mode.clone()).unwrap_or_default();
+                    let mode = self
+                        .tab_data_for(pane_id)
+                        .map(|tab| tab.view_mode.clone())
+                        .unwrap_or_default();
                     let flat_visible = self.flat_visible_indices(pane_id);
                     let mut found = false;
                     if let Some(tab) = self.state.tab_states.get_mut(&pane_id) {
-                        found = tab.select_typed_prefix_with_indices(&mode, &query, false, Some(&flat_visible));
+                        found = tab.select_typed_prefix_with_indices(
+                            &mode,
+                            &query,
+                            false,
+                            Some(&flat_visible),
+                        );
                         if !found {
                             query = seed.clone();
-                            found = tab.select_typed_prefix_with_indices(&mode, &query, true, Some(&flat_visible));
+                            found = tab.select_typed_prefix_with_indices(
+                                &mode,
+                                &query,
+                                true,
+                                Some(&flat_visible),
+                            );
                         }
                     }
                     self.typed_selection = Some((pane_id, query, now));
                     if found {
-                        if let Some(tab) = self.state.tab_states.get_mut(&pane_id) { tab.selection.scroll_to_selected = true; }
+                        if let Some(tab) = self.state.tab_states.get_mut(&pane_id) {
+                            tab.selection.scroll_to_selected = true;
+                        }
                         self.notify_pane(pane_id, cx);
                     }
                     cx.stop_propagation();
@@ -2247,7 +2576,11 @@ pub(crate) fn rubber_layer(view: Entity<App>) -> impl gpui::IntoElement {
                 }
                 let pos = ev.position;
                 vm.update(cx, |this, cx| {
-                    if this.pending_folder_click.as_ref().is_some_and(|click| !ev.dragging() || click.moved(pos)) {
+                    if this
+                        .pending_folder_click
+                        .as_ref()
+                        .is_some_and(|click| !ev.dragging() || click.moved(pos))
+                    {
                         this.pending_folder_click = None;
                     }
                     if this.rubber.is_some() && !ev.dragging() {
@@ -2327,7 +2660,9 @@ pub(crate) fn rubber_layer(view: Entity<App>) -> impl gpui::IntoElement {
                             _ => 35.0,
                         };
                         let new_w = (start_width + dx).max(min_w);
-                        let available = this.pane_view_bounds.get(&pane)
+                        let available = this
+                            .pane_view_bounds
+                            .get(&pane)
                             .or_else(|| this.pane_layout_bounds.get(&pane))
                             .map_or(650.0, |bounds| f32::from(bounds.size.width));
                         let mut prefs = this.details_prefs_for(pane);
@@ -2341,11 +2676,16 @@ pub(crate) fn rubber_layer(view: Entity<App>) -> impl gpui::IntoElement {
 
                     // A press on an already selected group belongs to file drag
                     // once it moves. It must never turn into a replacement marquee.
-                    if this.rubber.as_ref().is_some_and(|r| r.selected_click.is_some() && {
-                        let dx = f32::from(pos.x - r.origin.x);
-                        let dy = f32::from(pos.y - r.origin.y);
-                        dx * dx + dy * dy >= 16.0
-                    }) { this.rubber = None; return false; }
+                    if this.rubber.as_ref().is_some_and(|r| {
+                        r.selected_click.is_some() && {
+                            let dx = f32::from(pos.x - r.origin.x);
+                            let dy = f32::from(pos.y - r.origin.y);
+                            dx * dx + dy * dy >= 16.0
+                        }
+                    }) {
+                        this.rubber = None;
+                        return false;
+                    }
 
                     let Some((previous, started, target)) = this.rubber.as_mut().map(|r| {
                         let previous = r.current;
@@ -2393,7 +2733,8 @@ pub(crate) fn rubber_layer(view: Entity<App>) -> impl gpui::IntoElement {
 
             let vw = v.clone();
             window.on_mouse_event::<ScrollWheelEvent>(move |ev, phase, window, cx| {
-                if phase != DispatchPhase::Capture || ev.modifiers.control || ev.modifiers.platform {
+                if phase != DispatchPhase::Capture || ev.modifiers.control || ev.modifiers.platform
+                {
                     return;
                 }
                 {
@@ -2437,8 +2778,12 @@ pub(crate) fn rubber_layer(view: Entity<App>) -> impl gpui::IntoElement {
                 // the release as navigation or a file drop.
                 if phase == DispatchPhase::Capture {
                     if vu.read(cx).pending_folder_click.is_some() {
-                        let opened = vu.update(cx, |this, cx| this.finish_folder_click(ev.position, cx));
-                        if opened { cx.stop_propagation(); return; }
+                        let opened =
+                            vu.update(cx, |this, cx| this.finish_folder_click(ev.position, cx));
+                        if opened {
+                            cx.stop_propagation();
+                            return;
+                        }
                     }
                     if vu.read(cx).rubber.as_ref().is_some_and(|r| r.started) {
                         vu.update(cx, |this, cx| {
@@ -2504,13 +2849,30 @@ pub(crate) fn rubber_layer(view: Entity<App>) -> impl gpui::IntoElement {
                             if dx * dx + dy * dy < 16.0 {
                                 match r.target {
                                     RubberTarget::Pane(pane) => {
-                                        if let Some(tab) = this.state.tab_states.get_mut(&pane) { tab.selection.select(index, &[index], false, false); }
+                                        if let Some(tab) = this.state.tab_states.get_mut(&pane) {
+                                            tab.selection.select(index, &[index], false, false);
+                                        }
                                     }
                                     RubberTarget::MillerColumn(pane, column) => {
-                                        if let Some(col) = this.state.tab_states.get_mut(&pane).and_then(|ts| ts.miller.columns.get_mut(column)) { col.selection.select(index, &[index], false, false); }
+                                        if let Some(col) = this
+                                            .state
+                                            .tab_states
+                                            .get_mut(&pane)
+                                            .and_then(|ts| ts.miller.columns.get_mut(column))
+                                        {
+                                            col.selection.select(index, &[index], false, false);
+                                        }
                                     }
                                     RubberTarget::Dropzone => {
-                                        if let Some(item) = this.state.sidebar_drop_zone.get(index) { this.dropzone_selection.select(item.path.clone(), &[item.path.clone()], false, false); }
+                                        if let Some(item) = this.state.sidebar_drop_zone.get(index)
+                                        {
+                                            this.dropzone_selection.select(
+                                                item.path.clone(),
+                                                &[item.path.clone()],
+                                                false,
+                                                false,
+                                            );
+                                        }
                                     }
                                 }
                             }

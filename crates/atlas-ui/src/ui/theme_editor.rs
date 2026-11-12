@@ -1,10 +1,12 @@
 //! Custom theme copies are persisted independently of bundled presets.
 use crate::app::App;
 use crate::input::action::Action;
-use gpui::prelude::*;
 use crate::ui::rem_px;
+use gpui::prelude::*;
 use gpui::ColorExt as _;
-use gpui::{div, px, AnyElement, Context, Entity, FontWeight, Hsla, SharedString, Subscription, Window};
+use gpui::{
+    div, px, AnyElement, Context, Entity, FontWeight, Hsla, SharedString, Subscription, Window,
+};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use gpui_component::{
@@ -153,7 +155,8 @@ impl App {
                             editor.dirty = true;
                             editor.error = None;
                             // Live preview: the fork is the active theme.
-                            ThemeRegistry::global_mut(cx).register_custom_theme(editor.config.clone());
+                            ThemeRegistry::global_mut(cx)
+                                .register_custom_theme(editor.config.clone());
                             this.theme_dirty = true;
                         }
                         this.notify_all_panes(cx);
@@ -221,7 +224,11 @@ impl App {
 
         // A miniature window painted with the live theme colours.
         let line = |w: f32, alpha: f32| {
-            div().h(rem_px(4.)).w(rem_px(w)).rounded_full().bg(text.opacity(alpha))
+            div()
+                .h(rem_px(4.))
+                .w(rem_px(w))
+                .rounded_full()
+                .bg(text.opacity(alpha))
         };
         let preview = v_flex()
             .flex_shrink_0()
@@ -241,7 +248,10 @@ impl App {
                     .items_center()
                     .border_b_1()
                     .border_color(text.opacity(0.08))
-                    .children([0.5, 0.35, 0.2].map(|a| div().size(rem_px(5.)).rounded_full().bg(text.opacity(a)))),
+                    .children(
+                        [0.5, 0.35, 0.2]
+                            .map(|a| div().size(rem_px(5.)).rounded_full().bg(text.opacity(a))),
+                    ),
             )
             .child(
                 h_flex()
@@ -279,9 +289,13 @@ impl App {
                             .child(line(54., 0.3))
                             .child(line(64., 0.3))
                             .child(
-                                h_flex()
-                                    .justify_end()
-                                    .child(div().h(rem_px(10.)).w(rem_px(28.)).rounded_full().bg(accent)),
+                                h_flex().justify_end().child(
+                                    div()
+                                        .h(rem_px(10.))
+                                        .w(rem_px(28.))
+                                        .rounded_full()
+                                        .bg(accent),
+                                ),
                             ),
                     ),
             );
@@ -301,12 +315,27 @@ impl App {
                     .flex_1()
                     .min_w(px(0.))
                     .gap(rem_px(4.))
-                    .child(div().text_xs().text_color(muted).child(rust_i18n::t!("sp_theme_active").to_string()))
-                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).truncate().child(name))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(rust_i18n::t!("sp_theme_active").to_string()),
+                    )
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .truncate()
+                            .child(name),
+                    )
                     .child(
                         div().text_xs().text_color(muted).child(
-                            rust_i18n::t!(if editing { "theme_editor_description" } else { "theme_fork_description" })
-                                .to_string(),
+                            rust_i18n::t!(if editing {
+                                "theme_editor_description"
+                            } else {
+                                "theme_fork_description"
+                            })
+                            .to_string(),
                         ),
                     )
                     .child(
@@ -319,7 +348,9 @@ impl App {
                                     .primary()
                                     .label(rust_i18n::t!("theme_fork").to_string())
                                     .disabled(editing)
-                                    .on_click(cx.listener(|this, _, window, cx| this.fork_active_theme(window, cx))),
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.fork_active_theme(window, cx)
+                                    })),
                             )
                             .child(
                                 // Custom theme JSON lives here and hot-reloads; opening it in
@@ -332,14 +363,21 @@ impl App {
                                         let path = atlas_core::util::config::themes_dir();
                                         let pane = this.state.focused_tile;
                                         this.close_settings_state();
-                                        this.process_actions([Action::NewTabWithPath { pane, path }]);
+                                        this.process_actions([Action::NewTabWithPath {
+                                            pane,
+                                            path,
+                                        }]);
                                         cx.notify();
                                     })),
                             ),
                     ),
             );
 
-        let mut content = v_flex().w_full().gap(rem_px(14.)).py(rem_px(4.)).child(hero);
+        let mut content = v_flex()
+            .w_full()
+            .gap(rem_px(14.))
+            .py(rem_px(4.))
+            .child(hero);
         if let Some(error) = &self.theme_fork_error {
             content = content.child(div().text_sm().text_color(danger).child(error.clone()));
         }
@@ -357,11 +395,12 @@ impl App {
                 .text_color(muted)
                 .child(rust_i18n::t!("sp_theme_colors").to_string().to_uppercase())
                 .when(editor.dirty, |row| {
-                    row.child(div().size(rem_px(6.)).rounded_full().bg(primary)).child(
-                        div()
-                            .font_weight(FontWeight::NORMAL)
-                            .child(rust_i18n::t!("sp_theme_unsaved").to_string()),
-                    )
+                    row.child(div().size(rem_px(6.)).rounded_full().bg(primary))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::NORMAL)
+                                .child(rust_i18n::t!("sp_theme_unsaved").to_string()),
+                        )
                 }),
         );
         for (role, control) in &editor.controls {
@@ -409,8 +448,12 @@ impl App {
                             .small()
                             .ghost()
                             .label(
-                                rust_i18n::t!(if editor.dirty { "theme_discard" } else { "theme_close_editor" })
-                                    .to_string(),
+                                rust_i18n::t!(if editor.dirty {
+                                    "theme_discard"
+                                } else {
+                                    "theme_close_editor"
+                                })
+                                .to_string(),
                             )
                             .on_click(cx.listener(|this, _, _, cx| this.close_theme_editor(cx))),
                     )

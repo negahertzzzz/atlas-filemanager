@@ -1,8 +1,8 @@
 #![allow(clippy::disallowed_methods)]
 // reason: image ops run on blocking workers, sync fs is intentional.
 
-use std::path::Path;
 use image::ImageDecoder as _;
+use std::path::Path;
 
 use atlas_model::preview_cache::{ImageData, PreviewResult};
 
@@ -109,8 +109,12 @@ pub(super) fn preview_thumbnail(path: &Path) -> Result<(Vec<u8>, usize, usize), 
 fn oriented_image(path: &Path) -> Result<image::DynamicImage, image::ImageError> {
     // Decoder metadata includes EXIF tag 274 for JPEG/TIFF and orientation in
     // other supported containers. Apply it exactly once, before sizing/upload.
-    let mut decoder = image::ImageReader::open(path)?.with_guessed_format()?.into_decoder()?;
-    let orientation = decoder.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut decoder = image::ImageReader::open(path)?
+        .with_guessed_format()?
+        .into_decoder()?;
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut image = image::DynamicImage::from_decoder(decoder)?;
     image.apply_orientation(orientation);
     Ok(image)
@@ -206,9 +210,13 @@ mod tests {
     #[test]
     fn jpeg_exif_rotation_and_mirroring_are_applied_once_before_sizing() {
         use image::GenericImageView as _;
-        let pixels = image::RgbImage::from_fn(40, 20, |x, y| image::Rgb([(x * 6) as u8, (y * 12) as u8, 80]));
+        let pixels = image::RgbImage::from_fn(40, 20, |x, y| {
+            image::Rgb([(x * 6) as u8, (y * 12) as u8, 80])
+        });
         let mut jpeg = Vec::new();
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 95).encode_image(&pixels).unwrap();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 95)
+            .encode_image(&pixels)
+            .unwrap();
         let original = image::load_from_memory(&jpeg).unwrap();
         let dir = tempfile::tempdir().unwrap();
         for orientation in [2u8, 6] {
@@ -222,11 +230,25 @@ mod tests {
             let path = dir.path().join(format!("orientation-{orientation}.jpg"));
             std::fs::write(&path, fixture).unwrap();
             let decoded = oriented_image(&path).unwrap();
-            let expected = if orientation == 2 { original.fliph() } else { original.rotate90() };
+            let expected = if orientation == 2 {
+                original.fliph()
+            } else {
+                original.rotate90()
+            };
             assert_eq!(decoded.dimensions(), expected.dimensions());
             assert_eq!(decoded.to_rgba8(), expected.to_rgba8());
-            let PreviewResult::Image { original_width, original_height, .. } = preview_image(&path) else { panic!("image preview"); };
-            assert_eq!((original_width, original_height), (expected.width() as usize, expected.height() as usize));
+            let PreviewResult::Image {
+                original_width,
+                original_height,
+                ..
+            } = preview_image(&path)
+            else {
+                panic!("image preview");
+            };
+            assert_eq!(
+                (original_width, original_height),
+                (expected.width() as usize, expected.height() as usize)
+            );
         }
     }
 

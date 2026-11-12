@@ -45,7 +45,13 @@ case "$format" in
       [[ -f $library ]] || continue
       mkdir -p "$scratch/snap/usr/lib/atlas"
       cp -L "$library" "$scratch/snap/usr/lib/atlas/"
-    done < <(ldd "$payload/bin/atlas" | awk '$2 == "=>" && $3 ~ /^\// {print $3}')
+      owner=$(dpkg-query -S "$library" "$(readlink -f "$library")" 2>/dev/null | head -n1 | cut -d: -f1 || true)
+      if [[ -n $owner && -f /usr/share/doc/$owner/copyright ]]; then
+        mkdir -p "$scratch/snap/usr/share/doc/$owner"
+        cp "/usr/share/doc/$owner/copyright" "$scratch/snap/usr/share/doc/$owner/"
+      fi
+    done < <(for binary in "$payload/bin/"*; do ldd "$binary"; done | awk '$2 == "=>" && $3 ~ /^\// {print $3}' | sort -u)
+    cp -a /usr/share/common-licenses "$scratch/snap/usr/share/"
     cat > "$scratch/snap/meta/snap.yaml" <<EOF
 name: atlas-filemanager
 version: '$version'

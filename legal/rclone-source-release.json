@@ -261,5 +261,6 @@
   ],
   "modules": 243,
   "notices": 315,
-  "noticeSha256": "90e796646e7f1ac95d769e3da7a561e0d5eec19fe2096bfd8b546b68ae71d5cb"
+  "noticeSha256": "efd2517609a6a86cb9bef5f1fec16b7ff1885e550c87a0e72cb43db781a3bc69",
+  "noticeLineEndings": "LF"
 }

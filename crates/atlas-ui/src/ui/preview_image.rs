@@ -1,7 +1,7 @@
 //! Image geometry and gestures for the retained preview. The canvas receives its
 //! real flex bounds, so fit, zoom, panning and the navigator share one viewport.
-use atlas_model::clamp::ClampLenient;
 use crate::app::{App, PreviewView};
+use atlas_model::clamp::ClampLenient;
 use atlas_model::layout_tree::TileId;
 use gpui::ColorExt as _;
 use gpui::{
@@ -59,7 +59,8 @@ impl ImageGeometry {
             const PAD: f32 = 3.0;
             let max_w = (vw * 0.40).clamp(56.0, 148.0).min((vw - 24.0).max(1.0));
             let max_h = (vh * 0.30).clamp(42.0, 112.0).min((vh - 24.0).max(1.0));
-            let mini_scale = ((max_w - PAD * 2.0).max(1.0) / sw).min((max_h - PAD * 2.0).max(1.0) / sh);
+            let mini_scale =
+                ((max_w - PAD * 2.0).max(1.0) / sw).min((max_h - PAD * 2.0).max(1.0) / sh);
             let (tw, th) = (sw * mini_scale, sh * mini_scale);
             let frame = Bounds {
                 origin: point(
@@ -201,8 +202,11 @@ pub(crate) fn image_canvas(
                         }
                         let state = this.preview_view.entry(tab).or_default();
                         let zoom = (state.zoom * delta.clamp(-0.4, 0.4).exp()).clamp(0.1, 48.0);
-                        ImageGeometry::new(geometry.viewport, source, *state)
-                            .zoom_at(state, zoom, event.position);
+                        ImageGeometry::new(geometry.viewport, source, *state).zoom_at(
+                            state,
+                            zoom,
+                            event.position,
+                        );
                         cx.notify();
                     });
                 }

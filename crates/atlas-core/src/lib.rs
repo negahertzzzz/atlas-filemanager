@@ -35,10 +35,9 @@ macro_rules! eprint {
     }};
 }
 
-
+pub mod cleanup;
 pub mod convert;
 pub mod crash_report;
-pub mod cleanup;
 pub mod ext;
 pub mod fs;
 pub mod git;

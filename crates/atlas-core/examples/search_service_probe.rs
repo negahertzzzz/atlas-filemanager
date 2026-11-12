@@ -1,4 +1,6 @@
-use atlas_core::search::{ensure_service_started, SearchBackend, SearchQuery, WindowsServiceBackend};
+use atlas_core::search::{
+    ensure_service_started, SearchBackend, SearchQuery, WindowsServiceBackend,
+};
 
 fn main() {
     println!("1. Ensuring search service is started...");

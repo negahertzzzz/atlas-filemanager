@@ -45,7 +45,9 @@ pub fn get_or_open(
 
     // Fast path — hit in cache.
     {
-        let mut c = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut c = CACHE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let hit = c.map.get(path).and_then(|e| {
             if e.mtime == fp.0 && e.len == fp.1 {
                 Some(e.provider.clone())
@@ -73,7 +75,9 @@ pub fn get_or_open(
     let provider = factory(path)?;
 
     {
-        let mut c = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut c = CACHE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Evict LRU if at capacity.
         if c.map.len() >= CAP {
             if let Some(lru) = c

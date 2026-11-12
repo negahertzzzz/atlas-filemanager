@@ -172,9 +172,16 @@ fn parse_gltf(
                 }
                 5 => {
                     for i in 2..indices.len() {
-                        let (a, b) = if i % 2 == 0 { (i - 2, i - 1) } else { (i - 1, i - 2) };
-                        mesh.triangles
-                            .push([base + indices[a], base + indices[b], base + indices[i]]);
+                        let (a, b) = if i % 2 == 0 {
+                            (i - 2, i - 1)
+                        } else {
+                            (i - 1, i - 2)
+                        };
+                        mesh.triangles.push([
+                            base + indices[a],
+                            base + indices[b],
+                            base + indices[i],
+                        ]);
                     }
                 }
                 6 => mesh.push_polygon(base, &indices),
@@ -184,7 +191,12 @@ fn parse_gltf(
     };
     let roots: Vec<usize> = json["scenes"][json["scene"].as_u64().unwrap_or(0) as usize]["nodes"]
         .as_array()
-        .map(|nodes| nodes.iter().filter_map(|n| n.as_u64().map(|n| n as usize)).collect())
+        .map(|nodes| {
+            nodes
+                .iter()
+                .filter_map(|n| n.as_u64().map(|n| n as usize))
+                .collect()
+        })
         .unwrap_or_default();
     if roots.is_empty() {
         let count = json["meshes"].as_array().map_or(0, Vec::len);
@@ -240,7 +252,11 @@ fn accessor_view<'a>(
     Some((buffer.get(start..)?, stride, count, component))
 }
 
-fn read_vec3(json: &serde_json::Value, buffers: &[Vec<u8>], accessor: usize) -> Option<Vec<[f32; 3]>> {
+fn read_vec3(
+    json: &serde_json::Value,
+    buffers: &[Vec<u8>],
+    accessor: usize,
+) -> Option<Vec<[f32; 3]>> {
     let (data, stride, count, component) = accessor_view(json, buffers, accessor)?;
     if component != 5126 {
         return None;
@@ -255,7 +271,11 @@ fn read_vec3(json: &serde_json::Value, buffers: &[Vec<u8>], accessor: usize) -> 
         .collect()
 }
 
-fn read_indices(json: &serde_json::Value, buffers: &[Vec<u8>], accessor: usize) -> Option<Vec<u32>> {
+fn read_indices(
+    json: &serde_json::Value,
+    buffers: &[Vec<u8>],
+    accessor: usize,
+) -> Option<Vec<u32>> {
     let (data, stride, count, component) = accessor_view(json, buffers, accessor)?;
     let width = match component {
         5121 => 1,
@@ -285,7 +305,11 @@ const IDENTITY: [f32; 16] = [
 fn node_matrix(node: &serde_json::Value) -> [f32; 16] {
     let floats = |key: &str, n: usize| -> Option<Vec<f32>> {
         let list = node[key].as_array()?;
-        (list.len() == n).then(|| list.iter().map(|v| v.as_f64().unwrap_or(0.) as f32).collect())
+        (list.len() == n).then(|| {
+            list.iter()
+                .map(|v| v.as_f64().unwrap_or(0.) as f32)
+                .collect()
+        })
     };
     if let Some(m) = floats("matrix", 16) {
         let mut out = [0.; 16];
@@ -396,7 +420,13 @@ impl FbxReader<'_> {
     }
 
     /// Walk sibling node records in `[at, end)`, collecting Geometry meshes.
-    fn walk(&mut self, mut at: usize, end: usize, depth: u32, mesh: &mut Mesh) -> Result<(), String> {
+    fn walk(
+        &mut self,
+        mut at: usize,
+        end: usize,
+        depth: u32,
+        mesh: &mut Mesh,
+    ) -> Result<(), String> {
         if depth > 32 {
             return Ok(());
         }
@@ -408,7 +438,10 @@ impl FbxReader<'_> {
             if node_end == 0 {
                 return Ok(());
             }
-            let name = self.bytes.get(next + 1..next + 1 + name_len).ok_or("Truncated FBX")?;
+            let name = self
+                .bytes
+                .get(next + 1..next + 1 + name_len)
+                .ok_or("Truncated FBX")?;
             let props_at = next + 1 + name_len;
             let children_at = props_at + props_len as usize;
             let node_end = node_end as usize;
@@ -435,7 +468,10 @@ impl FbxReader<'_> {
                 break;
             }
             let name_len = *self.bytes.get(next).ok_or("Truncated FBX")? as usize;
-            let name = self.bytes.get(next + 1..next + 1 + name_len).ok_or("Truncated FBX")?;
+            let name = self
+                .bytes
+                .get(next + 1..next + 1 + name_len)
+                .ok_or("Truncated FBX")?;
             let props_at = next + 1 + name_len;
             match name {
                 b"Vertices" => vertices = Some(self.read_array(props_at)?),
@@ -460,7 +496,11 @@ impl FbxReader<'_> {
         );
         let mut polygon = Vec::with_capacity(8);
         for &index in &polygons {
-            let (index, last) = if index < 0 { (!index, true) } else { (index, false) };
+            let (index, last) = if index < 0 {
+                (!index, true)
+            } else {
+                (index, false)
+            };
             if (index as u32) < count {
                 polygon.push(index as u32);
             }
@@ -504,7 +544,11 @@ impl FbxReader<'_> {
                     .map(|c| f64::from_le_bytes(c.try_into().unwrap_or_default()))
                     .collect(),
             ),
-            b'f' => FbxArray::F64(data.chunks_exact(4).map(|c| f64::from(f32_at(c, 0))).collect()),
+            b'f' => FbxArray::F64(
+                data.chunks_exact(4)
+                    .map(|c| f64::from(f32_at(c, 0)))
+                    .collect(),
+            ),
             b'i' => FbxArray::I32(
                 data.chunks_exact(4)
                     .map(|c| i32::from_le_bytes(c.try_into().unwrap_or_default()))
@@ -644,7 +688,11 @@ fn render(mesh: &Mesh, edge: usize) -> (Vec<u8>, usize, usize) {
         ) else {
             continue;
         };
-        let (ra, rb, rc) = (rotated[tri[0] as usize], rotated[tri[1] as usize], rotated[tri[2] as usize]);
+        let (ra, rb, rc) = (
+            rotated[tri[0] as usize],
+            rotated[tri[1] as usize],
+            rotated[tri[2] as usize],
+        );
         let normal = normalize(cross(sub(rb, ra), sub(rc, ra)));
         let lit = 0.28 + 0.72 * dot(normal, light).abs();
         let value = (lit.clamp(0., 1.) * 254.) as u8 + 1;
@@ -747,7 +795,9 @@ mod tests {
                 }
             }
         }
-        for face in ["1 2 4 3", "5 7 8 6", "1 5 6 2", "3 4 8 7", "1 3 7 5", "2 6 8 4"] {
+        for face in [
+            "1 2 4 3", "5 7 8 6", "1 5 6 2", "3 4 8 7", "1 3 7 5", "2 6 8 4",
+        ] {
             text.push_str(&format!("f {face}\n"));
         }
         text
@@ -759,7 +809,10 @@ mod tests {
         assert_eq!(mesh.triangles.len(), 12);
         let (rgba, w, h) = render(&mesh, 64);
         assert_eq!((w, h), (64, 64));
-        assert!(rgba[(32 * 64 + 32) * 4 + 3] == 255, "center must be covered");
+        assert!(
+            rgba[(32 * 64 + 32) * 4 + 3] == 255,
+            "center must be covered"
+        );
         assert_eq!(rgba[3], 0, "corner stays transparent");
     }
 
@@ -834,7 +887,11 @@ mod tests {
                         .unwrap()
                         .save(out.join(format!("{name}.png")))
                         .unwrap();
-                    eprintln!("{name}: {} tris in {:?}", mesh.triangles.len(), started.elapsed());
+                    eprintln!(
+                        "{name}: {} tris in {:?}",
+                        mesh.triangles.len(),
+                        started.elapsed()
+                    );
                 }
                 Err(error) => eprintln!("{}: {error}", path.display()),
             }

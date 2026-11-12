@@ -46,10 +46,18 @@ impl DirtyDirStats {
         }
     }
     pub fn remove(&mut self, path: &Path) {
-        if !path.starts_with(&self.root) { return; }
+        if !path.starts_with(&self.root) {
+            return;
+        }
         if let Some(size) = self.files.remove(path) {
-            for ancestor in path.ancestors().skip(1).take_while(|p| p.starts_with(&self.root)) {
-                if let Some(total) = self.totals.get_mut(ancestor) { *total = total.saturating_sub(u128::from(size)); }
+            for ancestor in path
+                .ancestors()
+                .skip(1)
+                .take_while(|p| p.starts_with(&self.root))
+            {
+                if let Some(total) = self.totals.get_mut(ancestor) {
+                    *total = total.saturating_sub(u128::from(size));
+                }
             }
             return;
         }
@@ -100,7 +108,9 @@ impl DirtyDirStats {
                     }
                     if !matches!(entry.kind(), atlas_model::file_entry::FileKind::Dir) {
                         self.remove(from);
-                        if let Some(size) = entry.size() { self.record_file(new, size); }
+                        if let Some(size) = entry.size() {
+                            self.record_file(new, size);
+                        }
                         continue;
                     }
                     let moved: Vec<_> = self
@@ -116,7 +126,9 @@ impl DirtyDirStats {
                     for (path, size) in moved {
                         self.record_file(path, size);
                     }
-                    if new.starts_with(&self.root) && !self.totals.contains_key(&new) { self.dirty.insert(new.clone()); }
+                    if new.starts_with(&self.root) && !self.totals.contains_key(&new) {
+                        self.dirty.insert(new.clone());
+                    }
                     if !matches!(entry.kind(), atlas_model::file_entry::FileKind::Dir)
                         && !entry.is_cloud_placeholder()
                         && !entry.is_symlink()

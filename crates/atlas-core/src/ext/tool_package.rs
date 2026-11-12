@@ -734,7 +734,12 @@ mod tests {
             provider.clone(),
             tool.clone(),
             Arc::new(AtomicBool::new(false)),
-            move |progress| events.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(progress),
+            move |progress| {
+                events
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(progress)
+            },
         )
         .await
         .unwrap();

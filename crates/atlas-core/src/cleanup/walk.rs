@@ -69,12 +69,22 @@ fn read_dir(path: &Path, mut emit: impl FnMut(&str, bool, u32, u64)) -> std::io:
     Ok(())
 }
 
-fn visit<'s>(shared: &'s Shared<'s>, scope: &rayon::Scope<'s>, path: PathBuf, id: u32, depth: usize) {
+fn visit<'s>(
+    shared: &'s Shared<'s>,
+    scope: &rayon::Scope<'s>,
+    path: PathBuf,
+    id: u32,
+    depth: usize,
+) {
     if !shared.proceed() {
         return;
     }
     if depth >= MAX_DEPTH || path.as_os_str().len() > 16_384 {
-        shared.builder.lock().unwrap_or_else(std::sync::PoisonError::into_inner).limited = true;
+        shared
+            .builder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .limited = true;
         return;
     }
     let mut dirs: Vec<(String, PathBuf)> = Vec::new();
@@ -108,7 +118,10 @@ fn visit<'s>(shared: &'s Shared<'s>, scope: &rayon::Scope<'s>, path: PathBuf, id
     shared.control.files.fetch_add(files, Ordering::Relaxed);
     shared.control.bytes.fetch_add(bytes, Ordering::Relaxed);
     let children: Vec<u32> = {
-        let mut builder = shared.builder.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut builder = shared
+            .builder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         builder.skipped += skipped;
         if result.is_err() {
             builder.errors += 1;
@@ -117,7 +130,9 @@ fn visit<'s>(shared: &'s Shared<'s>, scope: &rayon::Scope<'s>, path: PathBuf, id
         for (name, size) in &kept {
             builder.add_file(id, name, *size);
         }
-        dirs.iter().map(|(name, _)| builder.add_dir(id, name)).collect()
+        dirs.iter()
+            .map(|(name, _)| builder.add_dir(id, name))
+            .collect()
     };
     for ((_, child), cid) in dirs.into_iter().zip(children) {
         scope.spawn(move |s| visit(shared, s, child, cid, depth + 1));

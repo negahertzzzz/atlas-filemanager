@@ -131,4 +131,3 @@ mod tests {
         assert_eq!(nothing.w, 0.0);
     }
 }
-

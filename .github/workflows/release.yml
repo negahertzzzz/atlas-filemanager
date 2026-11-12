@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
   pages: write
   id-token: write
 
@@ -46,38 +47,12 @@ jobs:
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
   windows:
-    name: Windows installer
     needs: metadata
-    runs-on: windows-latest
-    env:
-      ATLAS_VERSION: ${{ needs.metadata.outputs.version }}
-      ATLAS_RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: '1.97.1'
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
-      - name: Build installer
-        shell: pwsh
-        run: ./scripts/build-windows-installer.ps1 -Version "$env:ATLAS_VERSION"
-      - name: Stage artifact
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/installer/AtlasSetup-$env:ATLAS_VERSION.exe" "dist/AtlasSetup-$env:ATLAS_VERSION.exe"
-          Get-FileHash "dist/AtlasSetup-$env:ATLAS_VERSION.exe" -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash.ToLower())  AtlasSetup-$env:ATLAS_VERSION.exe" } |
-            Set-Content "dist/AtlasSetup-$env:ATLAS_VERSION.exe.sha256"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: atlas-windows-x86_64
-          path: dist/*
-          if-no-files-found: error
+    uses: ./.github/workflows/windows-packages.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+      edition: free
+      source-url: https://github.com/${{ github.repository }}/releases/download/v${{ needs.metadata.outputs.version }}/atlas-${{ needs.metadata.outputs.version }}-source.zip
 
   linux:
     needs: metadata
@@ -97,11 +72,17 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
+      # Windows updates are distributed through Microsoft Store. Keep Windows
+      # installers/MSIX in the workflow for maintainer testing and submission.
       - uses: actions/download-artifact@v4
         with:
-          pattern: atlas-*
+          pattern: atlas-linux-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: atlas-source
+          path: dist
       - name: Final checksums and release notes
         run: |
           python3 scripts/linux_release.py metadata --version "$ATLAS_VERSION"

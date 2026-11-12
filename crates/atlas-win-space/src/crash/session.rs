@@ -85,7 +85,11 @@ fn sentinels(directory: &Path) -> Vec<(PathBuf, u32)> {
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
-            let pid = name.strip_prefix("session-")?.strip_suffix(".lock")?.parse().ok()?;
+            let pid = name
+                .strip_prefix("session-")?
+                .strip_suffix(".lock")?
+                .parse()
+                .ok()?;
             Some((entry.path(), pid))
         })
         .collect()
@@ -117,7 +121,11 @@ fn summarize(panic_report: &str) -> String {
             .to_owned()
     };
     let (message, location) = (field("message:"), field("location:"));
-    if location.is_empty() { message } else { format!("{message} ({location})") }
+    if location.is_empty() {
+        message
+    } else {
+        format!("{message} ({location})")
+    }
 }
 
 fn process_alive(pid: u32) -> bool {
@@ -134,7 +142,9 @@ fn process_alive(pid: u32) -> bool {
 }
 
 fn modified(path: &Path) -> SystemTime {
-    std::fs::metadata(path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
 /// Keeps the newest `KEEP_DUMPS` report groups (one group per crashed run).
@@ -175,7 +185,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         // PID 0 is never a live user process.
         std::fs::write(dir.join("session-0.lock"), "1.2.3").unwrap();
-        std::fs::write(dir.join("atlas-0-5.panic.txt"), "location: x.rs:1:1\nmessage: boom\n").unwrap();
+        std::fs::write(
+            dir.join("atlas-0-5.panic.txt"),
+            "location: x.rs:1:1\nmessage: boom\n",
+        )
+        .unwrap();
         std::fs::write(dir.join("atlas-0-5.stack.txt"), "").unwrap();
         // A dead sentinel with no reports is dropped silently.
         std::fs::write(dir.join("session-1.lock"), "1.2.3").unwrap();

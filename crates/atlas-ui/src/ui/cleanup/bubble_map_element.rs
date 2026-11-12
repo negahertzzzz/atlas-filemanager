@@ -1,10 +1,10 @@
-use atlas_model::clamp::ClampLenient;
 use super::{packing, CleanupPanel};
 use crate::ui::{
     file_icons::FileIcon,
     icons::AtlasIcon,
     surface::{chrome_ui_font, paint_theme_icon, shape_text_truncated, Slot},
 };
+use atlas_model::clamp::ClampLenient;
 use gpui::*;
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 
@@ -277,7 +277,8 @@ impl Element for BubbleMapElement {
                         ));
                     }
                     if circle.radius >= 23. * zoom && t > 0.7 {
-                        let icon_size = (circle.radius * 0.48).clamp_lenient(20. * zoom, 52. * zoom);
+                        let icon_size =
+                            (circle.radius * 0.48).clamp_lenient(20. * zoom, 52. * zoom);
                         let icon_y = if circle.radius > 43. * zoom {
                             circle.y - icon_size - 6. * zoom
                         } else {

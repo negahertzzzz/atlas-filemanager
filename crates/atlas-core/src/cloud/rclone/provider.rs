@@ -6,10 +6,10 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context};
 use serde_json::{json, Value};
 
-use super::rc_api::RcClient;
-use crate::cloud::provider::{Capabilities, CloudProvider, ProgressSink, RemoteEntry};
-use crate::cloud::control::{TransferControl, TransferCancelled, OutcomeUnknown};
 use super::rc_api::AsyncJob;
+use super::rc_api::RcClient;
+use crate::cloud::control::{OutcomeUnknown, TransferCancelled, TransferControl};
+use crate::cloud::provider::{Capabilities, CloudProvider, ProgressSink, RemoteEntry};
 
 pub struct RcloneProvider {
     rc: RcClient,
@@ -77,46 +77,68 @@ impl RcloneProvider {
         progress: ProgressSink,
         control: TransferControl,
     ) -> anyhow::Result<()> {
-        if control.is_cancelled() { return Err(TransferCancelled.into()); }
+        if control.is_cancelled() {
+            return Err(TransferCancelled.into());
+        }
         self.rc.require_missing(dst_fs, dst_remote).await?;
         if let Some(limit) = control.byte_limit() {
             let metadata = self.rc.operations_stat(src_fs, src_remote).await?;
-            anyhow::ensure!(metadata.get("Size").and_then(Value::as_u64).is_none_or(|size| size <= limit),
-                "Remote file exceeds the download byte limit");
+            anyhow::ensure!(
+                metadata
+                    .get("Size")
+                    .and_then(Value::as_u64)
+                    .is_none_or(|size| size <= limit),
+                "Remote file exceeds the download byte limit"
+            );
         }
         let group = format!("fp-{}", uuid::Uuid::new_v4().simple());
         let mut config = speedup_config();
         // Older supported rclone builds ignore Immutable in copyfile. This
         // additionally protects a destination created after the preflight.
         config["IgnoreExisting"] = json!(true);
-        if let Some(limit) = control.byte_limit() { config["MaxTransfer"] = json!(limit.to_string()); }
+        if let Some(limit) = control.byte_limit() {
+            config["MaxTransfer"] = json!(limit.to_string());
+        }
         let job = self
             .rc
-            .copyfile_async(
-                src_fs,
-                src_remote,
-                dst_fs,
-                dst_remote,
-                &group,
-                Some(config),
-            )
-            .await.map_err(transfer_start_error)?;
+            .copyfile_async(src_fs, src_remote, dst_fs, dst_remote, &group, Some(config))
+            .await
+            .map_err(transfer_start_error)?;
         self.wait_job(job, progress, control).await
     }
 
-    async fn run_directory_copy(&self, src: &str, dst: &str, progress: ProgressSink, control: TransferControl) -> anyhow::Result<()> {
-        if control.is_cancelled() { return Err(TransferCancelled.into()); }
+    async fn run_directory_copy(
+        &self,
+        src: &str,
+        dst: &str,
+        progress: ProgressSink,
+        control: TransferControl,
+    ) -> anyhow::Result<()> {
+        if control.is_cancelled() {
+            return Err(TransferCancelled.into());
+        }
         let group = format!("directory-{}", uuid::Uuid::new_v4().simple());
-        let job = self.rc.copy_directory_async(src, dst, &group).await.map_err(transfer_start_error)?;
+        let job = self
+            .rc
+            .copy_directory_async(src, dst, &group)
+            .await
+            .map_err(transfer_start_error)?;
         self.wait_job(job, progress, control).await
     }
 
-    async fn wait_job(&self, job: AsyncJob, progress: ProgressSink, control: TransferControl) -> anyhow::Result<()> {
+    async fn wait_job(
+        &self,
+        job: AsyncJob,
+        progress: ProgressSink,
+        control: TransferControl,
+    ) -> anyhow::Result<()> {
         loop {
             // Cancellation has an explicit backend acknowledgement. Never drop
             // the job future and claim that its remote writes stopped.
             if control.is_cancelled() {
-                self.rc.job_stop(job.jobid).await.map_err(|error| OutcomeUnknown(format!("Cannot confirm job cancellation: {error}")))?;
+                self.rc.job_stop(job.jobid).await.map_err(|error| {
+                    OutcomeUnknown(format!("Cannot confirm job cancellation: {error}"))
+                })?;
                 for _ in 0..120 {
                     match self.rc.job_status(job.jobid).await {
                         Ok(Some(Ok(()))) => return Ok(()), // completion won the race
@@ -124,14 +146,24 @@ impl RcloneProvider {
                         _ => tokio::time::sleep(Duration::from_millis(100)).await,
                     }
                 }
-                return Err(OutcomeUnknown("Backend did not confirm that the cancelled job stopped".into()).into());
+                return Err(OutcomeUnknown(
+                    "Backend did not confirm that the cancelled job stopped".into(),
+                )
+                .into());
             }
             match self.rc.job_status(job.jobid).await {
                 Ok(Some(result)) => return result,
-                Ok(None) => {},
-                Err(error) => return Err(OutcomeUnknown(format!("Transfer outcome could not be confirmed: {error}")).into()),
+                Ok(None) => {}
+                Err(error) => {
+                    return Err(OutcomeUnknown(format!(
+                        "Transfer outcome could not be confirmed: {error}"
+                    ))
+                    .into())
+                }
             }
-            if let Ok((done, total)) = self.rc.core_stats(&job.group).await { progress(done, total); }
+            if let Ok((done, total)) = self.rc.core_stats(&job.group).await {
+                progress(done, total);
+            }
             tokio::select! {
                 () = control.cancelled() => {},
                 () = tokio::time::sleep(Duration::from_millis(250)) => {},
@@ -142,7 +174,9 @@ impl RcloneProvider {
 
 #[async_trait::async_trait]
 impl CloudProvider for RcloneProvider {
-    async fn prepare_shutdown(&self) -> anyhow::Result<()> { self.rc.require_no_mounts().await }
+    async fn prepare_shutdown(&self) -> anyhow::Result<()> {
+        self.rc.require_no_mounts().await
+    }
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             can_mount: true,
@@ -176,8 +210,12 @@ impl CloudProvider for RcloneProvider {
 
     async fn list(&self, id: &str, path: &str) -> anyhow::Result<Vec<RemoteEntry>> {
         let drive = self.rc.is_drive(id).await?;
-        anyhow::ensure!(!drive || path.is_empty() || atlas_model::remote_path::last(path).is_some_and(|object| object.is_dir),
-            "Refresh this account from its root: this folder has no immutable object ID");
+        anyhow::ensure!(
+            !drive
+                || path.is_empty()
+                || atlas_model::remote_path::last(path).is_some_and(|object| object.is_dir),
+            "Refresh this account from its root: this folder has no immutable object ID"
+        );
         let (fs, remote) = self.rc.scope(id, path).await?;
         let v = self.rc.operations_list(&fs, &remote).await?;
         let list = v
@@ -193,12 +231,18 @@ impl CloudProvider for RcloneProvider {
                     .unwrap_or_default()
                     .to_string(),
                 path: if drive && e.get("ID").and_then(Value::as_str).is_some() {
-                    atlas_model::remote_path::join(path, e["ID"].as_str().unwrap_or_default(), e["Name"].as_str().unwrap_or_default(), e["IsDir"].as_bool().unwrap_or(false))
-                } else { e
-                    .get("Path")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string() },
+                    atlas_model::remote_path::join(
+                        path,
+                        e["ID"].as_str().unwrap_or_default(),
+                        e["Name"].as_str().unwrap_or_default(),
+                        e["IsDir"].as_bool().unwrap_or(false),
+                    )
+                } else {
+                    e.get("Path")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string()
+                },
                 is_dir: e.get("IsDir").and_then(Value::as_bool).unwrap_or(false),
                 size: e.get("Size").and_then(Value::as_i64).unwrap_or(0).max(0) as u64,
                 modified: e
@@ -222,30 +266,66 @@ impl CloudProvider for RcloneProvider {
         progress: ProgressSink,
         control: TransferControl,
     ) -> anyhow::Result<()> {
-        if control.is_cancelled() { return Err(TransferCancelled.into()); }
-        anyhow::ensure!(!self.rc.is_drive(id).await? || atlas_model::remote_path::last(src).is_some(),
-            "Refresh this account from its root: this file has no immutable object ID");
-        let parent = dst.parent().ok_or_else(|| anyhow!("download destination has no parent"))?;
+        if control.is_cancelled() {
+            return Err(TransferCancelled.into());
+        }
+        anyhow::ensure!(
+            !self.rc.is_drive(id).await? || atlas_model::remote_path::last(src).is_some(),
+            "Refresh this account from its root: this file has no immutable object ID"
+        );
+        let parent = dst
+            .parent()
+            .ok_or_else(|| anyhow!("download destination has no parent"))?;
         tokio::fs::create_dir_all(parent).await?;
         let destination = dst.to_path_buf();
-        let mut stage = tokio::task::spawn_blocking(move || super::super::staging::DownloadStage::new(&destination)).await??;
+        let mut stage = tokio::task::spawn_blocking(move || {
+            super::super::staging::DownloadStage::new(&destination)
+        })
+        .await??;
         stage.set_byte_limit(control.byte_limit());
         let dst = stage.path.clone();
         let dst = dst.as_path();
         if let Some(object) = atlas_model::remote_path::last(src).filter(|object| !object.is_dir) {
-            anyhow::ensure!(self.rc.is_drive(id).await?, "Object addresses require Google Drive");
+            anyhow::ensure!(
+                self.rc.is_drive(id).await?,
+                "Object addresses require Google Drive"
+            );
             let group = format!("copy-id-{}", uuid::Uuid::new_v4().simple());
             let result = async {
-                let job = self.rc.copy_id_async(id, &object.id, &dst.to_string_lossy(), &group, control.byte_limit()).await.map_err(transfer_start_error)?;
+                let job = self
+                    .rc
+                    .copy_id_async(
+                        id,
+                        &object.id,
+                        &dst.to_string_lossy(),
+                        &group,
+                        control.byte_limit(),
+                    )
+                    .await
+                    .map_err(transfer_start_error)?;
                 self.wait_job(job, progress, control).await
-            }.await;
+            }
+            .await;
             stage.check(result)?;
             return tokio::task::spawn_blocking(move || stage.commit()).await?;
         }
         let (source_fs, source_path) = self.rc.scope(id, src).await?;
-        if self.rc.operations_stat(&source_fs, &source_path).await?
-            .get("IsDir").and_then(Value::as_bool) == Some(true) {
-            let result = self.run_directory_copy(&super::objects::rooted(&source_fs, &source_path), &dst.to_string_lossy(), progress, control).await;
+        if self
+            .rc
+            .operations_stat(&source_fs, &source_path)
+            .await?
+            .get("IsDir")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            let result = self
+                .run_directory_copy(
+                    &super::objects::rooted(&source_fs, &source_path),
+                    &dst.to_string_lossy(),
+                    progress,
+                    control,
+                )
+                .await;
             stage.check(result)?;
             return tokio::task::spawn_blocking(move || stage.commit()).await?;
         }
@@ -275,7 +355,9 @@ impl CloudProvider for RcloneProvider {
                     return tokio::task::spawn_blocking(move || stage.commit()).await?;
                 }
                 Err(e) => {
-                    if control.is_cancelled() || e.is::<OutcomeUnknown>() { return stage.check(Err(e)); }
+                    if control.is_cancelled() || e.is::<OutcomeUnknown>() {
+                        return stage.check(Err(e));
+                    }
                     tracing::warn!(
                         target = %dst.display(),
                         error = %e,
@@ -290,7 +372,16 @@ impl CloudProvider for RcloneProvider {
         if is_unc(dst) {
             let staged = self.stage_path(dst).await?;
             let (dst_fs, dst_remote) = Self::local_split(&staged)?;
-            let result = self.run_copy(&source_fs, &source_path, &dst_fs, &dst_remote, progress, control).await;
+            let result = self
+                .run_copy(
+                    &source_fs,
+                    &source_path,
+                    &dst_fs,
+                    &dst_remote,
+                    progress,
+                    control,
+                )
+                .await;
             stage.check(result)?;
             tokio::fs::copy(&staged, dst)
                 .await
@@ -299,7 +390,16 @@ impl CloudProvider for RcloneProvider {
             return tokio::task::spawn_blocking(move || stage.commit()).await?;
         }
         let (dst_fs, dst_remote) = Self::local_split(dst)?;
-        let result = self.run_copy(&source_fs, &source_path, &dst_fs, &dst_remote, progress, control).await;
+        let result = self
+            .run_copy(
+                &source_fs,
+                &source_path,
+                &dst_fs,
+                &dst_remote,
+                progress,
+                control,
+            )
+            .await;
         stage.check(result)?;
         tokio::task::spawn_blocking(move || stage.commit()).await?
     }
@@ -312,10 +412,19 @@ impl CloudProvider for RcloneProvider {
         progress: ProgressSink,
         control: TransferControl,
     ) -> anyhow::Result<()> {
-        if control.is_cancelled() { return Err(TransferCancelled.into()); }
+        if control.is_cancelled() {
+            return Err(TransferCancelled.into());
+        }
         let (destination_fs, destination_path) = self.rc.scope(id, dst).await?;
         if tokio::fs::metadata(src).await?.is_dir() {
-            return self.run_directory_copy(&src.to_string_lossy(), &super::objects::rooted(&destination_fs, &destination_path), progress, control).await;
+            return self
+                .run_directory_copy(
+                    &src.to_string_lossy(),
+                    &super::objects::rooted(&destination_fs, &destination_path),
+                    progress,
+                    control,
+                )
+                .await;
         }
         if crate::fs::paths::wsl_unc_parts(src).is_some() {
             let (src_fs, src_remote) = Self::local_split(src)?;
@@ -340,7 +449,9 @@ impl CloudProvider for RcloneProvider {
                     return Ok(());
                 }
                 Err(e) => {
-                    if control.is_cancelled() || e.is::<OutcomeUnknown>() { return Err(e); }
+                    if control.is_cancelled() || e.is::<OutcomeUnknown>() {
+                        return Err(e);
+                    }
                     tracing::warn!(
                         source = %src.display(),
                         error = %e,
@@ -358,40 +469,110 @@ impl CloudProvider for RcloneProvider {
                 .with_context(|| format!("staging UNC upload source {}", src.display()))?;
             let (src_fs, src_remote) = Self::local_split(&staged)?;
             let result = self
-                .run_copy(&src_fs, &src_remote, &destination_fs, &destination_path, progress, control)
+                .run_copy(
+                    &src_fs,
+                    &src_remote,
+                    &destination_fs,
+                    &destination_path,
+                    progress,
+                    control,
+                )
                 .await;
             let _ = tokio::fs::remove_file(&staged).await;
             return result;
         }
         let (src_fs, src_remote) = Self::local_split(src)?;
-        self.run_copy(&src_fs, &src_remote, &destination_fs, &destination_path, progress, control)
-            .await
+        self.run_copy(
+            &src_fs,
+            &src_remote,
+            &destination_fs,
+            &destination_path,
+            progress,
+            control,
+        )
+        .await
     }
 
     async fn about(&self, id: &str) -> anyhow::Result<(u64, u64)> {
         self.rc.about(&format!("{id}:")).await
     }
 
-    async fn copy_between(&self, source_id: &str, source: &str, destination_id: &str, destination: &str,
-        progress: ProgressSink, control: TransferControl) -> anyhow::Result<()> {
-        if control.is_cancelled() { return Err(TransferCancelled.into()); }
+    async fn copy_between(
+        &self,
+        source_id: &str,
+        source: &str,
+        destination_id: &str,
+        destination: &str,
+        progress: ProgressSink,
+        control: TransferControl,
+    ) -> anyhow::Result<()> {
+        if control.is_cancelled() {
+            return Err(TransferCancelled.into());
+        }
         let (destination_fs, destination_path) = self.rc.scope(destination_id, destination).await?;
         if let Some(object) = atlas_model::remote_path::last(source) {
-            anyhow::ensure!(self.rc.is_drive(source_id).await?, "Object addresses require Google Drive");
+            anyhow::ensure!(
+                self.rc.is_drive(source_id).await?,
+                "Object addresses require Google Drive"
+            );
             if object.is_dir {
-                return self.run_directory_copy(&format!("{source_id},root_folder_id={}:", object.id),
-                    &super::objects::rooted(&destination_fs, &destination_path), progress, control).await;
+                return self
+                    .run_directory_copy(
+                        &format!("{source_id},root_folder_id={}:", object.id),
+                        &super::objects::rooted(&destination_fs, &destination_path),
+                        progress,
+                        control,
+                    )
+                    .await;
             }
-            self.rc.require_missing(&destination_fs, &destination_path).await?;
+            self.rc
+                .require_missing(&destination_fs, &destination_path)
+                .await?;
             let group = format!("cross-account-{}", uuid::Uuid::new_v4().simple());
-            let job = self.rc.copy_id_async(source_id, &object.id, &super::objects::rooted(&destination_fs, &destination_path), &group, control.byte_limit()).await.map_err(transfer_start_error)?;
+            let job = self
+                .rc
+                .copy_id_async(
+                    source_id,
+                    &object.id,
+                    &super::objects::rooted(&destination_fs, &destination_path),
+                    &group,
+                    control.byte_limit(),
+                )
+                .await
+                .map_err(transfer_start_error)?;
             return self.wait_job(job, progress, control).await;
         }
-        anyhow::ensure!(!self.rc.is_drive(source_id).await?, "Refresh the source account from its root to obtain object IDs");
+        anyhow::ensure!(
+            !self.rc.is_drive(source_id).await?,
+            "Refresh the source account from its root to obtain object IDs"
+        );
         let (source_fs, source_path) = self.rc.scope(source_id, source).await?;
-        if self.rc.operations_stat(&source_fs, &source_path).await?.get("IsDir").and_then(Value::as_bool) == Some(true) {
-            self.run_directory_copy(&super::objects::rooted(&source_fs, &source_path), &super::objects::rooted(&destination_fs, &destination_path), progress, control).await
-        } else { self.run_copy(&source_fs, &source_path, &destination_fs, &destination_path, progress, control).await }
+        if self
+            .rc
+            .operations_stat(&source_fs, &source_path)
+            .await?
+            .get("IsDir")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            self.run_directory_copy(
+                &super::objects::rooted(&source_fs, &source_path),
+                &super::objects::rooted(&destination_fs, &destination_path),
+                progress,
+                control,
+            )
+            .await
+        } else {
+            self.run_copy(
+                &source_fs,
+                &source_path,
+                &destination_fs,
+                &destination_path,
+                progress,
+                control,
+            )
+            .await
+        }
     }
 
     async fn mkdir(&self, id: &str, path: &str) -> anyhow::Result<()> {
@@ -400,7 +581,9 @@ impl CloudProvider for RcloneProvider {
     }
 
     async fn delete(&self, id: &str, path: &str, is_dir: bool) -> anyhow::Result<()> {
-        if self.rc.is_drive(id).await? { return self.rc.trash_id(id, path).await; }
+        if self.rc.is_drive(id).await? {
+            return self.rc.trash_id(id, path).await;
+        }
         let fs = format!("{id}:");
         if is_dir {
             self.rc.operations_purge(&fs, path).await
@@ -410,7 +593,9 @@ impl CloudProvider for RcloneProvider {
     }
 
     async fn rename(&self, id: &str, from: &str, to: &str) -> anyhow::Result<()> {
-        if self.rc.is_drive(id).await? { return self.rc.rename_id(id, from, to).await; }
+        if self.rc.is_drive(id).await? {
+            return self.rc.rename_id(id, from, to).await;
+        }
         let fs = format!("{id}:");
         self.rc.operations_movefile(&fs, from, &fs, to).await
     }
@@ -420,21 +605,66 @@ impl CloudProvider for RcloneProvider {
             let (destination_fs, destination_path) = self.rc.scope(id, to).await?;
             let target = super::objects::rooted(&destination_fs, &destination_path);
             if object.is_dir {
-                anyhow::ensure!(self.rc.is_drive(id).await?, "Object addresses require Google Drive");
-                return self.run_directory_copy(&format!("{id},root_folder_id={}:", object.id), &target,
-                    std::sync::Arc::new(|_, _| {}), TransferControl::default()).await;
+                anyhow::ensure!(
+                    self.rc.is_drive(id).await?,
+                    "Object addresses require Google Drive"
+                );
+                return self
+                    .run_directory_copy(
+                        &format!("{id},root_folder_id={}:", object.id),
+                        &target,
+                        std::sync::Arc::new(|_, _| {}),
+                        TransferControl::default(),
+                    )
+                    .await;
             }
-            self.rc.require_missing(&destination_fs, &destination_path).await?;
+            self.rc
+                .require_missing(&destination_fs, &destination_path)
+                .await?;
             let group = format!("copy-id-{}", uuid::Uuid::new_v4().simple());
-            let job = self.rc.copy_id_async(id, &object.id, &target, &group, None).await?;
-            return self.wait_job(job, std::sync::Arc::new(|_, _| {}), TransferControl::default()).await;
+            let job = self
+                .rc
+                .copy_id_async(id, &object.id, &target, &group, None)
+                .await?;
+            return self
+                .wait_job(
+                    job,
+                    std::sync::Arc::new(|_, _| {}),
+                    TransferControl::default(),
+                )
+                .await;
         }
-        anyhow::ensure!(!self.rc.is_drive(id).await?, "Refresh this account from its root: the source has no immutable object ID");
+        anyhow::ensure!(
+            !self.rc.is_drive(id).await?,
+            "Refresh this account from its root: the source has no immutable object ID"
+        );
         let fs = format!("{id}:");
-        if self.rc.operations_stat(&fs, from).await?.get("IsDir").and_then(Value::as_bool) == Some(true) {
-            return self.run_directory_copy(&format!("{id}:{from}"), &format!("{id}:{to}"), std::sync::Arc::new(|_, _| {}), TransferControl::default()).await;
+        if self
+            .rc
+            .operations_stat(&fs, from)
+            .await?
+            .get("IsDir")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return self
+                .run_directory_copy(
+                    &format!("{id}:{from}"),
+                    &format!("{id}:{to}"),
+                    std::sync::Arc::new(|_, _| {}),
+                    TransferControl::default(),
+                )
+                .await;
         }
-        self.run_copy(&fs, from, &fs, to, std::sync::Arc::new(|_, _| {}), TransferControl::default()).await
+        self.run_copy(
+            &fs,
+            from,
+            &fs,
+            to,
+            std::sync::Arc::new(|_, _| {}),
+            TransferControl::default(),
+        )
+        .await
     }
 
     async fn mount(&self, id: &str, mount_point: &Path) -> anyhow::Result<()> {
@@ -469,8 +699,14 @@ impl CloudProvider for RcloneProvider {
 
 fn transfer_start_error(error: anyhow::Error) -> anyhow::Error {
     if error.is::<reqwest::Error>() {
-        OutcomeUnknown("Connection lost while starting a backend job. Verify the destination before retrying.".into()).into()
-    } else { error }
+        OutcomeUnknown(
+            "Connection lost while starting a backend job. Verify the destination before retrying."
+                .into(),
+        )
+        .into()
+    } else {
+        error
+    }
 }
 
 /// Parse an RFC3339 timestamp into unix seconds without pulling in a date crate.

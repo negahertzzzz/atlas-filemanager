@@ -8,7 +8,7 @@
 //! it runs, keyboard focus leaves the search field so keys reach the root
 //! capture handler instead of being typed.
 
-use super::{hint, highlighted, Colors};
+use super::{highlighted, hint, Colors};
 use crate::app::App;
 use crate::ui::icons::{icon, AtlasIcon};
 use crate::ui::palette::ShortcutCommand;
@@ -16,7 +16,10 @@ use crate::ui::rem_px;
 use atlas_core::search::fuzzy::FuzzyScorer;
 use gpui::prelude::*;
 use gpui::ColorExt as _;
-use gpui::{div, px, uniform_list, AnyElement, Context, FontWeight, Keystroke, MouseButton, ScrollStrategy, SharedString, Window};
+use gpui::{
+    div, px, uniform_list, AnyElement, Context, FontWeight, Keystroke, MouseButton, ScrollStrategy,
+    SharedString, Window,
+};
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{h_flex, v_flex};
 use std::ops::Range;
@@ -33,9 +36,16 @@ struct ShortcutHit {
 
 /// Key caps for a stored binding ("ctrl-shift-t" → [Ctrl] [Shift] [T]).
 fn key_caps(keys: &str, colors: Colors, strong: bool) -> AnyElement {
-    let label = Keystroke::parse(keys).map_or_else(|_| keys.to_string(), |k| gpui_component::kbd::Kbd::format(&k));
+    let label = Keystroke::parse(keys).map_or_else(
+        |_| keys.to_string(),
+        |k| gpui_component::kbd::Kbd::format(&k),
+    );
     let parts: Vec<String> = if label.len() > 1 && label.contains('+') {
-        label.split('+').filter(|p| !p.is_empty()).map(str::to_string).collect()
+        label
+            .split('+')
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect()
     } else {
         vec![label]
     };
@@ -74,22 +84,47 @@ impl App {
                 let keys = prefs.shortcut_string(command.id);
                 let customized = prefs.customized(command.id);
                 let Some(pattern) = &pattern else {
-                    return Some((ShortcutHit { command, highlight: None, keys, customized }, 0));
+                    return Some((
+                        ShortcutHit {
+                            command,
+                            highlight: None,
+                            keys,
+                            customized,
+                        },
+                        0,
+                    ));
                 };
-                let score = self.fuzzy_scorer.score_pattern(pattern, &command.title).map(|s| s + 20).or_else(|| {
-                    let haystack = format!(
-                        "{} {} {} {} {}",
-                        command.title,
-                        command.group,
-                        command.keywords,
-                        command.id,
-                        keys.as_deref().unwrap_or_default()
-                    )
-                    .to_lowercase();
-                    words.iter().all(|w| haystack.contains(w.as_str())).then_some(1)
-                })?;
-                let highlight = self.fuzzy_scorer.match_ranges_pattern(pattern, &command.title);
-                Some((ShortcutHit { command, highlight, keys, customized }, score))
+                let score = self
+                    .fuzzy_scorer
+                    .score_pattern(pattern, &command.title)
+                    .map(|s| s + 20)
+                    .or_else(|| {
+                        let haystack = format!(
+                            "{} {} {} {} {}",
+                            command.title,
+                            command.group,
+                            command.keywords,
+                            command.id,
+                            keys.as_deref().unwrap_or_default()
+                        )
+                        .to_lowercase();
+                        words
+                            .iter()
+                            .all(|w| haystack.contains(w.as_str()))
+                            .then_some(1)
+                    })?;
+                let highlight = self
+                    .fuzzy_scorer
+                    .match_ranges_pattern(pattern, &command.title);
+                Some((
+                    ShortcutHit {
+                        command,
+                        highlight,
+                        keys,
+                        customized,
+                    },
+                    score,
+                ))
             })
             .collect();
         if pattern.is_some() {
@@ -114,10 +149,15 @@ impl App {
         if query != drill.last_query {
             drill.last_query = query.to_string();
             drill.selected = 0;
-            self.settings_ui.options_scroll.scroll_to_item(0, ScrollStrategy::Top);
+            self.settings_ui
+                .options_scroll
+                .scroll_to_item(0, ScrollStrategy::Top);
         }
         drill.selected = drill.selected.min(count.saturating_sub(1));
-        drill.visible = hits.iter().map(|hit| SharedString::from(hit.command.id)).collect();
+        drill.visible = hits
+            .iter()
+            .map(|hit| SharedString::from(hit.command.id))
+            .collect();
         let selected = drill.selected;
         let selected_customized = hits.get(selected).is_some_and(|hit| hit.customized);
 
@@ -127,17 +167,28 @@ impl App {
         let list = uniform_list(
             "settings-shortcuts",
             count,
-            cx.processor(move |this: &mut App, range: Range<usize>, window: &mut Window, _cx| {
-                let selected = this.settings_ui.drill.as_ref().map_or(0, |d| d.selected);
-                range
-                    .filter_map(|i| hits.get(i).map(|hit| (i, hit)))
-                    .map(|(i, hit)| {
-                        let capturing_row = row_capture.as_deref() == Some(hit.command.id);
-                        let conflict = conflict.clone().filter(|_| capturing_row);
-                        shortcut_row(hit, i, i == selected, capturing_row, conflict, colors, view.clone(), window)
-                    })
-                    .collect::<Vec<_>>()
-            }),
+            cx.processor(
+                move |this: &mut App, range: Range<usize>, window: &mut Window, _cx| {
+                    let selected = this.settings_ui.drill.as_ref().map_or(0, |d| d.selected);
+                    range
+                        .filter_map(|i| hits.get(i).map(|hit| (i, hit)))
+                        .map(|(i, hit)| {
+                            let capturing_row = row_capture.as_deref() == Some(hit.command.id);
+                            let conflict = conflict.clone().filter(|_| capturing_row);
+                            shortcut_row(
+                                hit,
+                                i,
+                                i == selected,
+                                capturing_row,
+                                conflict,
+                                colors,
+                                view.clone(),
+                                window,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                },
+            ),
         )
         .size_full()
         .px(rem_px(8.))
@@ -275,10 +326,13 @@ fn shortcut_row(
             .justify_center()
             .rounded(rem_px(6.))
             .cursor_pointer()
-            .when(!selected, |d| d.opacity(0.).group_hover(group.clone(), |s| s.opacity(1.)))
+            .when(!selected, |d| {
+                d.opacity(0.).group_hover(group.clone(), |s| s.opacity(1.))
+            })
             .hover(|h| h.bg(colors.fg.opacity(0.10)))
             .tooltip(|window, cx| {
-                gpui_component::tooltip::Tooltip::new(rust_i18n::t!("sp_reset_tooltip").to_string()).build(window, cx)
+                gpui_component::tooltip::Tooltip::new(rust_i18n::t!("sp_reset_tooltip").to_string())
+                    .build(window, cx)
             })
             .child(icon(AtlasIcon::ArrowCounterClockwise, 12.0, colors.muted))
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
@@ -307,7 +361,10 @@ fn shortcut_row(
         .border_1()
         .border_color(gpui::transparent_black())
         .cursor_pointer()
-        .when(selected, |d| d.bg(colors.accent.opacity(0.14)).border_color(colors.accent.opacity(0.45)))
+        .when(selected, |d| {
+            d.bg(colors.accent.opacity(0.14))
+                .border_color(colors.accent.opacity(0.45))
+        })
         .when(!selected, |d| d.hover(|h| h.bg(colors.fg.opacity(0.045))))
         .child(
             div()
@@ -318,7 +375,11 @@ fn shortcut_row(
                 .justify_center()
                 .rounded(rem_px(7.))
                 .bg(colors.fg.opacity(if selected { 0.10 } else { 0.06 }))
-                .child(icon(command.icon, 13.0, if selected { colors.fg } else { colors.muted })),
+                .child(icon(
+                    command.icon,
+                    13.0,
+                    if selected { colors.fg } else { colors.muted },
+                )),
         )
         .child(
             v_flex()
@@ -330,7 +391,13 @@ fn shortcut_row(
                         .items_center()
                         .child(div().min_w(px(0.)).truncate().child(title))
                         .when(hit.customized, |d| {
-                            d.child(div().size(rem_px(6.)).flex_shrink_0().rounded_full().bg(colors.primary))
+                            d.child(
+                                div()
+                                    .size(rem_px(6.))
+                                    .flex_shrink_0()
+                                    .rounded_full()
+                                    .bg(colors.primary),
+                            )
                         }),
                 )
                 .when_some(conflict, |col, conflict| {
@@ -355,7 +422,14 @@ fn shortcut_row(
                 .child(command.group.clone()),
         )
         .children(reset)
-        .child(div().flex_shrink_0().min_w(rem_px(96.)).flex().justify_end().child(keys))
+        .child(
+            div()
+                .flex_shrink_0()
+                .min_w(rem_px(96.))
+                .flex()
+                .justify_end()
+                .child(keys),
+        )
         .on_hover(move |hovered, _, cx| {
             if *hovered {
                 hover_view.update(cx, |app, cx| {

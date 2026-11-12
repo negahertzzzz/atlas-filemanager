@@ -178,8 +178,10 @@ impl LocalSearchBackend {
         let entries = walkdir::WalkDir::new(root)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|entry| !crate::fs::scan_policy::is_scan_excluded(entry.path())
-                && !crate::fs::preview::is_cloud_placeholder(entry.path()))
+            .filter_entry(|entry| {
+                !crate::fs::scan_policy::is_scan_excluded(entry.path())
+                    && !crate::fs::preview::is_cloud_placeholder(entry.path())
+            })
             .filter_map(Result::ok)
             .skip(1)
             .take(max_entries)
@@ -302,7 +304,10 @@ fn search_entries(entries: &[CatalogEntry], query: &SearchQuery) -> Vec<SearchRe
     entries
         .iter()
         .filter(|entry| {
-            !crate::vault::is_private_path(&entry.path) && !crate::vault::live::is_private(&entry.path) && in_scope(&entry.path, &query.scope) && matches_filters(entry, &query.filters)
+            !crate::vault::is_private_path(&entry.path)
+                && !crate::vault::live::is_private(&entry.path)
+                && in_scope(&entry.path, &query.scope)
+                && matches_filters(entry, &query.filters)
         })
         .filter_map(|entry| {
             score_entry(entry, &query.text).map(|score| SearchResult {

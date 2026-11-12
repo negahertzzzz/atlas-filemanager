@@ -3,7 +3,9 @@
 use std::path::Path;
 
 pub fn is_scan_excluded(path: &Path) -> bool {
-    if crate::vault::is_private_path(path) || crate::vault::live::is_private(path) { return true; }
+    if crate::vault::is_private_path(path) || crate::vault::live::is_private(path) {
+        return true;
+    }
     #[cfg(windows)]
     {
         use std::sync::OnceLock;

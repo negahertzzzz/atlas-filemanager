@@ -184,7 +184,10 @@ mod tests {
 
     #[test]
     fn theme_commands_are_registered_and_remappable() {
-        assert_eq!(default_command_shortcut("view.theme-toggle"), Some("ctrl-shift-l"));
+        assert_eq!(
+            default_command_shortcut("view.theme-toggle"),
+            Some("ctrl-shift-l")
+        );
         assert!(command_remappable("view.theme-toggle"));
         assert_eq!(default_command_shortcut("view.theme-follow-system"), None);
         assert!(command_remappable("view.theme-follow-system"));
@@ -192,7 +195,10 @@ mod tests {
             .iter()
             .filter(|command| command.default_shortcut == Some("ctrl-shift-l"))
             .count();
-        assert_eq!(taken, 1, "ctrl-shift-l must not collide with another default");
+        assert_eq!(
+            taken, 1,
+            "ctrl-shift-l must not collide with another default"
+        );
     }
 
     #[test]

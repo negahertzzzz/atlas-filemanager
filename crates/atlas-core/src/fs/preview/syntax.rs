@@ -32,12 +32,12 @@ impl TokenKind {
             TokenKind::Comment => "comment",
             TokenKind::Preprocessor => "preproc",
             TokenKind::Symbol => "operator",
-            TokenKind::DiffAdd => "string",         // Green
-            TokenKind::DiffRemove => "preproc",      // Red
-            TokenKind::DiffHeader => "keyword",      // Cyan/Blue
-            TokenKind::LogError => "preproc",        // Red
-            TokenKind::LogWarn => "number",          // Yellow
-            TokenKind::LogInfo => "comment",         // Dim
+            TokenKind::DiffAdd => "string",     // Green
+            TokenKind::DiffRemove => "preproc", // Red
+            TokenKind::DiffHeader => "keyword", // Cyan/Blue
+            TokenKind::LogError => "preproc",   // Red
+            TokenKind::LogWarn => "number",     // Yellow
+            TokenKind::LogInfo => "comment",    // Dim
         }
     }
 }
@@ -49,285 +49,1283 @@ pub struct SyntaxToken {
 }
 
 static C_KEYWORDS: &[&str] = &[
-    "alignas", "alignof", "asm", "auto", "break", "case", "catch", "class",
-    "co_await", "co_return", "co_yield", "concept", "const", "consteval",
-    "constexpr", "constinit", "continue", "decltype", "default", "delete",
-    "do", "dynamic_cast", "else", "enum", "explicit", "export", "extern",
-    "false", "final", "for", "friend", "goto", "if", "inline", "mutable",
-    "namespace", "new", "noexcept", "nullptr", "operator", "override",
-    "private", "protected", "public", "register", "reinterpret_cast",
-    "requires", "return", "sizeof", "static", "static_assert", "static_cast",
-    "struct", "switch", "template", "this", "thread_local", "throw", "true",
-    "try", "typedef", "typeid", "typename", "union", "using", "virtual",
-    "void", "volatile", "while",
+    "alignas",
+    "alignof",
+    "asm",
+    "auto",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "co_await",
+    "co_return",
+    "co_yield",
+    "concept",
+    "const",
+    "consteval",
+    "constexpr",
+    "constinit",
+    "continue",
+    "decltype",
+    "default",
+    "delete",
+    "do",
+    "dynamic_cast",
+    "else",
+    "enum",
+    "explicit",
+    "export",
+    "extern",
+    "false",
+    "final",
+    "for",
+    "friend",
+    "goto",
+    "if",
+    "inline",
+    "mutable",
+    "namespace",
+    "new",
+    "noexcept",
+    "nullptr",
+    "operator",
+    "override",
+    "private",
+    "protected",
+    "public",
+    "register",
+    "reinterpret_cast",
+    "requires",
+    "return",
+    "sizeof",
+    "static",
+    "static_assert",
+    "static_cast",
+    "struct",
+    "switch",
+    "template",
+    "this",
+    "thread_local",
+    "throw",
+    "true",
+    "try",
+    "typedef",
+    "typeid",
+    "typename",
+    "union",
+    "using",
+    "virtual",
+    "void",
+    "volatile",
+    "while",
 ];
 
 static C_TYPES: &[&str] = &[
-    "bool", "char", "char8_t", "char16_t", "char32_t", "double", "float",
-    "int", "long", "short", "signed", "unsigned", "wchar_t", "size_t",
-    "ptrdiff_t", "intptr_t", "uintptr_t", "int8_t", "int16_t", "int32_t",
-    "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "U8", "U16",
-    "U32", "U64", "S8", "S16", "S32", "S64", "F32", "F64", "B32", "String8",
-    "Vec2F32", "Vec4F32", "string", "string_view", "vector", "map", "unordered_map",
-    "set", "unordered_set", "pair", "tuple", "optional", "variant", "unique_ptr",
-    "shared_ptr", "weak_ptr", "span",
+    "bool",
+    "char",
+    "char8_t",
+    "char16_t",
+    "char32_t",
+    "double",
+    "float",
+    "int",
+    "long",
+    "short",
+    "signed",
+    "unsigned",
+    "wchar_t",
+    "size_t",
+    "ptrdiff_t",
+    "intptr_t",
+    "uintptr_t",
+    "int8_t",
+    "int16_t",
+    "int32_t",
+    "int64_t",
+    "uint8_t",
+    "uint16_t",
+    "uint32_t",
+    "uint64_t",
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "S8",
+    "S16",
+    "S32",
+    "S64",
+    "F32",
+    "F64",
+    "B32",
+    "String8",
+    "Vec2F32",
+    "Vec4F32",
+    "string",
+    "string_view",
+    "vector",
+    "map",
+    "unordered_map",
+    "set",
+    "unordered_set",
+    "pair",
+    "tuple",
+    "optional",
+    "variant",
+    "unique_ptr",
+    "shared_ptr",
+    "weak_ptr",
+    "span",
 ];
 
 static JS_KEYWORDS: &[&str] = &[
-    "abstract", "arguments", "as", "asserts", "async", "await", "break", "case",
-    "catch", "class", "const", "constructor", "continue", "debugger", "declare",
-    "default", "delete", "do", "else", "enum", "export", "extends", "false",
-    "finally", "for", "from", "function", "get", "if", "implements", "import",
-    "in", "infer", "instanceof", "interface", "is", "keyof", "let", "module",
-    "namespace", "new", "null", "of", "override", "package", "private", "protected",
-    "public", "readonly", "require", "return", "satisfies", "set", "static",
-    "super", "switch", "this", "throw", "true", "try", "type", "typeof",
-    "undefined", "var", "void", "while", "with", "yield",
+    "abstract",
+    "arguments",
+    "as",
+    "asserts",
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "constructor",
+    "continue",
+    "debugger",
+    "declare",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "get",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "infer",
+    "instanceof",
+    "interface",
+    "is",
+    "keyof",
+    "let",
+    "module",
+    "namespace",
+    "new",
+    "null",
+    "of",
+    "override",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "readonly",
+    "require",
+    "return",
+    "satisfies",
+    "set",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "type",
+    "typeof",
+    "undefined",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
 ];
 
 static TS_TYPES: &[&str] = &[
-    "any", "bigint", "boolean", "never", "number", "object", "string", "symbol",
-    "undefined", "unknown", "void", "Array", "Boolean", "Date", "Error",
-    "Function", "Map", "Number", "Object", "Promise", "RegExp", "Set",
-    "String", "Symbol", "WeakMap", "WeakSet", "Record", "Partial", "Required",
-    "Readonly", "Pick", "Omit", "Exclude", "Extract", "NonNullable",
-    "Parameters", "ReturnType", "InstanceType", "Awaited", "Capitalize",
-    "Uncapitalize", "Uppercase", "Lowercase", "React", "JSX", "FC",
-    "ReactNode", "ReactElement", "CSSProperties", "PropsWithChildren",
-    "HTMLElement", "HTMLDivElement", "HTMLInputElement", "HTMLButtonElement",
-    "Event", "MouseEvent", "KeyboardEvent", "Window", "Document",
+    "any",
+    "bigint",
+    "boolean",
+    "never",
+    "number",
+    "object",
+    "string",
+    "symbol",
+    "undefined",
+    "unknown",
+    "void",
+    "Array",
+    "Boolean",
+    "Date",
+    "Error",
+    "Function",
+    "Map",
+    "Number",
+    "Object",
+    "Promise",
+    "RegExp",
+    "Set",
+    "String",
+    "Symbol",
+    "WeakMap",
+    "WeakSet",
+    "Record",
+    "Partial",
+    "Required",
+    "Readonly",
+    "Pick",
+    "Omit",
+    "Exclude",
+    "Extract",
+    "NonNullable",
+    "Parameters",
+    "ReturnType",
+    "InstanceType",
+    "Awaited",
+    "Capitalize",
+    "Uncapitalize",
+    "Uppercase",
+    "Lowercase",
+    "React",
+    "JSX",
+    "FC",
+    "ReactNode",
+    "ReactElement",
+    "CSSProperties",
+    "PropsWithChildren",
+    "HTMLElement",
+    "HTMLDivElement",
+    "HTMLInputElement",
+    "HTMLButtonElement",
+    "Event",
+    "MouseEvent",
+    "KeyboardEvent",
+    "Window",
+    "Document",
 ];
 
 static HTML_TAGS: &[&str] = &[
-    "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi",
-    "bdo", "blockquote", "body", "br", "button", "canvas", "caption", "cite", "code",
-    "col", "colgroup", "data", "datalist", "dd", "del", "details", "dfn", "dialog",
-    "div", "dl", "dt", "em", "embed", "fieldset", "figcaption", "figure", "footer",
-    "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr",
-    "html", "i", "iframe", "img", "input", "ins", "kbd", "label", "legend", "li",
-    "link", "main", "map", "mark", "menu", "meta", "meter", "nav", "noscript",
-    "object", "ol", "optgroup", "option", "output", "p", "picture", "pre", "progress",
-    "q", "rp", "rt", "ruby", "s", "samp", "script", "section", "select", "slot",
-    "small", "source", "span", "strong", "style", "sub", "summary", "sup", "table",
-    "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "time", "title",
-    "tr", "track", "u", "ul", "var", "video", "wbr", "svg", "path", "circle", "rect",
-    "g", "line", "polyline", "polygon", "text",
+    "a",
+    "abbr",
+    "address",
+    "area",
+    "article",
+    "aside",
+    "audio",
+    "b",
+    "base",
+    "bdi",
+    "bdo",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "canvas",
+    "caption",
+    "cite",
+    "code",
+    "col",
+    "colgroup",
+    "data",
+    "datalist",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "dialog",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "i",
+    "iframe",
+    "img",
+    "input",
+    "ins",
+    "kbd",
+    "label",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "map",
+    "mark",
+    "menu",
+    "meta",
+    "meter",
+    "nav",
+    "noscript",
+    "object",
+    "ol",
+    "optgroup",
+    "option",
+    "output",
+    "p",
+    "picture",
+    "pre",
+    "progress",
+    "q",
+    "rp",
+    "rt",
+    "ruby",
+    "s",
+    "samp",
+    "script",
+    "section",
+    "select",
+    "slot",
+    "small",
+    "source",
+    "span",
+    "strong",
+    "style",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "title",
+    "tr",
+    "track",
+    "u",
+    "ul",
+    "var",
+    "video",
+    "wbr",
+    "svg",
+    "path",
+    "circle",
+    "rect",
+    "g",
+    "line",
+    "polyline",
+    "polygon",
+    "text",
 ];
 
 static CSS_KEYWORDS: &[&str] = &[
-    "important", "media", "keyframes", "import", "font-face", "supports",
-    "charset", "layer", "container", "page", "counter-style", "property",
-    "namespace", "auto", "inherit", "initial", "unset", "revert", "none",
-    "block", "inline", "flex", "grid", "absolute", "relative", "fixed",
-    "sticky", "hidden", "visible", "collapse", "center", "left", "right",
-    "top", "bottom", "bold", "italic", "underline", "solid", "dashed", "dotted",
-    "transparent", "currentcolor",
+    "important",
+    "media",
+    "keyframes",
+    "import",
+    "font-face",
+    "supports",
+    "charset",
+    "layer",
+    "container",
+    "page",
+    "counter-style",
+    "property",
+    "namespace",
+    "auto",
+    "inherit",
+    "initial",
+    "unset",
+    "revert",
+    "none",
+    "block",
+    "inline",
+    "flex",
+    "grid",
+    "absolute",
+    "relative",
+    "fixed",
+    "sticky",
+    "hidden",
+    "visible",
+    "collapse",
+    "center",
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "bold",
+    "italic",
+    "underline",
+    "solid",
+    "dashed",
+    "dotted",
+    "transparent",
+    "currentcolor",
 ];
 
 static CSS_PROPERTIES: &[&str] = &[
-    "align-content", "align-items", "align-self", "animation", "backdrop-filter",
-    "background", "background-color", "background-image", "background-position",
-    "background-repeat", "background-size", "border", "border-bottom",
-    "border-color", "border-left", "border-radius", "border-right", "border-style",
-    "border-top", "border-width", "bottom", "box-shadow", "box-sizing",
-    "color", "column-gap", "columns", "content", "cursor", "display",
-    "filter", "flex", "flex-basis", "flex-direction", "flex-flow", "flex-grow",
-    "flex-shrink", "flex-wrap", "font", "font-family", "font-size", "font-style",
-    "font-weight", "gap", "grid", "grid-area", "grid-column", "grid-row",
-    "grid-template-columns", "grid-template-rows", "height", "inset",
-    "justify-content", "justify-items", "justify-self", "left", "letter-spacing",
-    "line-height", "list-style", "margin", "margin-bottom", "margin-left",
-    "margin-right", "margin-top", "max-height", "max-width", "min-height",
-    "min-width", "opacity", "order", "outline", "overflow", "overflow-x",
-    "overflow-y", "padding", "padding-bottom", "padding-left", "padding-right",
-    "padding-top", "pointer-events", "position", "resize", "right", "row-gap",
-    "scroll-behavior", "stroke", "fill", "text-align", "text-decoration",
-    "text-overflow", "text-transform", "top", "transform", "transform-origin",
-    "transition", "user-select", "vertical-align", "visibility", "white-space",
-    "width", "word-break", "word-wrap", "z-index",
+    "align-content",
+    "align-items",
+    "align-self",
+    "animation",
+    "backdrop-filter",
+    "background",
+    "background-color",
+    "background-image",
+    "background-position",
+    "background-repeat",
+    "background-size",
+    "border",
+    "border-bottom",
+    "border-color",
+    "border-left",
+    "border-radius",
+    "border-right",
+    "border-style",
+    "border-top",
+    "border-width",
+    "bottom",
+    "box-shadow",
+    "box-sizing",
+    "color",
+    "column-gap",
+    "columns",
+    "content",
+    "cursor",
+    "display",
+    "filter",
+    "flex",
+    "flex-basis",
+    "flex-direction",
+    "flex-flow",
+    "flex-grow",
+    "flex-shrink",
+    "flex-wrap",
+    "font",
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+    "gap",
+    "grid",
+    "grid-area",
+    "grid-column",
+    "grid-row",
+    "grid-template-columns",
+    "grid-template-rows",
+    "height",
+    "inset",
+    "justify-content",
+    "justify-items",
+    "justify-self",
+    "left",
+    "letter-spacing",
+    "line-height",
+    "list-style",
+    "margin",
+    "margin-bottom",
+    "margin-left",
+    "margin-right",
+    "margin-top",
+    "max-height",
+    "max-width",
+    "min-height",
+    "min-width",
+    "opacity",
+    "order",
+    "outline",
+    "overflow",
+    "overflow-x",
+    "overflow-y",
+    "padding",
+    "padding-bottom",
+    "padding-left",
+    "padding-right",
+    "padding-top",
+    "pointer-events",
+    "position",
+    "resize",
+    "right",
+    "row-gap",
+    "scroll-behavior",
+    "stroke",
+    "fill",
+    "text-align",
+    "text-decoration",
+    "text-overflow",
+    "text-transform",
+    "top",
+    "transform",
+    "transform-origin",
+    "transition",
+    "user-select",
+    "vertical-align",
+    "visibility",
+    "white-space",
+    "width",
+    "word-break",
+    "word-wrap",
+    "z-index",
 ];
 
 static PY_KEYWORDS: &[&str] = &[
-    "and", "as", "assert", "async", "await", "break", "case", "class", "continue",
-    "def", "del", "elif", "else", "except", "False", "finally", "for",
-    "from", "global", "if", "import", "in", "is", "lambda", "match", "None",
-    "nonlocal", "not", "or", "pass", "raise", "return", "True", "try",
-    "type", "while", "with", "yield",
+    "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def", "del",
+    "elif", "else", "except", "False", "finally", "for", "from", "global", "if", "import", "in",
+    "is", "lambda", "match", "None", "nonlocal", "not", "or", "pass", "raise", "return", "True",
+    "try", "type", "while", "with", "yield",
 ];
 
 static PY_TYPES: &[&str] = &[
-    "int", "float", "str", "bool", "list", "dict", "set", "tuple", "bytes",
-    "bytearray", "object", "type", "self", "cls", "Any", "Union", "Optional",
-    "List", "Dict", "Set", "Tuple", "Callable", "Iterable", "Iterator",
-    "Generator", "Sequence", "Mapping",
+    "int",
+    "float",
+    "str",
+    "bool",
+    "list",
+    "dict",
+    "set",
+    "tuple",
+    "bytes",
+    "bytearray",
+    "object",
+    "type",
+    "self",
+    "cls",
+    "Any",
+    "Union",
+    "Optional",
+    "List",
+    "Dict",
+    "Set",
+    "Tuple",
+    "Callable",
+    "Iterable",
+    "Iterator",
+    "Generator",
+    "Sequence",
+    "Mapping",
 ];
 
 static RUST_KEYWORDS: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn",
-    "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
-    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
-    "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
     "unsafe", "use", "where", "while",
 ];
 
 static RUST_TYPES: &[&str] = &[
-    "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize",
-    "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64",
-    "String", "Vec", "Option", "Result", "Some", "None", "Ok", "Err",
-    "Box", "Rc", "Arc", "RefCell", "Mutex", "RwLock", "Cell",
-    "Path", "PathBuf", "HashMap", "HashSet", "BTreeMap", "BTreeSet",
+    "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64",
+    "i128", "isize", "f32", "f64", "String", "Vec", "Option", "Result", "Some", "None", "Ok",
+    "Err", "Box", "Rc", "Arc", "RefCell", "Mutex", "RwLock", "Cell", "Path", "PathBuf", "HashMap",
+    "HashSet", "BTreeMap", "BTreeSet",
 ];
 
 static SQL_KEYWORDS: &[&str] = &[
-    "select", "from", "where", "insert", "into", "values", "update", "set",
-    "delete", "create", "table", "index", "view", "trigger", "drop", "alter",
-    "add", "column", "primary", "key", "foreign", "references", "not", "null",
-    "unique", "default", "autoincrement", "check", "constraint", "and", "or",
-    "in", "is", "like", "order", "by", "group", "having", "limit", "offset",
-    "join", "left", "right", "inner", "outer", "full", "cross", "on", "as",
-    "distinct", "union", "all", "case", "when", "then", "else", "end", "exists",
-    "between", "cast", "coalesce", "count", "sum", "avg", "min", "max",
+    "select",
+    "from",
+    "where",
+    "insert",
+    "into",
+    "values",
+    "update",
+    "set",
+    "delete",
+    "create",
+    "table",
+    "index",
+    "view",
+    "trigger",
+    "drop",
+    "alter",
+    "add",
+    "column",
+    "primary",
+    "key",
+    "foreign",
+    "references",
+    "not",
+    "null",
+    "unique",
+    "default",
+    "autoincrement",
+    "check",
+    "constraint",
+    "and",
+    "or",
+    "in",
+    "is",
+    "like",
+    "order",
+    "by",
+    "group",
+    "having",
+    "limit",
+    "offset",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "full",
+    "cross",
+    "on",
+    "as",
+    "distinct",
+    "union",
+    "all",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "exists",
+    "between",
+    "cast",
+    "coalesce",
+    "count",
+    "sum",
+    "avg",
+    "min",
+    "max",
 ];
 
 static SQL_TYPES: &[&str] = &[
-    "integer", "int", "smallint", "bigint", "text", "varchar", "char", "real",
-    "blob", "boolean", "numeric", "decimal", "float", "double", "date", "time",
-    "datetime", "timestamp", "json", "jsonb", "uuid",
+    "integer",
+    "int",
+    "smallint",
+    "bigint",
+    "text",
+    "varchar",
+    "char",
+    "real",
+    "blob",
+    "boolean",
+    "numeric",
+    "decimal",
+    "float",
+    "double",
+    "date",
+    "time",
+    "datetime",
+    "timestamp",
+    "json",
+    "jsonb",
+    "uuid",
 ];
 
 static ZIG_KEYWORDS: &[&str] = &[
-    "fn", "pub", "const", "var", "struct", "enum", "union", "error", "inline",
-    "comptime", "test", "try", "catch", "defer", "errdefer", "while", "for",
-    "if", "else", "switch", "return", "break", "continue", "asm", "usingnamespace",
-    "align", "linksection", "threadlocal", "allowzero", "volatile", "export",
-    "extern", "naked", "anytype", "unreachable", "and", "or", "orelse", "null",
-    "undefined", "true", "false",
+    "fn",
+    "pub",
+    "const",
+    "var",
+    "struct",
+    "enum",
+    "union",
+    "error",
+    "inline",
+    "comptime",
+    "test",
+    "try",
+    "catch",
+    "defer",
+    "errdefer",
+    "while",
+    "for",
+    "if",
+    "else",
+    "switch",
+    "return",
+    "break",
+    "continue",
+    "asm",
+    "usingnamespace",
+    "align",
+    "linksection",
+    "threadlocal",
+    "allowzero",
+    "volatile",
+    "export",
+    "extern",
+    "naked",
+    "anytype",
+    "unreachable",
+    "and",
+    "or",
+    "orelse",
+    "null",
+    "undefined",
+    "true",
+    "false",
 ];
 
 static ZIG_TYPES: &[&str] = &[
-    "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
-    "f16", "f32", "f64", "f80", "f128", "bool", "void", "noreturn", "type", "anyerror",
-    "anyopaque", "c_int", "c_uint", "c_long", "c_ulong", "c_void",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "usize",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "isize",
+    "f16",
+    "f32",
+    "f64",
+    "f80",
+    "f128",
+    "bool",
+    "void",
+    "noreturn",
+    "type",
+    "anyerror",
+    "anyopaque",
+    "c_int",
+    "c_uint",
+    "c_long",
+    "c_ulong",
+    "c_void",
 ];
 
 static GO_KEYWORDS: &[&str] = &[
-    "break", "case", "chan", "const", "continue", "default", "defer", "else",
-    "fallthrough", "for", "func", "go", "goto", "if", "import", "interface",
-    "map", "package", "range", "return", "select", "struct", "switch", "type",
-    "var", "true", "false", "nil", "iota",
+    "break",
+    "case",
+    "chan",
+    "const",
+    "continue",
+    "default",
+    "defer",
+    "else",
+    "fallthrough",
+    "for",
+    "func",
+    "go",
+    "goto",
+    "if",
+    "import",
+    "interface",
+    "map",
+    "package",
+    "range",
+    "return",
+    "select",
+    "struct",
+    "switch",
+    "type",
+    "var",
+    "true",
+    "false",
+    "nil",
+    "iota",
 ];
 
 static GO_TYPES: &[&str] = &[
-    "bool", "byte", "complex64", "complex128", "error", "float32", "float64",
-    "int", "int8", "int16", "int32", "int64", "rune", "string", "uint",
-    "uint8", "uint16", "uint32", "uint64", "uintptr", "any", "comparable",
-    "append", "cap", "close", "copy", "delete", "len", "make", "new",
-    "panic", "print", "println", "recover",
+    "bool",
+    "byte",
+    "complex64",
+    "complex128",
+    "error",
+    "float32",
+    "float64",
+    "int",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "rune",
+    "string",
+    "uint",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "uintptr",
+    "any",
+    "comparable",
+    "append",
+    "cap",
+    "close",
+    "copy",
+    "delete",
+    "len",
+    "make",
+    "new",
+    "panic",
+    "print",
+    "println",
+    "recover",
 ];
 
 static SHELL_KEYWORDS: &[&str] = &[
-    "if", "then", "else", "elif", "fi", "for", "in", "do", "done", "case", "esac",
-    "while", "until", "function", "return", "exit", "echo", "export", "source", "local",
-    "set", "unset", "alias", "read",
+    "if", "then", "else", "elif", "fi", "for", "in", "do", "done", "case", "esac", "while",
+    "until", "function", "return", "exit", "echo", "export", "source", "local", "set", "unset",
+    "alias", "read",
 ];
 
 static JAVA_KEYWORDS: &[&str] = &[
-    "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
-    "class", "const", "continue", "default", "do", "double", "else", "enum",
-    "extends", "final", "finally", "float", "for", "goto", "if", "implements",
-    "import", "instanceof", "int", "interface", "long", "native", "new",
-    "package", "private", "protected", "public", "return", "short", "static",
-    "strictfp", "super", "switch", "synchronized", "this", "throw", "throws",
-    "transient", "try", "void", "volatile", "while", "true", "false", "null",
-    "record", "sealed", "permits", "var", "yield",
+    "abstract",
+    "assert",
+    "boolean",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extends",
+    "final",
+    "finally",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "implements",
+    "import",
+    "instanceof",
+    "int",
+    "interface",
+    "long",
+    "native",
+    "new",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "static",
+    "strictfp",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throw",
+    "throws",
+    "transient",
+    "try",
+    "void",
+    "volatile",
+    "while",
+    "true",
+    "false",
+    "null",
+    "record",
+    "sealed",
+    "permits",
+    "var",
+    "yield",
     // Kotlin additions
-    "fun", "val", "when", "is", "in", "object", "companion", "override",
-    "open", "data", "suspend", "inline", "it",
+    "fun",
+    "val",
+    "when",
+    "is",
+    "in",
+    "object",
+    "companion",
+    "override",
+    "open",
+    "data",
+    "suspend",
+    "inline",
+    "it",
 ];
 
 static JAVA_TYPES: &[&str] = &[
-    "String", "Integer", "Long", "Double", "Float", "Boolean", "Byte", "Short",
-    "Character", "Object", "Class", "System", "Thread", "Throwable", "Exception",
-    "List", "ArrayList", "Map", "HashMap", "Set", "HashSet", "Optional",
-    "Stream", "Int", "Any", "Unit", "Nothing",
+    "String",
+    "Integer",
+    "Long",
+    "Double",
+    "Float",
+    "Boolean",
+    "Byte",
+    "Short",
+    "Character",
+    "Object",
+    "Class",
+    "System",
+    "Thread",
+    "Throwable",
+    "Exception",
+    "List",
+    "ArrayList",
+    "Map",
+    "HashMap",
+    "Set",
+    "HashSet",
+    "Optional",
+    "Stream",
+    "Int",
+    "Any",
+    "Unit",
+    "Nothing",
 ];
 
 static CSHARP_KEYWORDS: &[&str] = &[
-    "abstract", "as", "async", "await", "base", "bool", "break", "byte", "case",
-    "catch", "char", "checked", "class", "const", "continue", "decimal", "default",
-    "delegate", "do", "double", "else", "enum", "event", "explicit", "extern",
-    "false", "finally", "fixed", "float", "for", "foreach", "goto", "if",
-    "implicit", "in", "int", "interface", "internal", "is", "lock", "long",
-    "namespace", "new", "null", "object", "operator", "out", "override",
-    "params", "private", "protected", "public", "readonly", "record", "ref",
-    "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static",
-    "string", "struct", "switch", "this", "throw", "true", "try", "typeof",
-    "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "var",
-    "virtual", "void", "volatile", "while", "yield", "get", "set", "init", "value",
+    "abstract",
+    "as",
+    "async",
+    "await",
+    "base",
+    "bool",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "checked",
+    "class",
+    "const",
+    "continue",
+    "decimal",
+    "default",
+    "delegate",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "event",
+    "explicit",
+    "extern",
+    "false",
+    "finally",
+    "fixed",
+    "float",
+    "for",
+    "foreach",
+    "goto",
+    "if",
+    "implicit",
+    "in",
+    "int",
+    "interface",
+    "internal",
+    "is",
+    "lock",
+    "long",
+    "namespace",
+    "new",
+    "null",
+    "object",
+    "operator",
+    "out",
+    "override",
+    "params",
+    "private",
+    "protected",
+    "public",
+    "readonly",
+    "record",
+    "ref",
+    "return",
+    "sbyte",
+    "sealed",
+    "short",
+    "sizeof",
+    "stackalloc",
+    "static",
+    "string",
+    "struct",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "uint",
+    "ulong",
+    "unchecked",
+    "unsafe",
+    "ushort",
+    "using",
+    "var",
+    "virtual",
+    "void",
+    "volatile",
+    "while",
+    "yield",
+    "get",
+    "set",
+    "init",
+    "value",
 ];
 
 static CSHARP_TYPES: &[&str] = &[
-    "Task", "List", "Dictionary", "IEnumerable", "Action", "Func", "String",
-    "Int32", "Int64", "Boolean", "Object", "DateTime", "Guid", "Span", "Memory",
-    "Console", "Exception",
+    "Task",
+    "List",
+    "Dictionary",
+    "IEnumerable",
+    "Action",
+    "Func",
+    "String",
+    "Int32",
+    "Int64",
+    "Boolean",
+    "Object",
+    "DateTime",
+    "Guid",
+    "Span",
+    "Memory",
+    "Console",
+    "Exception",
 ];
 
 static PHP_KEYWORDS: &[&str] = &[
-    "echo", "print", "function", "class", "public", "private", "protected",
-    "static", "namespace", "use", "return", "if", "else", "elseif", "while",
-    "for", "foreach", "as", "new", "try", "catch", "finally", "throw",
-    "extends", "implements", "interface", "trait", "abstract", "final",
-    "const", "switch", "case", "break", "continue", "default", "include",
-    "require", "include_once", "require_once", "fn", "match", "readonly",
-    "null", "true", "false",
+    "echo",
+    "print",
+    "function",
+    "class",
+    "public",
+    "private",
+    "protected",
+    "static",
+    "namespace",
+    "use",
+    "return",
+    "if",
+    "else",
+    "elseif",
+    "while",
+    "for",
+    "foreach",
+    "as",
+    "new",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "extends",
+    "implements",
+    "interface",
+    "trait",
+    "abstract",
+    "final",
+    "const",
+    "switch",
+    "case",
+    "break",
+    "continue",
+    "default",
+    "include",
+    "require",
+    "include_once",
+    "require_once",
+    "fn",
+    "match",
+    "readonly",
+    "null",
+    "true",
+    "false",
 ];
 
 static RUBY_KEYWORDS: &[&str] = &[
-    "def", "end", "class", "module", "if", "elsif", "else", "unless", "while",
-    "until", "for", "in", "do", "return", "yield", "self", "nil", "true",
-    "false", "require", "require_relative", "include", "extend", "attr_reader",
-    "attr_writer", "attr_accessor", "begin", "rescue", "ensure", "raise",
-    "then", "when", "case", "super", "alias",
+    "def",
+    "end",
+    "class",
+    "module",
+    "if",
+    "elsif",
+    "else",
+    "unless",
+    "while",
+    "until",
+    "for",
+    "in",
+    "do",
+    "return",
+    "yield",
+    "self",
+    "nil",
+    "true",
+    "false",
+    "require",
+    "require_relative",
+    "include",
+    "extend",
+    "attr_reader",
+    "attr_writer",
+    "attr_accessor",
+    "begin",
+    "rescue",
+    "ensure",
+    "raise",
+    "then",
+    "when",
+    "case",
+    "super",
+    "alias",
 ];
 
 static SWIFT_KEYWORDS: &[&str] = &[
-    "func", "var", "let", "guard", "if", "else", "switch", "case", "default",
-    "for", "in", "while", "repeat", "return", "struct", "class", "enum",
-    "protocol", "extension", "import", "init", "deinit", "self", "Self",
-    "nil", "true", "false", "public", "private", "fileprivate", "internal",
-    "open", "override", "mutating", "nonmutating", "throws", "rethrows",
-    "try", "catch", "async", "await", "some", "any", "actor",
+    "func",
+    "var",
+    "let",
+    "guard",
+    "if",
+    "else",
+    "switch",
+    "case",
+    "default",
+    "for",
+    "in",
+    "while",
+    "repeat",
+    "return",
+    "struct",
+    "class",
+    "enum",
+    "protocol",
+    "extension",
+    "import",
+    "init",
+    "deinit",
+    "self",
+    "Self",
+    "nil",
+    "true",
+    "false",
+    "public",
+    "private",
+    "fileprivate",
+    "internal",
+    "open",
+    "override",
+    "mutating",
+    "nonmutating",
+    "throws",
+    "rethrows",
+    "try",
+    "catch",
+    "async",
+    "await",
+    "some",
+    "any",
+    "actor",
 ];
 
 static SWIFT_TYPES: &[&str] = &[
-    "String", "Int", "Double", "Float", "Bool", "Array", "Dictionary", "Set",
-    "Optional", "View", "Text",
+    "String",
+    "Int",
+    "Double",
+    "Float",
+    "Bool",
+    "Array",
+    "Dictionary",
+    "Set",
+    "Optional",
+    "View",
+    "Text",
 ];
 
 static LUA_KEYWORDS: &[&str] = &[
-    "local", "function", "end", "if", "then", "elseif", "else", "while", "do",
-    "for", "in", "repeat", "until", "return", "break", "nil", "true", "false",
-    "not", "and", "or",
+    "local", "function", "end", "if", "then", "elseif", "else", "while", "do", "for", "in",
+    "repeat", "until", "return", "break", "nil", "true", "false", "not", "and", "or",
 ];
 
 static DART_KEYWORDS: &[&str] = &[
-    "void", "class", "extends", "with", "implements", "final", "const", "var",
-    "dynamic", "async", "await", "return", "import", "export", "library", "part",
-    "of", "if", "else", "for", "in", "while", "do", "switch", "case", "default",
-    "break", "continue", "try", "catch", "finally", "throw", "rethrow", "new",
-    "this", "super", "true", "false", "null", "static", "late", "required",
-    "factory", "get", "set",
+    "void",
+    "class",
+    "extends",
+    "with",
+    "implements",
+    "final",
+    "const",
+    "var",
+    "dynamic",
+    "async",
+    "await",
+    "return",
+    "import",
+    "export",
+    "library",
+    "part",
+    "of",
+    "if",
+    "else",
+    "for",
+    "in",
+    "while",
+    "do",
+    "switch",
+    "case",
+    "default",
+    "break",
+    "continue",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "rethrow",
+    "new",
+    "this",
+    "super",
+    "true",
+    "false",
+    "null",
+    "static",
+    "late",
+    "required",
+    "factory",
+    "get",
+    "set",
 ];
 
 static DART_TYPES: &[&str] = &[
-    "int", "double", "String", "bool", "List", "Map", "Set", "Future", "Stream",
-    "Widget", "BuildContext", "State",
+    "int",
+    "double",
+    "String",
+    "bool",
+    "List",
+    "Map",
+    "Set",
+    "Future",
+    "Stream",
+    "Widget",
+    "BuildContext",
+    "State",
 ];
 
 static DOCKER_KEYWORDS: &[&str] = &[
-    "FROM", "RUN", "CMD", "LABEL", "EXPOSE", "ENV", "ADD", "COPY",
-    "ENTRYPOINT", "VOLUME", "USER", "WORKDIR", "ARG", "ONBUILD",
-    "STOPSIGNAL", "HEALTHCHECK", "SHELL",
+    "FROM",
+    "RUN",
+    "CMD",
+    "LABEL",
+    "EXPOSE",
+    "ENV",
+    "ADD",
+    "COPY",
+    "ENTRYPOINT",
+    "VOLUME",
+    "USER",
+    "WORKDIR",
+    "ARG",
+    "ONBUILD",
+    "STOPSIGNAL",
+    "HEALTHCHECK",
+    "SHELL",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -406,11 +1404,7 @@ pub fn detect_lang(ext: &str) -> LangKind {
 }
 
 /// Tokenizes a single line of text with stateful multi-line block comment tracking.
-pub fn tokenize_line(
-    text: &str,
-    ext: &str,
-    in_block_comment: &mut bool,
-) -> Vec<SyntaxToken> {
+pub fn tokenize_line(text: &str, ext: &str, in_block_comment: &mut bool) -> Vec<SyntaxToken> {
     let mut tokens = Vec::new();
     let bytes = text.as_bytes();
     let len = bytes.len();
@@ -504,7 +1498,9 @@ pub fn tokenize_line(
         // 1. Whitespace
         if b == b' ' || b == b'\t' || b == b'\r' || b == b'\n' {
             let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\r' || bytes[i] == b'\n') {
+            while i < len
+                && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\r' || bytes[i] == b'\n')
+            {
                 i += 1;
             }
             tokens.push(SyntaxToken {
@@ -601,7 +1597,11 @@ pub fn tokenize_line(
             });
             break;
         }
-        if (lang == LangKind::Sql || lang == LangKind::Lua) && b == b'-' && i + 1 < len && bytes[i + 1] == b'-' {
+        if (lang == LangKind::Sql || lang == LangKind::Lua)
+            && b == b'-'
+            && i + 1 < len
+            && bytes[i + 1] == b'-'
+        {
             tokens.push(SyntaxToken {
                 kind: TokenKind::Comment,
                 range: i..len,
@@ -635,7 +1635,12 @@ pub fn tokenize_line(
             if text[i..].starts_with("</") {
                 let start = i;
                 i += 2;
-                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_' || bytes[i] == b':') {
+                while i < len
+                    && (bytes[i].is_ascii_alphanumeric()
+                        || bytes[i] == b'-'
+                        || bytes[i] == b'_'
+                        || bytes[i] == b':')
+                {
                     i += 1;
                 }
                 tokens.push(SyntaxToken {
@@ -644,10 +1649,18 @@ pub fn tokenize_line(
                 });
                 continue;
             }
-            if b == b'<' && i + 1 < len && (bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b'_') {
+            if b == b'<'
+                && i + 1 < len
+                && (bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b'_')
+            {
                 let start = i;
                 i += 1;
-                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_' || bytes[i] == b':') {
+                while i < len
+                    && (bytes[i].is_ascii_alphanumeric()
+                        || bytes[i] == b'-'
+                        || bytes[i] == b'_'
+                        || bytes[i] == b':')
+                {
                     i += 1;
                 }
                 tokens.push(SyntaxToken {
@@ -694,7 +1707,9 @@ pub fn tokenize_line(
             if text[i..].starts_with("</") {
                 let start = i;
                 i += 2;
-                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.' || bytes[i] == b'-') {
+                while i < len
+                    && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.' || bytes[i] == b'-')
+                {
                     i += 1;
                 }
                 tokens.push(SyntaxToken {
@@ -712,7 +1727,9 @@ pub fn tokenize_line(
             } else if bytes[i + 1].is_ascii_uppercase() {
                 let start = i;
                 i += 1;
-                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.' || bytes[i] == b'-') {
+                while i < len
+                    && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.' || bytes[i] == b'-')
+                {
                     i += 1;
                 }
                 tokens.push(SyntaxToken {
@@ -761,10 +1778,17 @@ pub fn tokenize_line(
                 });
                 continue;
             }
-            if b == b'.' && i + 1 < len && (bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b'-' || bytes[i + 1] == b'_') {
+            if b == b'.'
+                && i + 1 < len
+                && (bytes[i + 1].is_ascii_alphabetic()
+                    || bytes[i + 1] == b'-'
+                    || bytes[i + 1] == b'_')
+            {
                 let start = i;
                 i += 1;
-                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_') {
+                while i < len
+                    && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_')
+                {
                     i += 1;
                 }
                 tokens.push(SyntaxToken {
@@ -776,19 +1800,28 @@ pub fn tokenize_line(
             if b == b'#' {
                 let start = i;
                 i += 1;
-                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_') {
+                while i < len
+                    && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_')
+                {
                     i += 1;
                 }
                 let hex = &text[start + 1..i];
                 let is_hex = (hex.len() == 3 || hex.len() == 4 || hex.len() == 6 || hex.len() == 8)
                     && hex.bytes().all(|c| c.is_ascii_hexdigit());
                 tokens.push(SyntaxToken {
-                    kind: if is_hex { TokenKind::Number } else { TokenKind::Type },
+                    kind: if is_hex {
+                        TokenKind::Number
+                    } else {
+                        TokenKind::Type
+                    },
                     range: start..i,
                 });
                 continue;
             }
-            if b == b':' && i + 1 < len && (bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b':') {
+            if b == b':'
+                && i + 1 < len
+                && (bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b':')
+            {
                 let start = i;
                 while i < len && bytes[i] == b':' {
                     i += 1;
@@ -808,7 +1841,9 @@ pub fn tokenize_line(
         if (lang == LangKind::Cpp || lang == LangKind::CSharp) && b == b'#' {
             let start = i;
             i += 1;
-            while i < len && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' || bytes[i] == b'#') {
+            while i < len
+                && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' || bytes[i] == b'#')
+            {
                 i += 1;
             }
             tokens.push(SyntaxToken {
@@ -817,7 +1852,11 @@ pub fn tokenize_line(
             });
             continue;
         }
-        if lang == LangKind::Rust && b == b'#' && i + 1 < len && (bytes[i + 1] == b'[' || bytes[i + 1] == b'!') {
+        if lang == LangKind::Rust
+            && b == b'#'
+            && i + 1 < len
+            && (bytes[i + 1] == b'[' || bytes[i + 1] == b'!')
+        {
             let start = i;
             while i < len && bytes[i] != b']' {
                 i += 1;
@@ -847,11 +1886,17 @@ pub fn tokenize_line(
         {
             let start = i;
             i += 1;
-            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'.') {
+            while i < len
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'.')
+            {
                 i += 1;
             }
             tokens.push(SyntaxToken {
-                kind: if lang == LangKind::Zig { TokenKind::Keyword } else { TokenKind::Preprocessor },
+                kind: if lang == LangKind::Zig {
+                    TokenKind::Keyword
+                } else {
+                    TokenKind::Preprocessor
+                },
                 range: start..i,
             });
             continue;
@@ -885,7 +1930,10 @@ pub fn tokenize_line(
         }
 
         // 10. Strings: "...", '...', and `...`
-        let is_backtick_lang = matches!(lang, LangKind::Js | LangKind::Ts | LangKind::Go | LangKind::Markdown | LangKind::Sql);
+        let is_backtick_lang = matches!(
+            lang,
+            LangKind::Js | LangKind::Ts | LangKind::Go | LangKind::Markdown | LangKind::Sql
+        );
         if b == b'"' || b == b'\'' || (is_backtick_lang && b == b'`') {
             let quote = b;
             let start = i;
@@ -902,7 +1950,12 @@ pub fn tokenize_line(
             }
             let kind = if lang == LangKind::Json {
                 let mut peek = i;
-                while peek < len && (bytes[peek] == b' ' || bytes[peek] == b'\t' || bytes[peek] == b'\r' || bytes[peek] == b'\n') {
+                while peek < len
+                    && (bytes[peek] == b' '
+                        || bytes[peek] == b'\t'
+                        || bytes[peek] == b'\r'
+                        || bytes[peek] == b'\n')
+                {
                     peek += 1;
                 }
                 if peek < len && bytes[peek] == b':' {
@@ -969,13 +2022,21 @@ pub fn tokenize_line(
         // 12. Identifiers / Keywords / Types
         if b.is_ascii_alphabetic() || b == b'_' || (lang == LangKind::Css && b == b'-') {
             let start = i;
-            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || (lang == LangKind::Css && bytes[i] == b'-')) {
+            while i < len
+                && (bytes[i].is_ascii_alphanumeric()
+                    || bytes[i] == b'_'
+                    || (lang == LangKind::Css && bytes[i] == b'-'))
+            {
                 i += 1;
             }
             let word = &text[start..i];
 
             // Rust macros (println!, vec!, format!)
-            if lang == LangKind::Rust && i < len && bytes[i] == b'!' && (i + 1 >= len || bytes[i + 1] != b'=') {
+            if lang == LangKind::Rust
+                && i < len
+                && bytes[i] == b'!'
+                && (i + 1 >= len || bytes[i + 1] != b'=')
+            {
                 i += 1;
                 tokens.push(SyntaxToken {
                     kind: TokenKind::Preprocessor,
@@ -1003,7 +2064,10 @@ pub fn tokenize_line(
                 let is_property = peek < len && bytes[peek] == b':';
                 if word.starts_with("--") {
                     kind = TokenKind::Type;
-                } else if is_property || (CSS_PROPERTIES.contains(&lower_word.as_str()) && !CSS_KEYWORDS.contains(&lower_word.as_str())) {
+                } else if is_property
+                    || (CSS_PROPERTIES.contains(&lower_word.as_str())
+                        && !CSS_KEYWORDS.contains(&lower_word.as_str()))
+                {
                     kind = TokenKind::Keyword;
                 } else if CSS_KEYWORDS.contains(&lower_word.as_str()) {
                     kind = TokenKind::Type;
@@ -1015,7 +2079,12 @@ pub fn tokenize_line(
                 }
                 if peek < len && (bytes[peek] == b':' || bytes[peek] == b'=') {
                     kind = TokenKind::Keyword;
-                } else if word == "true" || word == "false" || word == "yes" || word == "no" || word == "null" {
+                } else if word == "true"
+                    || word == "false"
+                    || word == "yes"
+                    || word == "no"
+                    || word == "null"
+                {
                     kind = TokenKind::Keyword;
                 }
             } else {
@@ -1192,10 +2261,7 @@ pub fn tokenize_line(
 }
 
 /// Tokenize an entire document into lines of (TokenKind, text slice)
-pub fn tokenize_document<'a>(
-    text: &'a str,
-    ext: &str,
-) -> Vec<Vec<(TokenKind, &'a str)>> {
+pub fn tokenize_document<'a>(text: &'a str, ext: &str) -> Vec<Vec<(TokenKind, &'a str)>> {
     let mut in_block_comment = false;
     text.lines()
         .map(|line| {
@@ -1215,23 +2281,42 @@ mod tests {
     #[test]
     fn unicode_tokens_preserve_utf8_boundaries_and_text() {
         let source = "café 日本語 e\u{301} 🧑🏽‍💻 → Ω\nplain ñ";
-        for ext in ["txt", "html", "xml", "tsx", "js", "rs", "py", "css", "json", "lua", "diff", "log", "md"] {
+        for ext in [
+            "txt", "html", "xml", "tsx", "js", "rs", "py", "css", "json", "lua", "diff", "log",
+            "md",
+        ] {
             let lines = tokenize_document(source, ext);
-            let reconstructed = lines.iter().map(|line| line.iter().map(|(_, value)| *value).collect::<String>()).collect::<Vec<_>>().join("\n");
+            let reconstructed = lines
+                .iter()
+                .map(|line| line.iter().map(|(_, value)| *value).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n");
             assert_eq!(reconstructed, source, "{ext}");
         }
     }
 
     #[test]
     fn unicode_near_delimiters_and_escapes_preserves_ranges() {
-        for source in ["é<!-- ñ -->🙂", "<div>ñ</div>", "'\\é' Ω", "/* ñ */好", "${ñ}é", "<Componente>💻</Componente>", "# título", "é\"日本\"ñ"] {
+        for source in [
+            "é<!-- ñ -->🙂",
+            "<div>ñ</div>",
+            "'\\é' Ω",
+            "/* ñ */好",
+            "${ñ}é",
+            "<Componente>💻</Componente>",
+            "# título",
+            "é\"日本\"ñ",
+        ] {
             for ext in ["txt", "html", "tsx", "css", "sh", "lua", "rs"] {
                 let mut comment = false;
                 let tokens = tokenize_line(source, ext, &mut comment);
                 let mut end = 0;
                 for token in tokens {
                     assert_eq!(token.range.start, end, "{source:?}, {ext}");
-                    assert!(source.get(token.range.clone()).is_some(), "invalid boundary: {token:?}, {source:?}, {ext}");
+                    assert!(
+                        source.get(token.range.clone()).is_some(),
+                        "invalid boundary: {token:?}, {source:?}, {ext}"
+                    );
                     end = token.range.end;
                 }
                 assert_eq!(end, source.len());
@@ -1476,12 +2561,12 @@ mod tests {
     #[test]
     fn exhaustive_short_inputs_never_split_utf8() {
         const ALPHABET: &[&str] = &[
-            "<", ">", "!", "-", "/", "*", "#", "[", "]", "\\", "\"", "'", "`", "$", "{", "@",
-            "&", ";", "0", "x", "a", " ", "é", "日", "🧑", "\u{301}",
+            "<", ">", "!", "-", "/", "*", "#", "[", "]", "\\", "\"", "'", "`", "$", "{", "@", "&",
+            ";", "0", "x", "a", " ", "é", "日", "🧑", "\u{301}",
         ];
         const EXTS: &[&str] = &[
-            "c", "js", "tsx", "html", "css", "json", "py", "rs", "zig", "go", "java", "cs",
-            "php", "rb", "swift", "lua", "dart", "sql", "sh", "toml", "md", "diff", "log",
+            "c", "js", "tsx", "html", "css", "json", "py", "rs", "zig", "go", "java", "cs", "php",
+            "rb", "swift", "lua", "dart", "sql", "sh", "toml", "md", "diff", "log",
         ];
         let n = ALPHABET.len();
         let mut line = String::new();

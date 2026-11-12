@@ -51,7 +51,9 @@ pub fn list_drives() -> Vec<DriveInfo> {
     let cache_arc = DRIVE_CACHE
         .get_or_init(|| Arc::new(Mutex::new(None)))
         .clone();
-    let mut cache = cache_arc.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut cache = cache_arc
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     if let Some((last_update, drives, is_updating)) = &mut *cache {
         if last_update.elapsed() < Duration::from_secs(5) {
@@ -137,7 +139,9 @@ const NETWORK_CAPACITY_TTL: std::time::Duration = std::time::Duration::from_secs
 #[cfg(windows)]
 fn network_capacity(root: &std::path::Path) -> (u64, u64) {
     let cache = NETWORK_CAPACITY.get_or_init(Default::default);
-    let mut guard = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let known = guard.get(root).copied();
     // `None` inside the map marks a query in flight. A fresh answer is reused:
     // the drive list refreshes often and every query is a round trip to the
@@ -157,7 +161,9 @@ fn network_capacity(root: &std::path::Path) -> (u64, u64) {
             }
         });
     }
-    known.flatten().map_or((0, 0), |(total, free, _)| (total, free))
+    known
+        .flatten()
+        .map_or((0, 0), |(total, free, _)| (total, free))
 }
 
 /// Drive letters mapped to SMB shares, labelled like Explorer:
@@ -202,8 +208,14 @@ pub fn network_label(remote: &str, local: &str) -> String {
 mod network_tests {
     #[test]
     fn network_drive_labels_follow_explorer() {
-        assert_eq!(super::network_label(r"\\nas\media", "Z:"), r"media (\\nas) (Z:)");
-        assert_eq!(super::network_label(r"\\nas\media\film", "Y:"), r"film (\\nas) (Y:)");
+        assert_eq!(
+            super::network_label(r"\\nas\media", "Z:"),
+            r"media (\\nas) (Z:)"
+        );
+        assert_eq!(
+            super::network_label(r"\\nas\media\film", "Y:"),
+            r"film (\\nas) (Y:)"
+        );
         assert_eq!(super::network_label("odd", "X:"), "odd (X:)");
     }
 }

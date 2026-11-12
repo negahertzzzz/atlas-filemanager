@@ -172,7 +172,10 @@ pub fn propagate_mark_of_the_web(archive: &Path, extracted: &Path) {
             return;
         };
         let mut zone = Vec::new();
-        if file.take(MAX_ZONE_IDENTIFIER + 1).read_to_end(&mut zone).is_err()
+        if file
+            .take(MAX_ZONE_IDENTIFIER + 1)
+            .read_to_end(&mut zone)
+            .is_err()
             || zone.is_empty()
             || zone.len() as u64 > MAX_ZONE_IDENTIFIER
         {

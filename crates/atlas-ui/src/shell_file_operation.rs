@@ -9,8 +9,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use windows::core::{implement, Ref, HRESULT, PCWSTR};
 use windows::core::Interface as _;
+use windows::core::{implement, Ref, HRESULT, PCWSTR};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
@@ -23,49 +23,92 @@ pub(crate) fn create_shortcut(source: PathBuf, destination: PathBuf) -> Result<P
     let error_path = source.clone();
     std::thread::spawn(move || {
         let run = || -> Result<PathBuf, OpError> {
-            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok() }
-                .map_err(|error| OpError { path: source.clone(), kind: error_kind(&error) })?;
+            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok() }.map_err(|error| {
+                OpError {
+                    path: source.clone(),
+                    kind: error_kind(&error),
+                }
+            })?;
             let _apartment = Apartment;
-            let name = source.file_name().map(std::ffi::OsStr::to_os_string).unwrap_or_else(|| {
-                // A copied drive root has no file_name; a literal `C:\` is not
-                // a valid Windows filename for its link.
-                let label: String = source.to_string_lossy().chars().filter(|ch| ch.is_alphanumeric()).collect();
-                if label.is_empty() { "Drive".into() } else { label.into() }
-            });
+            let name = source
+                .file_name()
+                .map(std::ffi::OsStr::to_os_string)
+                .unwrap_or_else(|| {
+                    // A copied drive root has no file_name; a literal `C:\` is not
+                    // a valid Windows filename for its link.
+                    let label: String = source
+                        .to_string_lossy()
+                        .chars()
+                        .filter(|ch| ch.is_alphanumeric())
+                        .collect();
+                    if label.is_empty() {
+                        "Drive".into()
+                    } else {
+                        label.into()
+                    }
+                });
             let suffix = rust_i18n::t!("shortcut_filename_suffix");
             let mut counter = 1u32;
             let target = loop {
                 let mut link_name = name.clone();
                 link_name.push(format!(" - {suffix}"));
-                if counter > 1 { link_name.push(format!(" ({counter})")); }
+                if counter > 1 {
+                    link_name.push(format!(" ({counter})"));
+                }
                 link_name.push(".lnk");
                 let path = destination.join(link_name);
-                match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-                    Ok(file) => { drop(file); break path; }
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                {
+                    Ok(file) => {
+                        drop(file);
+                        break path;
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                         counter = counter.checked_add(1).ok_or_else(|| OpError {
-                            path: path.clone(), kind: OpErrorKind::Msg("Too many shortcuts".into()) })?;
-                    },
-                    Err(error) => return Err(OpError { path, kind: OpErrorKind::Msg(error.to_string()) }),
+                            path: path.clone(),
+                            kind: OpErrorKind::Msg("Too many shortcuts".into()),
+                        })?;
+                    }
+                    Err(error) => {
+                        return Err(OpError {
+                            path,
+                            kind: OpErrorKind::Msg(error.to_string()),
+                        })
+                    }
                 }
             };
             let save = || -> windows::core::Result<()> {
                 unsafe {
                     let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_ALL)?;
                     link.SetPath(PCWSTR(wide(source.as_os_str()).as_ptr()))?;
-                    if let Some(parent) = source.parent() { link.SetWorkingDirectory(PCWSTR(wide(parent.as_os_str()).as_ptr()))?; }
+                    if let Some(parent) = source.parent() {
+                        link.SetWorkingDirectory(PCWSTR(wide(parent.as_os_str()).as_ptr()))?;
+                    }
                     let persistence: windows::Win32::System::Com::IPersistFile = link.cast()?;
                     persistence.Save(PCWSTR(wide(target.as_os_str()).as_ptr()), true)
                 }
             };
             if let Err(error) = save() {
                 let _ = std::fs::remove_file(&target);
-                return Err(OpError { path: target, kind: error_kind(&error) });
+                return Err(OpError {
+                    path: target,
+                    kind: error_kind(&error),
+                });
             }
             Ok(target)
         };
         run()
-    }).join().unwrap_or_else(|_| Err(OpError { path: error_path, kind: OpErrorKind::Msg("Windows shortcut worker failed".into()) }))
+    })
+    .join()
+    .unwrap_or_else(|_| {
+        Err(OpError {
+            path: error_path,
+            kind: OpErrorKind::Msg("Windows shortcut worker failed".into()),
+        })
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -132,7 +175,7 @@ struct ItemResult {
 
 #[implement(IFileOperationProgressSink)]
 struct Progress {
-    source: PathBuf,
+    source: IShellItem,
     state: Arc<Mutex<ItemResult>>,
     cancel: Arc<AtomicBool>,
 }
@@ -152,13 +195,12 @@ impl Progress {
                 state.failure.get_or_insert(result);
             }
             // Windows invokes the same sink for descendants. Keep the top-level
-            // destination for Undo instead of the last copied child path.
-            if original
-                .as_ref()
-                .and_then(|item| shell_path(item).ok())
-                .as_deref()
-                == Some(self.source.as_path())
-            {
+            // destination for Undo instead of the last copied child path. The
+            // Shell may expand 8.3 names or change path casing in callbacks.
+            if original.as_ref().is_some_and(|item| unsafe {
+                item.Compare(&self.source, SICHINT_CANONICAL.0 as u32)
+                    .is_ok_and(|order| order == 0)
+            }) {
                 state.result = Some(result);
                 state.destination = item.as_ref().and_then(|item| shell_path(item).ok());
             }
@@ -342,10 +384,15 @@ fn execute_sta(
         let operation_api: IFileOperation =
             unsafe { CoCreateInstance(&FileOperation, None, CLSCTX_ALL)? };
         let mut flags = FOF_NOCONFIRMMKDIR | FOFX_EARLYFAILURE;
-        let private = atlas_core::vault::live::is_private(operation.source()) || match &operation {
-            Operation::Copy { destination, .. } | Operation::Move { destination, .. } | Operation::Rename { destination, .. } => atlas_core::vault::live::is_private(destination),
-            Operation::Delete { .. } => false,
-        };
+        let private = atlas_core::vault::live::is_private(operation.source())
+            || match &operation {
+                Operation::Copy { destination, .. }
+                | Operation::Move { destination, .. }
+                | Operation::Rename { destination, .. } => {
+                    atlas_core::vault::live::is_private(destination)
+                }
+                Operation::Delete { .. } => false,
+            };
         if !private && !matches!(operation, Operation::Delete { recycle: false, .. }) {
             flags |= FOF_ALLOWUNDO | FOFX_ADDUNDORECORD;
         }
@@ -382,16 +429,16 @@ fn execute_sta(
                 operation_api.SetOwnerWindow(HWND(owner as *mut _))?;
             }
         }
+        let source_wide = wide(source.as_os_str());
+        let item: IShellItem =
+            unsafe { SHCreateItemFromParsingName(PCWSTR(source_wide.as_ptr()), None)? };
         let state = Arc::new(Mutex::new(ItemResult::default()));
         let sink: IFileOperationProgressSink = Progress {
-            source: source.clone(),
+            source: item.clone(),
             state: state.clone(),
             cancel,
         }
         .into();
-        let source_wide = wide(source.as_os_str());
-        let item: IShellItem =
-            unsafe { SHCreateItemFromParsingName(PCWSTR(source_wide.as_ptr()), None)? };
         unsafe {
             let copying = matches!(operation, Operation::Copy { .. });
             match operation {
@@ -686,7 +733,11 @@ mod tests {
         let bytes = std::fs::read(&first).unwrap();
         let second = create_shortcut(source.clone(), fixture.0.clone()).unwrap();
         assert_ne!(first, second);
-        assert!(second.file_name().unwrap().to_string_lossy().ends_with(" (2).lnk"));
+        assert!(second
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with(" (2).lnk"));
         assert_eq!(std::fs::read(&first).unwrap(), bytes);
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().unwrap();
@@ -694,9 +745,15 @@ mod tests {
             for path in [first, second] {
                 let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_ALL).unwrap();
                 let persistence: windows::Win32::System::Com::IPersistFile = link.cast().unwrap();
-                persistence.Load(PCWSTR(wide(path.as_os_str()).as_ptr()), windows::Win32::System::Com::STGM_READ).unwrap();
+                persistence
+                    .Load(
+                        PCWSTR(wide(path.as_os_str()).as_ptr()),
+                        windows::Win32::System::Com::STGM_READ,
+                    )
+                    .unwrap();
                 let mut buffer = [0u16; 32768];
-                link.GetPath(&mut buffer, std::ptr::null_mut(), SLGP_RAWPATH.0 as u32).unwrap();
+                link.GetPath(&mut buffer, std::ptr::null_mut(), SLGP_RAWPATH.0 as u32)
+                    .unwrap();
                 let length = buffer.iter().position(|&unit| unit == 0).unwrap();
                 let resolved = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length]));
                 assert_eq!(resolved, source);
@@ -715,7 +772,18 @@ mod tests {
                 std::process::id()
             ));
             std::fs::create_dir(&path).unwrap();
-            Self(path)
+            // Shell results use long paths even when TEMP contains RUNNER~1.
+            let mut buffer = [0u16; 32768];
+            let length = unsafe {
+                windows::Win32::Storage::FileSystem::GetLongPathNameW(
+                    PCWSTR(wide(path.as_os_str()).as_ptr()),
+                    Some(&mut buffer),
+                )
+            } as usize;
+            assert!(length > 0 && length < buffer.len());
+            Self(PathBuf::from(std::ffi::OsString::from_wide(
+                &buffer[..length],
+            )))
         }
         fn run(&self, operation: Operation) -> Option<PathBuf> {
             assert!(
@@ -730,6 +798,39 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
+    #[test]
+    fn native_copy_accepts_short_source_paths_and_keeps_top_level_result() {
+        let fixture = Fixture::new();
+        let source = fixture.0.join("source with a long filename.txt");
+        std::fs::write(&source, b"short-path fixture").unwrap();
+        let mut buffer = [0u16; 32768];
+        let length = unsafe {
+            windows::Win32::Storage::FileSystem::GetShortPathNameW(
+                PCWSTR(wide(source.as_os_str()).as_ptr()),
+                Some(&mut buffer),
+            )
+        } as usize;
+        assert!(length > 0 && length < buffer.len());
+        let short = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length]));
+        let destination = fixture.0.join("short-path-copy.txt");
+        assert_eq!(
+            execute(
+                Operation::Copy {
+                    source: short,
+                    destination: destination.clone(),
+                    conflict: Resolution::Rename,
+                },
+                None,
+                Arc::new(AtomicBool::new(false)),
+                false,
+            )
+            .unwrap(),
+            Some(destination.clone())
+        );
+        assert_eq!(std::fs::read(destination).unwrap(), b"short-path fixture");
+        assert!(source.exists());
+    }
+
     #[test]
     fn native_copy_move_rename_delete_and_collision_use_real_windows_shell() {
         let fixture = Fixture::new();

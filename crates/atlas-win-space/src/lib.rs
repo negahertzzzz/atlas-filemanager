@@ -31,25 +31,24 @@ macro_rules! eprint {
     }};
 }
 
-
-pub mod ntfs;
 pub mod cleanup;
-pub mod mft_space;
-pub mod directory;
-pub mod persistence;
 pub mod crash;
-pub mod storage;
-pub mod recycle;
-pub mod integration;
-pub mod metadata;
-pub mod media;
-pub mod pdf;
-pub mod process_job;
-pub mod resource_limit;
-pub mod vault_safety;
-pub mod vault_driver;
 pub mod data_protection;
+pub mod directory;
+pub mod integration;
+pub mod media;
+pub mod metadata;
+pub mod mft_space;
 pub mod network;
+pub mod ntfs;
+pub mod pdf;
+pub mod persistence;
+pub mod process_job;
+pub mod recycle;
+pub mod resource_limit;
+pub mod storage;
+pub mod vault_driver;
+pub mod vault_safety;
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
@@ -310,8 +309,15 @@ where
     scan_ntfs_with_files(root, cancelled, snapshot, |_| true, |_, _| {})
 }
 
-pub fn scan_ntfs_with_files<F, S, I, E>(root: &Path, mut cancelled: F, mut snapshot: S, include: I, mut file: E) -> Result<(), ScanError>
-where F: FnMut() -> bool,
+pub fn scan_ntfs_with_files<F, S, I, E>(
+    root: &Path,
+    mut cancelled: F,
+    mut snapshot: S,
+    include: I,
+    mut file: E,
+) -> Result<(), ScanError>
+where
+    F: FnMut() -> bool,
     S: FnMut(Vec<WinSpaceItem>, u64, u64, u64, bool) -> bool,
     I: Fn(&Path) -> bool,
     E: FnMut(PathBuf, u64),
@@ -341,8 +347,12 @@ where F: FnMut() -> bool,
         let Some(top) = nodes.get(&top_id) else {
             continue;
         };
-        let Some(path) = node_path(id, target_id, &nodes, &mut directory_paths) else { continue; };
-        if !include(&path) { continue; }
+        let Some(path) = node_path(id, target_id, &nodes, &mut directory_paths) else {
+            continue;
+        };
+        if !include(&path) {
+            continue;
+        }
         let item = items.entry(top_id).or_insert_with(|| WinSpaceItem {
             path: root.join(&top.name),
             name: top.name.clone(),
@@ -503,21 +513,34 @@ fn top_child(
     }
 }
 
-fn node_path(id: u64, root: u64, nodes: &HashMap<u64, Node>, cache: &mut HashMap<u64, PathBuf>) -> Option<PathBuf> {
-    if let Some(path) = cache.get(&id) { return Some(path.clone()); }
+fn node_path(
+    id: u64,
+    root: u64,
+    nodes: &HashMap<u64, Node>,
+    cache: &mut HashMap<u64, PathBuf>,
+) -> Option<PathBuf> {
+    if let Some(path) = cache.get(&id) {
+        return Some(path.clone());
+    }
     let mut chain = Vec::new();
     let mut current = id;
     let mut seen = HashSet::new();
     let mut path = loop {
-        if let Some(path) = cache.get(&current) { break path.clone(); }
-        if current == root || !seen.insert(current) { return None; }
+        if let Some(path) = cache.get(&current) {
+            break path.clone();
+        }
+        if current == root || !seen.insert(current) {
+            return None;
+        }
         let node = nodes.get(&current)?;
         chain.push((current, node));
         current = node.parent;
     };
     for (id, node) in chain.into_iter().rev() {
         path.push(&node.name);
-        if node.is_dir { cache.insert(id, path.clone()); }
+        if node.is_dir {
+            cache.insert(id, path.clone());
+        }
     }
     Some(path)
 }
@@ -618,7 +641,11 @@ fn wide(s: &OsStr) -> Vec<u16> {
     s.encode_wide().chain(std::iter::once(0)).collect()
 }
 
-pub fn call_named_pipe(name: &OsStr, input: &[u8], max_output_len: u32) -> std::io::Result<Vec<u8>> {
+pub fn call_named_pipe(
+    name: &OsStr,
+    input: &[u8],
+    max_output_len: u32,
+) -> std::io::Result<Vec<u8>> {
     use windows_sys::Win32::System::Pipes::CallNamedPipeW;
     let wide_name = wide(name);
     let mut output = vec![0u8; max_output_len as usize];

@@ -18,7 +18,11 @@ pub enum FolderOrder {
 impl FolderOrder {
     pub const ALL: [Self; 3] = [Self::FoldersFirst, Self::FoldersLast, Self::Mixed];
     pub const fn next(self) -> Self {
-        match self { Self::FoldersFirst => Self::FoldersLast, Self::FoldersLast => Self::Mixed, Self::Mixed => Self::FoldersFirst }
+        match self {
+            Self::FoldersFirst => Self::FoldersLast,
+            Self::FoldersLast => Self::Mixed,
+            Self::Mixed => Self::FoldersFirst,
+        }
     }
     pub const fn label_key(self) -> &'static str {
         match self {
@@ -33,7 +37,13 @@ impl FolderOrder {
 }
 
 impl From<bool> for FolderOrder {
-    fn from(first: bool) -> Self { if first { Self::FoldersFirst } else { Self::Mixed } }
+    fn from(first: bool) -> Self {
+        if first {
+            Self::FoldersFirst
+        } else {
+            Self::Mixed
+        }
+    }
 }
 
 // Kept privately for compat deserialization of sessions saved before Location migration.
@@ -241,7 +251,10 @@ impl TabData {
     pub fn reconcile_volume(&mut self, volumes: &[(PathBuf, u32)]) -> bool {
         let path = match &mut self.location {
             Location::Directory(path) | Location::Archive { archive: path, .. } => path,
-            _ => { self.volume_serial = None; return false; }
+            _ => {
+                self.volume_serial = None;
+                return false;
+            }
         };
         let mut identity = crate::profiles::Bookmark::new(String::new(), path.clone());
         identity.volume_serial = self.volume_serial;
@@ -266,8 +279,13 @@ mod tests {
 
     #[test]
     fn folder_order_migrates_legacy_booleans_and_roundtrips_all_three_states() {
-        for (old, expected) in [(true, FolderOrder::FoldersFirst), (false, FolderOrder::Mixed)] {
-            let tab: TabData = serde_json::from_str(&format!(r#"{{"path":"/files","folders_first":{old}}}"#)).unwrap();
+        for (old, expected) in [
+            (true, FolderOrder::FoldersFirst),
+            (false, FolderOrder::Mixed),
+        ] {
+            let tab: TabData =
+                serde_json::from_str(&format!(r#"{{"path":"/files","folders_first":{old}}}"#))
+                    .unwrap();
             assert_eq!(tab.folder_order, expected);
         }
         for order in FolderOrder::ALL {
@@ -275,7 +293,12 @@ mod tests {
             tab.folder_order = order;
             let json = serde_json::to_value(&tab).unwrap();
             assert!(json.get("folders_first").is_none());
-            assert_eq!(serde_json::from_value::<TabData>(json).unwrap().folder_order, order);
+            assert_eq!(
+                serde_json::from_value::<TabData>(json)
+                    .unwrap()
+                    .folder_order,
+                order
+            );
         }
         assert_eq!(FolderOrder::FoldersFirst.next(), FolderOrder::FoldersLast);
         assert_eq!(FolderOrder::FoldersLast.next(), FolderOrder::Mixed);
@@ -367,7 +390,12 @@ mod tests {
 
     #[test]
     fn branch_view_serializes_and_deserializes() {
-        let mut tab = TabData::with_view(PathBuf::from("/home/user/docs"), ViewMode::Details, 128.0, false);
+        let mut tab = TabData::with_view(
+            PathBuf::from("/home/user/docs"),
+            ViewMode::Details,
+            128.0,
+            false,
+        );
         tab.is_branch_view = true;
         let json = serde_json::to_string(&tab).unwrap();
         assert!(json.contains("\"is_branch_view\":true"));

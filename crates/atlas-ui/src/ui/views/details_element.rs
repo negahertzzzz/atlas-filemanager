@@ -188,7 +188,11 @@ impl Element for DetailsBodyElement {
         // Smooth scrolling advances after render; shape and hit-test the range
         // that is actually on screen in this prepaint pass.
         let (start_idx, end_idx) = crate::ui::dg::scroll::live_span(
-            scroll_y, scroll_y + viewport_h, row_h, 2, visible.len(),
+            scroll_y,
+            scroll_y + viewport_h,
+            row_h,
+            2,
+            visible.len(),
         );
         let layout = self.layout.clone();
         let content_lod = self.content_lod;
@@ -331,7 +335,9 @@ impl Element for DetailsBodyElement {
             app.details_hit.insert(pane_id, hit_model.clone());
             app.pane_view_bounds.insert(pane_id, viewport_bounds);
             app.refresh_rubber_for_pane(pane_id, cx);
-            super::details::prime_details_file_icons_range(app, pane_id, &visible, start_idx, end_idx);
+            super::details::prime_details_file_icons_range(
+                app, pane_id, &visible, start_idx, end_idx,
+            );
             if app.is_drag_active(has_gpui_drag) {
                 app.pending_drag_hover_targets.retain(
                     |target| !matches!(target.id, DragHoverId::Folder(tab, _) if tab == pane_id),
@@ -407,7 +413,10 @@ impl Element for DetailsBodyElement {
                     let Some(entry) = tab_state.entries.get(entry_idx) else {
                         // Group headers occupy a row but never paint file content.
                         if atlas_model::grouping::is_virtual_cell(entry_idx) {
-                            app.details_row_rings.entry(pane_id).or_default().remove_row(i);
+                            app.details_row_rings
+                                .entry(pane_id)
+                                .or_default()
+                                .remove_row(i);
                         }
                         continue;
                     };
@@ -439,7 +448,11 @@ impl Element for DetailsBodyElement {
 
                     let icon_t0 = Instant::now();
                     let icon_tex = app
-                        .row_icon_for_entry(&entry.path(), &entry.kind(), entry.extension().as_deref())
+                        .row_icon_for_entry(
+                            &entry.path(),
+                            &entry.kind(),
+                            entry.extension().as_deref(),
+                        )
                         .texture();
                     icon_lookup_time += icon_t0.elapsed();
                     let fallback_icon_path = if icon_tex.is_none() {
@@ -510,9 +523,21 @@ impl Element for DetailsBodyElement {
                         let mut meta_cols = Vec::with_capacity(3);
                         for column in DetailsColumn::DEFAULT_ORDER {
                             let text: SharedString = match column {
-                                DetailsColumn::Size => crate::ui::views::details::entry_display_size(&entry).clone().into(),
-                                DetailsColumn::Modified => crate::ui::views::details::entry_display_date(&entry).clone().into(),
-                                DetailsColumn::Type => crate::ui::views::details::entry_type_label(&entry).clone().into(),
+                                DetailsColumn::Size => {
+                                    crate::ui::views::details::entry_display_size(&entry)
+                                        .clone()
+                                        .into()
+                                }
+                                DetailsColumn::Modified => {
+                                    crate::ui::views::details::entry_display_date(&entry)
+                                        .clone()
+                                        .into()
+                                }
+                                DetailsColumn::Type => {
+                                    crate::ui::views::details::entry_type_label(&entry)
+                                        .clone()
+                                        .into()
+                                }
                             };
                             let run = TextRun {
                                 len: text.len(),
@@ -671,7 +696,12 @@ impl Element for DetailsBodyElement {
         crate::perf::count(content_lod.perf_counter());
 
         DetailsBodyPrepaint {
-            folder_size: app_entity.update(cx, |app, _| app.state.tab_states.get_mut(&pane_id).map_or(0, |tab| tab.counts().bytes_shown)),
+            folder_size: app_entity.update(cx, |app, _| {
+                app.state
+                    .tab_states
+                    .get_mut(&pane_id)
+                    .map_or(0, |tab| tab.counts().bytes_shown)
+            }),
             rows,
             ellipsis,
             layout,
@@ -759,7 +789,8 @@ impl Element for DetailsBodyElement {
                     size: size(bounds.size.width, px(row_h)),
                 };
 
-                let opacity = row_opacity * crate::ui::views::rename::cut_path_opacity(&app, &row.path, cx)
+                let opacity = row_opacity
+                    * crate::ui::views::rename::cut_path_opacity(&app, &row.path, cx)
                     * if row.dimmed {
                         crate::ui::views::rename::DIM_OPACITY
                     } else {
@@ -790,7 +821,9 @@ impl Element for DetailsBodyElement {
                             window.paint_quad(gpui::fill(row_bounds, color));
                         }
                         if row.interactive {
-                            crate::ui::operation_feedback::paint_file_feedback(&app, &row.path, row_bounds, accent, 0.0, window, cx);
+                            crate::ui::operation_feedback::paint_file_feedback(
+                                &app, &row.path, row_bounds, accent, 0.0, window, cx,
+                            );
                         }
                         if row.cursor && !row.selected {
                             let outline_color = accent.opacity(0.35);
@@ -941,18 +974,32 @@ impl Element for DetailsBodyElement {
                                             if row.selected { accent } else { floating_bg },
                                         ));
                                         if !row.selected {
-                                            window.paint_quad(gpui::fill(cell, accent.opacity(0.08)));
+                                            window
+                                                .paint_quad(gpui::fill(cell, accent.opacity(0.08)));
                                         }
                                     }
                                 }
                                 if meta.column == DetailsColumn::Size && prepaint.folder_size > 0 {
                                     if let Some(bytes) = row.size.filter(|size| *size > 0) {
-                                        let fraction = (bytes as f64 / prepaint.folder_size as f64).clamp(0.0, 1.0) as f32;
-                                        let bar_width = (available_width * fraction).min(available_width);
-                                        window.paint_quad(gpui::fill(Bounds {
-                                            origin: point(text_x, y + px(row_h - 4.0 * zoom_scale)),
-                                            size: size(px(bar_width), px(2.0 * zoom_scale)),
-                                        }, if row.selected { accent_fg.opacity(0.4) } else { accent.opacity(0.32) }));
+                                        let fraction = (bytes as f64 / prepaint.folder_size as f64)
+                                            .clamp(0.0, 1.0)
+                                            as f32;
+                                        let bar_width =
+                                            (available_width * fraction).min(available_width);
+                                        window.paint_quad(gpui::fill(
+                                            Bounds {
+                                                origin: point(
+                                                    text_x,
+                                                    y + px(row_h - 4.0 * zoom_scale),
+                                                ),
+                                                size: size(px(bar_width), px(2.0 * zoom_scale)),
+                                            },
+                                            if row.selected {
+                                                accent_fg.opacity(0.4)
+                                            } else {
+                                                accent.opacity(0.32)
+                                            },
+                                        ));
                                     }
                                 }
                                 if meta.line.width() > px(available_width) {

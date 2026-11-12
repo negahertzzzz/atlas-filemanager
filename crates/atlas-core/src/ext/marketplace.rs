@@ -297,7 +297,10 @@ mod tests {
                 sha256: "00".repeat(32),
                 ..ToolSpec::default()
             };
-            assert!(install_tool(dir.path().to_path_buf(), tool).await.is_err(), "{path} {url}");
+            assert!(
+                install_tool(dir.path().to_path_buf(), tool).await.is_err(),
+                "{path} {url}"
+            );
         }
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }

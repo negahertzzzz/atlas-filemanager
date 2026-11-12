@@ -186,7 +186,10 @@ impl FileEntry {
                 .file_ids
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(index) = u32::try_from(ids.len()).ok().filter(|index| *index != u32::MAX) {
+            if let Some(index) = u32::try_from(ids.len())
+                .ok()
+                .filter(|index| *index != u32::MAX)
+            {
                 self.file_id_index = index;
                 ids.push(file_id);
             }
@@ -268,9 +271,7 @@ pub fn file_category(kind: &FileKind, ext: Option<&str>) -> &'static str {
                 "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma" | "opus" => {
                     "file_kind_audio"
                 }
-                "mp4" | "mov" | "mkv" | "webm" | "avi" | "wmv" | "m4v" | "flv" => {
-                    "file_kind_video"
-                }
+                "mp4" | "mov" | "mkv" | "webm" | "avi" | "wmv" | "m4v" | "flv" => "file_kind_video",
                 "rs" | "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "py"
                 | "pyw" | "go" | "java" | "c" | "cc" | "cpp" | "cxx" | "h" | "hpp" | "cs"
                 | "csx" | "php" | "rb" | "swift" | "kt" | "kts" | "sh" | "bash" | "zsh"
@@ -284,15 +285,9 @@ pub fn file_category(kind: &FileKind, ext: Option<&str>) -> &'static str {
                 }
                 "doc" | "docx" | "odt" | "rtf" | "pdf" | "txt" | "md" | "markdown" | "rst"
                 | "tex" => "file_kind_document",
-                "xls" | "xlsx" | "csv" | "tsv" | "ods" | "numbers" => {
-                    "file_kind_spreadsheet"
-                }
-                "ppt" | "pptx" | "odp" | "key" => {
-                    "file_kind_presentation"
-                }
-                "exe" | "msi" | "app" | "dmg" | "deb" | "rpm" => {
-                    "file_kind_application"
-                }
+                "xls" | "xlsx" | "csv" | "tsv" | "ods" | "numbers" => "file_kind_spreadsheet",
+                "ppt" | "pptx" | "odp" | "key" => "file_kind_presentation",
+                "exe" | "msi" | "app" | "dmg" | "deb" | "rpm" => "file_kind_application",
                 _ => "file_kind_file",
             }
         }
@@ -368,7 +363,10 @@ mod tests {
 
     #[test]
     fn cloud_reparse_tags_are_preserved_in_the_compact_safety_bit() {
-        for tag in (0..16).map(|provider| 0x9000_001a | provider << 12).chain([0x8000_0021]) {
+        for tag in (0..16)
+            .map(|provider| 0x9000_001a | provider << 12)
+            .chain([0x8000_0021])
+        {
             let entry = FileEntry::from(data(PathBuf::from("root/cloud"), Some(42)))
                 .with_native_reparse_metadata(0x400, 0, tag);
             assert!(entry.is_cloud_placeholder(), "tag={tag:x}");

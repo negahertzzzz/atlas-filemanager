@@ -51,7 +51,12 @@ fn refused(server: Option<&str>, error: &std::io::Error) -> Option<NetworkOutcom
 /// Signs in to `target` with at most two attempts: the credentials Windows
 /// has saved (only for a remembered drive letter), then exactly one attempt
 /// with what the user types. The dialog itself never contacts the server.
-fn sign_in(owner: isize, target: &str, local: Option<&str>, server: Option<&str>) -> NetworkOutcome {
+fn sign_in(
+    owner: isize,
+    target: &str,
+    local: Option<&str>,
+    server: Option<&str>,
+) -> NetworkOutcome {
     use atlas_win_space::network as net;
     let mut last_refusal = 0;
     if local.is_some() {
@@ -222,7 +227,8 @@ impl App {
         {
             return false;
         }
-        let server = atlas_core::fs::network::unc_parts(Path::new(&target)).map(|(server, _)| server);
+        let server =
+            atlas_core::fs::network::unc_parts(Path::new(&target)).map(|(server, _)| server);
         if server.as_deref().and_then(guard::paused_for).is_some() {
             return false;
         }

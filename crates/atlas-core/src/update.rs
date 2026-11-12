@@ -1,10 +1,8 @@
 use anyhow::Result;
+#[cfg(not(windows))]
 use serde::Deserialize;
+#[cfg(not(windows))]
 use std::time::Duration;
-
-#[cfg(windows)]
-const UPDATE_MANIFEST_URL: &str =
-    "https://pub-89dd9e8d0b06444ca2f59e0dc245dbc9.r2.dev/app/windows/latest.json";
 
 pub const APP_VERSION: &str = match option_env!("ATLAS_RELEASE_VERSION") {
     Some(version) => version,
@@ -32,22 +30,6 @@ pub struct AppUpdate {
     pub url: String,
 }
 
-#[cfg(windows)]
-#[derive(Debug, Deserialize)]
-pub struct AppUpdateManifest {
-    pub version: String,
-    pub notes: String,
-    pub windows: WindowsUpdate,
-}
-
-#[cfg(windows)]
-#[derive(Debug, Deserialize)]
-pub struct WindowsUpdate {
-    pub url: String,
-    pub sha256: String,
-    pub size: u64,
-}
-
 #[cfg(not(windows))]
 #[derive(Deserialize)]
 struct GitHubRelease {
@@ -57,34 +39,28 @@ struct GitHubRelease {
     prerelease: bool,
 }
 
+#[cfg(any(not(windows), test))]
 fn is_newer(current: &str, candidate: &str) -> Result<bool> {
     let current = semver::Version::parse(current.trim_start_matches('v'))?;
     let candidate = semver::Version::parse(candidate.trim_start_matches('v'))?;
     Ok(candidate.cmp_precedence(&current).is_gt())
 }
 
+#[cfg(windows)]
+#[allow(clippy::unused_async)] // Keep the same API as the Linux update checker.
+pub async fn check_for_update(_current_version: &str) -> Result<Option<AppUpdate>> {
+    // Microsoft Store owns the Windows update channel. Contribution builds
+    // must not advertise standalone EXE updates from the legacy R2 feed.
+    Ok(None)
+}
+
+#[cfg(not(windows))]
 pub async fn check_for_update(current_version: &str) -> Result<Option<AppUpdate>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .user_agent(concat!("Atlas/", env!("CARGO_PKG_VERSION")))
         .build()?;
 
-    #[cfg(windows)]
-    let update = {
-        let manifest: AppUpdateManifest = client
-            .get(UPDATE_MANIFEST_URL)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        AppUpdate {
-            version: manifest.version,
-            url: manifest.windows.url,
-        }
-    };
-
-    #[cfg(not(windows))]
     let update = {
         let response = client.get(RELEASE_API).send().await?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -106,6 +82,12 @@ pub async fn check_for_update(current_version: &str) -> Result<Option<AppUpdate>
 #[cfg(test)]
 mod tests {
     use super::is_newer;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_updates_do_not_redirect_users_to_external_installers() {
+        assert!(super::check_for_update("0.0.0").await.unwrap().is_none());
+    }
 
     #[test]
     fn version_precedence_prevents_downgrade_notices() {

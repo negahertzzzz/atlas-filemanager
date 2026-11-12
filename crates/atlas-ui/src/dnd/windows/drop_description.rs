@@ -90,12 +90,21 @@ mod tests {
         let object = super::super::data_object::AtlasDataObject::new(
             &[std::path::PathBuf::from(r"C:\fixture.txt")],
             windows::Win32::System::Ole::DROPEFFECT_COPY,
-            std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0))).unwrap();
-        let format = FORMATETC { cfFormat: super::super::clipboard_formats::cf_drop_description(),
-            ptd: std::ptr::null_mut(), dwAspect: DVASPECT_CONTENT.0,
-            lindex: -1, tymed: TYMED_HGLOBAL.0 as u32 };
-        for (effect, kind) in [(Some(DropEffect::Copy), DROPIMAGE_COPY),
-            (Some(DropEffect::Move), DROPIMAGE_MOVE), (None, DROPIMAGE_INVALID)] {
+            std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        )
+        .unwrap();
+        let format = FORMATETC {
+            cfFormat: super::super::clipboard_formats::cf_drop_description(),
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: -1,
+            tymed: TYMED_HGLOBAL.0 as u32,
+        };
+        for (effect, kind) in [
+            (Some(DropEffect::Copy), DROPIMAGE_COPY),
+            (Some(DropEffect::Move), DROPIMAGE_MOVE),
+            (None, DROPIMAGE_INVALID),
+        ] {
             publish(&object, effect, Some(Path::new(r"C:\Destino 日本語")));
             unsafe {
                 object.QueryGetData(&format).ok().unwrap();
@@ -109,7 +118,9 @@ mod tests {
                 let message = description.szMessage;
                 let insert = description.szInsert;
                 assert_eq!(image_type, kind);
-                let text = |s: &[u16]| String::from_utf16(&s[..s.iter().position(|c| *c == 0).unwrap()]).unwrap();
+                let text = |s: &[u16]| {
+                    String::from_utf16(&s[..s.iter().position(|c| *c == 0).unwrap()]).unwrap()
+                };
                 if effect.is_some() {
                     assert!(text(&message).contains("%1"));
                     assert_eq!(text(&insert), "Destino 日本語");

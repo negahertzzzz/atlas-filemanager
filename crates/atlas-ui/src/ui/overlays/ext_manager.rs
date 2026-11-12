@@ -217,37 +217,41 @@ impl App {
                                     })
                                     .when(enabled && !ext.manifest.commands.is_empty(), |r| {
                                         let id_for_cmds = id.clone();
-                                        r.child(
-                                            h_flex()
-                                                .flex_wrap()
-                                                .gap_1()
-                                                .mt_1()
-                                                .children(ext.manifest.commands.iter().map(|cmd| {
-                                                    let cmd_id = cmd.id.clone();
-                                                    let cmd_title = cmd.title.clone();
-                                                    let ext_id_clone = id_for_cmds.clone();
-                                                    let view_cmd = view.clone();
-                                                    div()
-                                                        .id(SharedString::from(format!("ext-cmd-{cmd_id}")))
-                                                        .px_2()
-                                                        .py_0p5()
-                                                        .rounded(px(crate::ui::RADIUS))
-                                                        .bg(accent.opacity(0.12))
-                                                        .text_color(accent)
-                                                        .text_xs()
-                                                        .cursor_pointer()
-                                                        .hover(|h| h.bg(accent.opacity(0.24)))
-                                                        .child(cmd_title)
-                                                        .on_mouse_down(MouseButton::Left, move |_ev, _w, cx| {
+                                        r.child(h_flex().flex_wrap().gap_1().mt_1().children(
+                                            ext.manifest.commands.iter().map(|cmd| {
+                                                let cmd_id = cmd.id.clone();
+                                                let cmd_title = cmd.title.clone();
+                                                let ext_id_clone = id_for_cmds.clone();
+                                                let view_cmd = view.clone();
+                                                div()
+                                                    .id(SharedString::from(format!(
+                                                        "ext-cmd-{cmd_id}"
+                                                    )))
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .rounded(px(crate::ui::RADIUS))
+                                                    .bg(accent.opacity(0.12))
+                                                    .text_color(accent)
+                                                    .text_xs()
+                                                    .cursor_pointer()
+                                                    .hover(|h| h.bg(accent.opacity(0.24)))
+                                                    .child(cmd_title)
+                                                    .on_mouse_down(
+                                                        MouseButton::Left,
+                                                        move |_ev, _w, cx| {
                                                             view_cmd.update(cx, |this, _cx| {
-                                                                this.handle_ext_action(ExtAction::Run {
-                                                                    ext_id: ext_id_clone.clone(),
-                                                                    cmd_id: cmd_id.clone(),
-                                                                });
+                                                                this.handle_ext_action(
+                                                                    ExtAction::Run {
+                                                                        ext_id: ext_id_clone
+                                                                            .clone(),
+                                                                        cmd_id: cmd_id.clone(),
+                                                                    },
+                                                                );
                                                             });
-                                                        })
-                                                })),
-                                        )
+                                                        },
+                                                    )
+                                            }),
+                                        ))
                                     }),
                             )
                             // Right: toggle + trash icon
@@ -697,7 +701,15 @@ impl App {
                     .border_color(border)
                     .pb_1()
                     .child(tab_btn(
-                        &format!("{} ({})", rust_i18n::t!("ext_tab_installed"), self.ext_registry.extensions.iter().filter(|e| !e.manifest.hidden).count()),
+                        &format!(
+                            "{} ({})",
+                            rust_i18n::t!("ext_tab_installed"),
+                            self.ext_registry
+                                .extensions
+                                .iter()
+                                .filter(|e| !e.manifest.hidden)
+                                .count()
+                        ),
                         ExtManagerTab::Installed,
                         view_inst,
                         accent,
@@ -707,7 +719,9 @@ impl App {
                     .child(tab_btn(
                         &self.state.ext.remote.as_ref().map_or_else(
                             || rust_i18n::t!("ext_tab_marketplace").to_string(),
-                            |list| format!("{} ({})", rust_i18n::t!("ext_tab_marketplace"), list.len()),
+                            |list| {
+                                format!("{} ({})", rust_i18n::t!("ext_tab_marketplace"), list.len())
+                            },
                         ),
                         ExtManagerTab::Marketplace,
                         view_mkt,

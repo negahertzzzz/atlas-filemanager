@@ -27,7 +27,9 @@ impl App {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
         let rubber_escape_listener = cx.listener(|this, ev: &gpui::KeystrokeEvent, window, cx| {
-            if ev.keystroke.key == "escape" && (this.rubber.is_some() || this.pending_folder_click.is_some()) {
+            if ev.keystroke.key == "escape"
+                && (this.rubber.is_some() || this.pending_folder_click.is_some())
+            {
                 let pane = this.rubber.as_ref().and_then(|r| match r.target {
                     RubberTarget::Pane(pane) | RubberTarget::MillerColumn(pane, _) => Some(pane),
                     RubberTarget::Dropzone => None,
@@ -54,7 +56,9 @@ impl App {
         {
             let volume_tx = tx.clone();
             rt.spawn_blocking(move || {
-                let _ = volume_tx.send(BgResult::VolumeSnapshot(atlas_win_space::storage::mounted_volume_serials()));
+                let _ = volume_tx.send(BgResult::VolumeSnapshot(
+                    atlas_win_space::storage::mounted_volume_serials(),
+                ));
             });
         }
         let (drain_tx, rx) = flume::unbounded();
@@ -66,7 +70,8 @@ impl App {
         cx.observe_global::<gpui_component::ThemeRegistry>(|this, cx| {
             this.theme_dirty = true;
             cx.notify();
-        }).detach();
+        })
+        .detach();
         // Windows light/dark app mode changed: profiles that follow the system
         // switch to their light or dark theme on the next frame.
         cx.observe_window_appearance(window, |this, _window, cx| {
@@ -171,7 +176,9 @@ impl App {
         if let Some((token, tab)) = transferred_tab {
             if let Some(Tile::Pane(current)) = state.pane_tree.tiles.get_mut(state.focused_tile) {
                 *current = tab.tab.clone();
-                if let Some(show_hidden) = tab.view_filters.show_hidden { state.settings.show_hidden = show_hidden; }
+                if let Some(show_hidden) = tab.view_filters.show_hidden {
+                    state.settings.show_hidden = show_hidden;
+                }
                 initial_type_filters.insert(state.focused_tile, tab.view_filters.types.clone());
                 initial_size_filters.insert(state.focused_tile, tab.view_filters.sizes.clone());
                 if let Some(runtime) = state.tab_states.get_mut(&state.focused_tile) {
@@ -321,15 +328,35 @@ impl App {
             rt.spawn(async move {
                 let started = std::time::Instant::now();
                 let listing = if is_branch {
-                    atlas_core::fs::list::list_branch_dir_with_preview(&path, show_hidden, sort_col, sort_dir, |_| {}).await
+                    atlas_core::fs::list::list_branch_dir_with_preview(
+                        &path,
+                        show_hidden,
+                        sort_col,
+                        sort_dir,
+                        |_| {},
+                    )
+                    .await
                 } else {
                     list_dir(&path, show_hidden, sort_col, sort_dir, folder_order).await
                 };
                 match listing {
                     Ok(entries) => {
-                        let has_excluded_items = super::fs_sync::has_excluded_directory_items(&path, show_hidden, entries.is_empty()).await;
-                        let _ = tx_clone.send(BgResult::DirListExclusions { tab: tile_id, op_id, has_excluded_items });
-                        let _ = tx_clone.send(BgResult::DirListTiming { tab: tile_id, op_id, elapsed: started.elapsed() });
+                        let has_excluded_items = super::fs_sync::has_excluded_directory_items(
+                            &path,
+                            show_hidden,
+                            entries.is_empty(),
+                        )
+                        .await;
+                        let _ = tx_clone.send(BgResult::DirListExclusions {
+                            tab: tile_id,
+                            op_id,
+                            has_excluded_items,
+                        });
+                        let _ = tx_clone.send(BgResult::DirListTiming {
+                            tab: tile_id,
+                            op_id,
+                            elapsed: started.elapsed(),
+                        });
                         let _ = tx_clone.send(BgResult::DirListed {
                             tab: tile_id,
                             op_id,
@@ -596,10 +623,13 @@ impl App {
         #[cfg(windows)]
         if let Some(crash) = atlas_win_space::crash::previous_crash() {
             tracing::warn!(summary = ?crash.summary, reports = crash.reports.len(), "previous session crashed");
-            state.overlay.op_errors.push_back(atlas_model::overlay::Toast::new(
-                rust_i18n::t!("crash_previous_session").into_owned(),
-                atlas_model::overlay::ToastKind::Error,
-            ));
+            state
+                .overlay
+                .op_errors
+                .push_back(atlas_model::overlay::Toast::new(
+                    rust_i18n::t!("crash_previous_session").into_owned(),
+                    atlas_model::overlay::ToastKind::Error,
+                ));
         }
 
         let thumbnail_cache_mb = state.settings.thumbnail_cache_mb;

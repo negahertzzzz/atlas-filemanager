@@ -93,7 +93,12 @@ impl Mounted {
                 })
             }
             Err(error) => Err((
-                shared.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take().unwrap(),
+                shared
+                    .session
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
+                    .unwrap(),
                 format!("vault_mount_failed: {error:#}"),
             )),
         }
@@ -111,7 +116,11 @@ impl Mounted {
         self.shared.files.load(Ordering::Acquire) != 0
     }
     pub fn prepare_lock(&self) -> bool {
-        let _guard = self.shared.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .shared
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.shared.closing.store(true, Ordering::Release);
         if self.has_open_files() {
             self.shared.closing.store(false, Ordering::Release);
@@ -121,14 +130,27 @@ impl Mounted {
         }
     }
     pub fn idle_for(&self) -> std::time::Duration {
-        self.shared.activity.lock().unwrap_or_else(std::sync::PoisonError::into_inner).elapsed()
+        self.shared
+            .activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .elapsed()
     }
     pub fn touch(&self) {
-        *self.shared.activity.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
+        *self
+            .shared
+            .activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
     }
     pub fn into_session(mut self) -> Session {
         self.detach();
-        self.shared.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take().unwrap()
+        self.shared
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap()
     }
     fn detach(&mut self) {
         self.shared.closing.store(true, Ordering::Release);
@@ -145,7 +167,11 @@ impl Mounted {
 impl Drop for Mounted {
     fn drop(&mut self) {
         self.detach();
-        self.shared.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        self.shared
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
     }
 }
 
@@ -155,7 +181,9 @@ pub async fn install_driver() -> Result<()> {
         .await
         .map_err(|error| anyhow::anyhow!("vault_driver_install_failed: {error}"))?;
     if matches!(code, Some(1641 | 3010)) {
-        anyhow::bail!("WinFsp was installed. Restart Windows, then open Atlas and unlock this folder again.");
+        anyhow::bail!(
+            "WinFsp was installed. Restart Windows, then open Atlas and unlock this folder again."
+        );
     }
     if code == Some(1602) {
         anyhow::bail!("WinFsp installation was cancelled. Your encrypted folder is unchanged; you can retry later.");
@@ -277,7 +305,11 @@ impl FileSystemContext for PrivateFs {
         _: u32,
         out: &mut OpenFileInfo,
     ) -> winfsp::Result<Handle> {
-        *self.0.activity.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
+        *self
+            .0
+            .activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
         let guard = self.session()?;
         let s = guard.as_ref().unwrap();
         let id = resolve(s, name)?;
@@ -294,7 +326,11 @@ impl FileSystemContext for PrivateFs {
     }
     fn close(&self, handle: Handle) {
         let last = if let Some(id) = &handle.id {
-            let mut handles = self.0.handles.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut handles = self
+                .0
+                .handles
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(count) = handles.get_mut(id) {
                 *count = count.saturating_sub(1);
             }
@@ -343,7 +379,11 @@ impl FileSystemContext for PrivateFs {
         Ok(self.handle(Some(id), directory))
     }
     fn read(&self, handle: &Handle, buffer: &mut [u8], offset: u64) -> winfsp::Result<u32> {
-        *self.0.activity.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
+        *self
+            .0
+            .activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
         let guard = self.session()?;
         let s = guard.as_ref().unwrap();
         let id = handle.id.as_deref().ok_or(STATUS_FILE_IS_A_DIRECTORY)?;
@@ -358,7 +398,11 @@ impl FileSystemContext for PrivateFs {
         constrained: bool,
         out: &mut FileInfo,
     ) -> winfsp::Result<u32> {
-        *self.0.activity.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
+        *self
+            .0
+            .activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
         let mut guard = self.session()?;
         let s = guard.as_mut().unwrap();
         let id = handle.id.as_deref().ok_or(STATUS_FILE_IS_A_DIRECTORY)?;
@@ -406,7 +450,11 @@ impl FileSystemContext for PrivateFs {
         marker: DirMarker,
         buffer: &mut [u8],
     ) -> winfsp::Result<u32> {
-        *self.0.activity.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
+        *self
+            .0
+            .activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
         if !handle.directory {
             return Err(STATUS_NOT_A_DIRECTORY.into());
         }

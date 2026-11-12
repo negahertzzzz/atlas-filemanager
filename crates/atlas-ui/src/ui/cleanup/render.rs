@@ -252,15 +252,12 @@ impl Render for CleanupPanel {
                 );
             }
             if self.tab == Tab::Cleanup {
-                content = content
-                    .child(div().h_0())
-
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(self.snapshot.root.display().to_string()),
-                    );
+                content = content.child(div().h_0()).child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(self.snapshot.root.display().to_string()),
+                );
             }
             if self.tab == Tab::Files {
                 content = content.child(
@@ -321,15 +318,12 @@ impl Render for CleanupPanel {
                         other_label: tr("cleanup_other"),
                     })
                 } else if self.treemap && self.treemap_pending {
-                    map.flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(muted)
-                                .child(tr("cleanup_treemap_computing")),
-                        )
+                    map.flex().items_center().justify_center().child(
+                        div()
+                            .text_sm()
+                            .text_color(muted)
+                            .child(tr("cleanup_treemap_computing")),
+                    )
                 } else {
                     map.child(BubbleMapElement {
                         panel: cx.entity().downgrade(),
@@ -877,7 +871,7 @@ impl CleanupPanel {
     ) -> bool {
         let key = event.keystroke.key.as_str();
         let mods = event.keystroke.modifiers;
-        
+
         if key == "escape" {
             if self.review.is_some() {
                 self.review = None;
@@ -897,8 +891,19 @@ impl CleanupPanel {
         }
         let navigation = matches!(
             key,
-            "left" | "right" | "up" | "down" | "home" | "end" | "pageup" | "pagedown" | "enter"
-                | "space" | "backspace" | "tab" | "delete"
+            "left"
+                | "right"
+                | "up"
+                | "down"
+                | "home"
+                | "end"
+                | "pageup"
+                | "pagedown"
+                | "enter"
+                | "space"
+                | "backspace"
+                | "tab"
+                | "delete"
         );
         if self.execution.is_some() || self.preparing || self.review.is_some() {
             return navigation;
@@ -916,7 +921,8 @@ impl CleanupPanel {
                 _ => (0., 1.),
             };
             self.arrow(dx, dy);
-            self.scroll.scroll_to_item(self.cursor, ScrollStrategy::Nearest);
+            self.scroll
+                .scroll_to_item(self.cursor, ScrollStrategy::Nearest);
             cx.notify();
             return true;
         }
@@ -951,7 +957,8 @@ impl CleanupPanel {
             if let Some(row) = self.rows.get(self.cursor) {
                 self.selected = Some(row.path.clone());
             }
-            self.scroll.scroll_to_item(self.cursor, ScrollStrategy::Nearest);
+            self.scroll
+                .scroll_to_item(self.cursor, ScrollStrategy::Nearest);
         }
         cx.notify();
         handled
@@ -963,7 +970,12 @@ impl CleanupPanel {
         let busy = self.execution.is_some() || self.preparing;
         let scanning = self.cat_pending > 0;
         let format = atlas_core::util::display::format_size;
-        let total: u64 = self.cats.iter().filter(|c| c.enabled).map(|c| c.bytes()).sum();
+        let total: u64 = self
+            .cats
+            .iter()
+            .filter(|c| c.enabled)
+            .map(|c| c.bytes())
+            .sum();
         let mut list = v_flex().w_full().gap_1();
         for (i, cat) in self.cats.iter().enumerate() {
             let detail = if cat.ready() {
@@ -1032,7 +1044,12 @@ impl CleanupPanel {
                                         format(total)
                                     }),
                             )
-                            .child(div().text_sm().text_color(muted).child(tr("cleanup_cat_hint"))),
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(muted)
+                                    .child(tr("cleanup_cat_hint")),
+                            ),
                     )
                     .child(
                         Button::new("cleanup-clean")

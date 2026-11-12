@@ -13,7 +13,9 @@
 
 mod shortcuts;
 
-use super::{find, Category, ChoiceOption, Control, Drill, SettingDef, SettingsUi, Slider, SETTINGS};
+use super::{
+    find, Category, ChoiceOption, Control, Drill, SettingDef, SettingsUi, Slider, SETTINGS,
+};
 use crate::app::App;
 use crate::ui::icons::{icon, AtlasIcon};
 use crate::ui::{motion, rem_px};
@@ -23,8 +25,8 @@ use gpui::prelude::*;
 use gpui::ColorExt as _;
 use gpui::{
     canvas, div, px, relative, uniform_list, AnimationExt, AnyElement, Bounds, Context,
-    DispatchPhase, Entity, FontWeight, HighlightStyle, Hsla, MouseButton,
-    MouseMoveEvent, MouseUpEvent, Pixels, ScrollStrategy, SharedString, StyledText, Window,
+    DispatchPhase, Entity, FontWeight, HighlightStyle, Hsla, MouseButton, MouseMoveEvent,
+    MouseUpEvent, Pixels, ScrollStrategy, SharedString, StyledText, Window,
 };
 use gpui_component::input::{
     Enter as InputEnter, Escape as InputEscape, IndentInline, InputState, MoveDown, MoveLeft,
@@ -90,7 +92,13 @@ struct OptionHit {
     highlight: Option<Vec<Range<usize>>>,
 }
 
-fn highlighted(text: SharedString, ranges: Option<&Vec<Range<usize>>>, base: Hsla, hit: Hsla, window: &Window) -> AnyElement {
+fn highlighted(
+    text: SharedString,
+    ranges: Option<&Vec<Range<usize>>>,
+    base: Hsla,
+    hit: Hsla,
+    window: &Window,
+) -> AnyElement {
     match ranges {
         Some(ranges) if !ranges.is_empty() => {
             let mut style = window.text_style();
@@ -133,10 +141,19 @@ fn swatch(colors: [Hsla; 3], ring: Hsla) -> AnyElement {
 }
 
 impl App {
-    fn settings_search_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+    fn settings_search_input(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<InputState> {
         self.settings_input
             .get_or_insert_with(|| {
-                crate::ui::text_input::single_line(window, cx, rust_i18n::t!("sp_search_placeholder"), "")
+                crate::ui::text_input::single_line(
+                    window,
+                    cx,
+                    rust_i18n::t!("sp_search_placeholder"),
+                    "",
+                )
             })
             .clone()
     }
@@ -149,7 +166,14 @@ impl App {
             .filter_map(|def| {
                 let title = def.title();
                 let Some(pattern) = &pattern else {
-                    return Some((Hit { def, title, highlight: None }, 0));
+                    return Some((
+                        Hit {
+                            def,
+                            title,
+                            highlight: None,
+                        },
+                        0,
+                    ));
                 };
                 let score = self
                     .fuzzy_scorer
@@ -157,7 +181,14 @@ impl App {
                     .map(|s| s + 20)
                     .or_else(|| def.words_match(query).then_some(1))?;
                 let highlight = self.fuzzy_scorer.match_ranges_pattern(pattern, &title);
-                Some((Hit { def, title, highlight }, score))
+                Some((
+                    Hit {
+                        def,
+                        title,
+                        highlight,
+                    },
+                    score,
+                ))
             })
             .collect();
         if pattern.is_some() {
@@ -169,19 +200,30 @@ impl App {
 
     fn settings_option_hits(&mut self, options: Vec<ChoiceOption>, query: &str) -> Vec<OptionHit> {
         let Some(pattern) = FuzzyScorer::parse_pattern(query.trim()) else {
-            return options.into_iter().map(|option| OptionHit { option, highlight: None }).collect();
+            return options
+                .into_iter()
+                .map(|option| OptionHit {
+                    option,
+                    highlight: None,
+                })
+                .collect();
         };
         let mut scored: Vec<(OptionHit, u32)> = options
             .into_iter()
             .filter_map(|option| {
-                let score = self.fuzzy_scorer.score_pattern(&pattern, &option.label).or_else(|| {
-                    option
-                        .detail
-                        .as_ref()
-                        .and_then(|detail| self.fuzzy_scorer.score_pattern(&pattern, detail))
-                        .map(|s| s.saturating_sub(10).max(1))
-                })?;
-                let highlight = self.fuzzy_scorer.match_ranges_pattern(&pattern, &option.label);
+                let score = self
+                    .fuzzy_scorer
+                    .score_pattern(&pattern, &option.label)
+                    .or_else(|| {
+                        option
+                            .detail
+                            .as_ref()
+                            .and_then(|detail| self.fuzzy_scorer.score_pattern(&pattern, detail))
+                            .map(|s| s.saturating_sub(10).max(1))
+                    })?;
+                let highlight = self
+                    .fuzzy_scorer
+                    .match_ranges_pattern(&pattern, &option.label);
                 Some((OptionHit { option, highlight }, score))
             })
             .collect();
@@ -189,7 +231,11 @@ impl App {
         scored.into_iter().map(|(hit, _)| hit).collect()
     }
 
-    pub(crate) fn render_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let input = self.settings_search_input(window, cx);
         if let Some(restore) = self.settings_ui.restore_query.take() {
             let placeholder = rust_i18n::t!("sp_search_placeholder").to_string();
@@ -205,14 +251,22 @@ impl App {
         let viewport = window.viewport_size();
         let (vw, vh) = (f32::from(viewport.width), f32::from(viewport.height));
         let panel_w = (PANEL_W * zoom).min(vw - 24.0 * zoom).max(1.0);
-        let panel_h = (PANEL_MAX_H * zoom).min(vh * 0.82).min(vh - 24.0 * zoom).max(1.0);
+        let panel_h = (PANEL_MAX_H * zoom)
+            .min(vh * 0.82)
+            .min(vh - 24.0 * zoom)
+            .max(1.0);
         let top = ((vh - panel_h) * 0.32).max(12.0 * zoom);
         let (ease, boost) = crate::app::scroll_smooth_params(self.state.settings.scroll_smoothness);
         self.settings_scroll.set_smooth(ease, boost);
 
-        let drill_def = self.settings_ui.drill.as_ref().and_then(|d| find(d.setting));
+        let drill_def = self
+            .settings_ui
+            .drill
+            .as_ref()
+            .and_then(|d| find(d.setting));
         let page = drill_def.is_some_and(|def| matches!(def.control, Control::Page { .. }));
-        let searchable_page = drill_def.is_some_and(|def| matches!(def.control, Control::Page { searchable: true }));
+        let searchable_page =
+            drill_def.is_some_and(|def| matches!(def.control, Control::Page { searchable: true }));
         // Choices open as a dropdown over the (still visible) list.
         let choice = drill_def.is_some() && !page;
         let (body, mut footer, crumb) = match drill_def {
@@ -224,8 +278,12 @@ impl App {
             _ => self.settings_main_body(&query, colors, window, cx),
         };
         let dropdown = if choice {
-            let fallback = gpui::point(px((vw - panel_w) / 2.0 + panel_w - 24.0 * zoom), px(top + (SEARCH_H + PILLS_H) * zoom));
-            let (dropdown, choice_footer) = self.settings_choice_dropdown(colors, zoom, (vw, vh), fallback, window, cx);
+            let fallback = gpui::point(
+                px((vw - panel_w) / 2.0 + panel_w - 24.0 * zoom),
+                px(top + (SEARCH_H + PILLS_H) * zoom),
+            );
+            let (dropdown, choice_footer) =
+                self.settings_choice_dropdown(colors, zoom, (vw, vh), fallback, window, cx);
             footer = choice_footer;
             Some(dropdown)
         } else {
@@ -242,7 +300,9 @@ impl App {
             .border_b_1()
             .border_color(colors.border)
             .children(crumb)
-            .when(!page || searchable_page, |row| row.child(icon(AtlasIcon::Search, 16.0, colors.muted)))
+            .when(!page || searchable_page, |row| {
+                row.child(icon(AtlasIcon::Search, 16.0, colors.muted))
+            })
             .child(
                 // Pages have nothing to search, but the input keeps keyboard focus.
                 div()
@@ -325,7 +385,9 @@ impl App {
             // A click inside the shell must never reach the dismissing scrim.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(search_row)
-            .when(!page, |panel| panel.child(self.settings_pills(&query, colors, cx)))
+            .when(!page, |panel| {
+                panel.child(self.settings_pills(&query, colors, cx))
+            })
             .child(div().relative().flex_1().min_h(px(0.)).child(body))
             .child(
                 h_flex()
@@ -366,9 +428,11 @@ impl App {
             panel.into_any_element()
         } else {
             panel
-                .with_animation("settings-appear", motion::animation(motion::PANEL_MS), |this, delta| {
-                    this.opacity(delta)
-                })
+                .with_animation(
+                    "settings-appear",
+                    motion::animation(motion::PANEL_MS),
+                    |this, delta| this.opacity(delta),
+                )
                 .into_any_element()
         };
         let positioned = div()
@@ -386,7 +450,12 @@ impl App {
             view,
             |this| {
                 // First outside click only closes an open dropdown.
-                if this.settings_ui.drill.as_ref().is_some_and(|d| d.input.is_some()) {
+                if this
+                    .settings_ui
+                    .drill
+                    .as_ref()
+                    .is_some_and(|d| d.input.is_some())
+                {
                     this.settings_cancel_drill();
                 } else {
                     this.close_settings_state();
@@ -440,7 +509,16 @@ impl App {
                 children.push(section_header(hit.def.category, colors));
             }
             child_of_item.push(children.len());
-            children.push(self.settings_row(hit, i, i == selected, searching, &defaults, colors, window, cx));
+            children.push(self.settings_row(
+                hit,
+                i,
+                i == selected,
+                searching,
+                &defaults,
+                colors,
+                window,
+                cx,
+            ));
         }
         if self.settings_ui.scroll_to_selected {
             self.settings_ui.scroll_to_selected = false;
@@ -486,9 +564,13 @@ impl App {
             hint(colors, &["up", "down"], "sp_hint_move"),
         ];
         match selected_def.map(|def| &def.control) {
-            Some(Control::Slider(_) | Control::Segmented { .. }) => footer.push(hint(colors, &["left", "right"], "sp_hint_adjust")),
+            Some(Control::Slider(_) | Control::Segmented { .. }) => {
+                footer.push(hint(colors, &["left", "right"], "sp_hint_adjust"))
+            }
             Some(Control::Toggle { .. }) => footer.push(hint(colors, &["enter"], "sp_hint_toggle")),
-            Some(Control::Choice { .. } | Control::Page { .. }) => footer.push(hint(colors, &["enter"], "sp_hint_open")),
+            Some(Control::Choice { .. } | Control::Page { .. }) => {
+                footer.push(hint(colors, &["enter"], "sp_hint_open"))
+            }
             Some(Control::Action { .. }) => footer.push(hint(colors, &["enter"], "sp_hint_run")),
             _ => {}
         }
@@ -500,13 +582,22 @@ impl App {
         (body, footer, None)
     }
 
-    fn settings_pills(&mut self, query: &str, colors: Colors, cx: &mut Context<Self>) -> AnyElement {
+    fn settings_pills(
+        &mut self,
+        query: &str,
+        colors: Colors,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let searching = !query.trim().is_empty();
         let counts: Vec<usize> = if searching {
             let hits = self.settings_hits(query);
             Category::ALL
                 .iter()
-                .map(|c| hits.iter().filter(|(hit, _)| hit.def.category == *c).count())
+                .map(|c| {
+                    hits.iter()
+                        .filter(|(hit, _)| hit.def.category == *c)
+                        .count()
+                })
                 .collect()
         } else {
             Vec::new()
@@ -514,7 +605,11 @@ impl App {
         let total: usize = counts.iter().sum();
         let current = self.settings_ui.category;
         let view = cx.entity();
-        let pill = |key: usize, category: Option<Category>, label: SharedString, glyph: AtlasIcon, count: Option<usize>| {
+        let pill = |key: usize,
+                    category: Option<Category>,
+                    label: SharedString,
+                    glyph: AtlasIcon,
+                    count: Option<usize>| {
             let active = current == category;
             let view = view.clone();
             div()
@@ -545,7 +640,11 @@ impl App {
                         .hover(|h| h.bg(colors.fg.opacity(0.06)).text_color(colors.fg))
                 })
                 .when(count == Some(0), |d| d.opacity(0.45))
-                .child(icon(glyph, 12.0, if active { colors.fg } else { colors.muted }))
+                .child(icon(
+                    glyph,
+                    12.0,
+                    if active { colors.fg } else { colors.muted },
+                ))
                 .child(label)
                 .when_some(count.filter(|_| searching), |d, n| {
                     d.child(
@@ -575,7 +674,13 @@ impl App {
             .overflow_hidden()
             .border_b_1()
             .border_color(colors.border)
-            .child(pill(0, None, rust_i18n::t!("sp_cat_all").to_string().into(), AtlasIcon::SlidersHorizontal, searching.then_some(total)))
+            .child(pill(
+                0,
+                None,
+                rust_i18n::t!("sp_cat_all").to_string().into(),
+                AtlasIcon::SlidersHorizontal,
+                searching.then_some(total),
+            ))
             .children(Category::ALL.iter().enumerate().filter_map(|(i, c)| {
                 let count = counts.get(i).copied();
                 (count != Some(0) || current == Some(*c))
@@ -620,10 +725,15 @@ impl App {
                 .justify_center()
                 .rounded(rem_px(6.))
                 .cursor_pointer()
-                .when(!selected, |d| d.opacity(0.).group_hover(group.clone(), |s| s.opacity(1.)))
+                .when(!selected, |d| {
+                    d.opacity(0.).group_hover(group.clone(), |s| s.opacity(1.))
+                })
                 .hover(|h| h.bg(colors.fg.opacity(0.10)))
                 .tooltip(|window, cx| {
-                    gpui_component::tooltip::Tooltip::new(rust_i18n::t!("sp_reset_tooltip").to_string()).build(window, cx)
+                    gpui_component::tooltip::Tooltip::new(
+                        rust_i18n::t!("sp_reset_tooltip").to_string(),
+                    )
+                    .build(window, cx)
                 })
                 .child(icon(AtlasIcon::ArrowCounterClockwise, 13.0, colors.muted))
                 .on_mouse_down(MouseButton::Left, move |_, _, cx| {
@@ -649,7 +759,11 @@ impl App {
             .aria_label(hit.title.clone())
             .aria_selected(selected)
             .when_some(a11y.1, |d, on| {
-                d.aria_toggled(if on { gpui::Toggled::True } else { gpui::Toggled::False })
+                d.aria_toggled(if on {
+                    gpui::Toggled::True
+                } else {
+                    gpui::Toggled::False
+                })
             })
             .group(group)
             .w_full()
@@ -664,7 +778,10 @@ impl App {
             .border_1()
             .border_color(gpui::transparent_black())
             .cursor_pointer()
-            .when(selected, |d| d.bg(colors.accent.opacity(0.14)).border_color(colors.accent.opacity(0.45)))
+            .when(selected, |d| {
+                d.bg(colors.accent.opacity(0.14))
+                    .border_color(colors.accent.opacity(0.45))
+            })
             .when(!selected, |d| d.hover(|h| h.bg(colors.fg.opacity(0.045))))
             .child(
                 div()
@@ -675,7 +792,11 @@ impl App {
                     .justify_center()
                     .rounded(rem_px(8.))
                     .bg(colors.fg.opacity(if selected { 0.10 } else { 0.06 }))
-                    .child(icon(def.icon, 15.0, if selected { colors.fg } else { colors.muted })),
+                    .child(icon(
+                        def.icon,
+                        15.0,
+                        if selected { colors.fg } else { colors.muted },
+                    )),
             )
             .child(
                 v_flex()
@@ -688,11 +809,23 @@ impl App {
                             .items_center()
                             .child(div().min_w(px(0.)).truncate().child(title))
                             .when(modified, |d| {
-                                d.child(div().size(rem_px(6.)).flex_shrink_0().rounded_full().bg(colors.primary))
+                                d.child(
+                                    div()
+                                        .size(rem_px(6.))
+                                        .flex_shrink_0()
+                                        .rounded_full()
+                                        .bg(colors.primary),
+                                )
                             }),
                     )
                     .when_some(desc, |col, desc| {
-                        col.child(div().text_xs().text_color(colors.muted).truncate().child(desc))
+                        col.child(
+                            div()
+                                .text_xs()
+                                .text_color(colors.muted)
+                                .truncate()
+                                .child(desc),
+                        )
                     }),
             )
             .when(show_category, |d| {
@@ -714,7 +847,10 @@ impl App {
                 cx.stop_propagation();
                 row_view.update(cx, |app, cx| {
                     app.settings_ui.selected = index;
-                    if !matches!(def.control, Control::Slider(_) | Control::Info { .. } | Control::Segmented { .. }) {
+                    if !matches!(
+                        def.control,
+                        Control::Slider(_) | Control::Info { .. } | Control::Segmented { .. }
+                    ) {
                         app.settings_activate(def, window, cx);
                     }
                     cx.notify();
@@ -723,7 +859,12 @@ impl App {
             .into_any_element()
     }
 
-    fn settings_control(&mut self, def: &'static SettingDef, colors: Colors, cx: &mut Context<Self>) -> AnyElement {
+    fn settings_control(
+        &mut self,
+        def: &'static SettingDef,
+        colors: Colors,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let view = cx.entity();
         let animations = !self.state.settings.disable_animations && !cx.reduce_motion();
         match &def.control {
@@ -732,7 +873,13 @@ impl App {
                 switch(def.id, get(self), animate, colors)
             }
             Control::Slider(slider) => self.slider(def.id, slider, colors, view),
-            Control::Segmented { labels, icons, get, set, .. } => {
+            Control::Segmented {
+                labels,
+                icons,
+                get,
+                set,
+                ..
+            } => {
                 let current = get(self);
                 let set = *set;
                 let icons: &'static [AtlasIcon] = icons;
@@ -760,8 +907,13 @@ impl App {
                                     .font_weight(FontWeight::MEDIUM)
                                     .shadow_xs()
                             })
-                            .when(!active, |d| d.text_color(colors.muted).hover(|h| h.text_color(colors.fg)))
-                            .children(icons.get(i).map(|glyph| icon(*glyph, 12.0, if active { colors.fg } else { colors.muted })))
+                            .when(!active, |d| {
+                                d.text_color(colors.muted)
+                                    .hover(|h| h.text_color(colors.fg))
+                            })
+                            .children(icons.get(i).map(|glyph| {
+                                icon(*glyph, 12.0, if active { colors.fg } else { colors.muted })
+                            }))
                             .child(label)
                             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                                 cx.stop_propagation();
@@ -774,49 +926,90 @@ impl App {
                     }))
                     .into_any_element()
             }
-            Control::Choice { options, current, .. } => {
+            Control::Choice {
+                options, current, ..
+            } => {
                 let current_id = current(self);
                 let (label, dots) = options(self, cx)
                     .into_iter()
                     .find(|option| option.id == current_id)
-                    .map_or((current_id.clone(), None), |option| (option.label, option.swatch));
-                let label = if label.is_empty() { rust_i18n::t!("sp_choose").to_string().into() } else { label };
-                let open = self.settings_ui.drill.as_ref().is_some_and(|d| d.setting == def.id);
+                    .map_or((current_id.clone(), None), |option| {
+                        (option.label, option.swatch)
+                    });
+                let label = if label.is_empty() {
+                    rust_i18n::t!("sp_choose").to_string().into()
+                } else {
+                    label
+                };
+                let open = self
+                    .settings_ui
+                    .drill
+                    .as_ref()
+                    .is_some_and(|d| d.setting == def.id);
                 let anchors = self.settings_ui.choice_anchors.clone();
                 let id = def.id;
                 h_flex()
                     .relative()
                     .child(
-                        canvas(move |b, _, _| { anchors.borrow_mut().insert(id, b); }, |_, (), _, _| {})
-                            .absolute()
-                            .inset_0(),
+                        canvas(
+                            move |b, _, _| {
+                                anchors.borrow_mut().insert(id, b);
+                            },
+                            |_, (), _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
                     )
-                    .when(open, |d| d.border_color(colors.primary.opacity(0.6)).bg(colors.primary.opacity(0.10)))
+                    .when(open, |d| {
+                        d.border_color(colors.primary.opacity(0.6))
+                            .bg(colors.primary.opacity(0.10))
+                    })
                     .h(rem_px(26.))
                     .max_w(rem_px(220.))
                     .px(rem_px(10.))
                     .gap(rem_px(8.))
                     .items_center()
                     .rounded(rem_px(7.))
-                    .when(!open, |d| d.bg(colors.fg.opacity(0.06)).border_color(colors.fg.opacity(0.08)))
+                    .when(!open, |d| {
+                        d.bg(colors.fg.opacity(0.06))
+                            .border_color(colors.fg.opacity(0.08))
+                    })
                     .border_1()
                     .text_xs()
                     .children(dots.map(|dots| swatch(dots, colors.fg.opacity(0.25))))
                     .child(div().min_w(px(0.)).truncate().child(label))
-                    .child(icon(AtlasIcon::CaretDown, 11.0, if open { colors.fg } else { colors.muted }))
+                    .child(icon(
+                        AtlasIcon::CaretDown,
+                        11.0,
+                        if open { colors.fg } else { colors.muted },
+                    ))
                     .into_any_element()
             }
             Control::Action { external, .. } => icon(
-                if *external { AtlasIcon::ArrowUpRight } else { AtlasIcon::CaretRight },
+                if *external {
+                    AtlasIcon::ArrowUpRight
+                } else {
+                    AtlasIcon::CaretRight
+                },
                 13.0,
                 colors.muted,
             ),
-            Control::Info { value } => div().text_xs().text_color(colors.muted).child(value(self)).into_any_element(),
+            Control::Info { value } => div()
+                .text_xs()
+                .text_color(colors.muted)
+                .child(value(self))
+                .into_any_element(),
             Control::Page { .. } => icon(AtlasIcon::CaretRight, 13.0, colors.muted),
         }
     }
 
-    fn slider(&self, id: &'static str, slider: &Slider, colors: Colors, view: Entity<Self>) -> AnyElement {
+    fn slider(
+        &self,
+        id: &'static str,
+        slider: &Slider,
+        colors: Colors,
+        view: Entity<Self>,
+    ) -> AnyElement {
         let (dragging, pending) = match self.settings_ui.drag {
             Some((drag_id, pending)) if drag_id == id => (true, pending),
             _ => (false, None),
@@ -836,7 +1029,8 @@ impl App {
                 let move_view = paint_view.clone();
                 window.on_mouse_event(move |ev: &MouseMoveEvent, phase, _, cx| {
                     if phase == DispatchPhase::Bubble {
-                        move_view.update(cx, |app, cx| app.settings_drag_to(id, ev.position.x, b, cx));
+                        move_view
+                            .update(cx, |app, cx| app.settings_drag_to(id, ev.position.x, b, cx));
                     }
                 });
                 let up_view = paint_view.clone();
@@ -875,8 +1069,22 @@ impl App {
                             .flex()
                             .items_center()
                             .child(tracker)
-                            .child(div().w_full().h(rem_px(4.)).rounded_full().bg(colors.fg.opacity(0.14)))
-                            .child(div().absolute().left_0().h(rem_px(4.)).w(relative(frac)).rounded_full().bg(colors.primary))
+                            .child(
+                                div()
+                                    .w_full()
+                                    .h(rem_px(4.))
+                                    .rounded_full()
+                                    .bg(colors.fg.opacity(0.14)),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .left_0()
+                                    .h(rem_px(4.))
+                                    .w(relative(frac))
+                                    .rounded_full()
+                                    .bg(colors.primary),
+                            )
                             .child(
                                 div()
                                     .absolute()
@@ -924,13 +1132,29 @@ impl App {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> (AnyElement, Vec<AnyElement>) {
-        let Some(def) = self.settings_ui.drill.as_ref().and_then(|d| find(d.setting)) else {
+        let Some(def) = self
+            .settings_ui
+            .drill
+            .as_ref()
+            .and_then(|d| find(d.setting))
+        else {
             return (div().into_any_element(), Vec::new());
         };
-        let Control::Choice { options, current, preview, .. } = &def.control else {
+        let Control::Choice {
+            options,
+            current,
+            preview,
+            ..
+        } = &def.control
+        else {
             return (div().into_any_element(), Vec::new());
         };
-        let Some(input) = self.settings_ui.drill.as_ref().and_then(|d| d.input.clone()) else {
+        let Some(input) = self
+            .settings_ui
+            .drill
+            .as_ref()
+            .and_then(|d| d.input.clone())
+        else {
             return (div().into_any_element(), Vec::new());
         };
         let query = input.read(cx).value().to_string();
@@ -944,7 +1168,9 @@ impl App {
         if query != drill.last_query {
             drill.last_query.clone_from(&query);
             drill.selected = 0;
-            self.settings_ui.options_scroll.scroll_to_item(0, ScrollStrategy::Top);
+            self.settings_ui
+                .options_scroll
+                .scroll_to_item(0, ScrollStrategy::Top);
         }
         drill.selected = drill.selected.min(count.saturating_sub(1));
         drill.visible = hits.iter().map(|hit| hit.option.id.clone()).collect();
@@ -964,13 +1190,30 @@ impl App {
         let list_h = rows * OPTION_H * zoom + pad * 2.0;
         let height = search_h + list_h + 2.0;
         let width = (DROPDOWN_W * zoom).min(vw - 16.0);
-        let anchor = self.settings_ui.choice_anchors.borrow().get(def.id).copied();
+        let anchor = self
+            .settings_ui
+            .choice_anchors
+            .borrow()
+            .get(def.id)
+            .copied();
         let (right, below, above) = match anchor {
-            Some(b) => (f32::from(b.right()), f32::from(b.bottom()) + 6.0 * zoom, f32::from(b.top()) - 6.0 * zoom),
-            None => (f32::from(fallback.x), f32::from(fallback.y), f32::from(fallback.y)),
+            Some(b) => (
+                f32::from(b.right()),
+                f32::from(b.bottom()) + 6.0 * zoom,
+                f32::from(b.top()) - 6.0 * zoom,
+            ),
+            None => (
+                f32::from(fallback.x),
+                f32::from(fallback.y),
+                f32::from(fallback.y),
+            ),
         };
         let fits_below = below + height <= vh - 8.0;
-        let top = if fits_below || above - height < 8.0 { below.min(vh - 8.0 - height).max(8.0) } else { above - height };
+        let top = if fits_below || above - height < 8.0 {
+            below.min(vh - 8.0 - height).max(8.0)
+        } else {
+            above - height
+        };
         let left = (right - width).clamp(8.0, (vw - width - 8.0).max(8.0));
 
         let hits = Rc::new(hits);
@@ -978,13 +1221,25 @@ impl App {
         let list = uniform_list(
             "settings-options",
             count,
-            cx.processor(move |this: &mut App, range: Range<usize>, window: &mut Window, _cx| {
-                let selected = this.settings_ui.drill.as_ref().map_or(0, |d| d.selected);
-                range
-                    .filter_map(|i| hits.get(i).map(|hit| (i, hit)))
-                    .map(|(i, hit)| option_row(hit, i, i == selected, hit.option.id == committed, colors, view.clone(), window))
-                    .collect::<Vec<_>>()
-            }),
+            cx.processor(
+                move |this: &mut App, range: Range<usize>, window: &mut Window, _cx| {
+                    let selected = this.settings_ui.drill.as_ref().map_or(0, |d| d.selected);
+                    range
+                        .filter_map(|i| hits.get(i).map(|hit| (i, hit)))
+                        .map(|(i, hit)| {
+                            option_row(
+                                hit,
+                                i,
+                                i == selected,
+                                hit.option.id == committed,
+                                colors,
+                                view.clone(),
+                                window,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                },
+            ),
         )
         .size_full()
         .px(px(pad))
@@ -1034,7 +1289,12 @@ impl App {
                     .border_b_1()
                     .border_color(colors.border)
                     .child(icon(AtlasIcon::Search, 13.0, colors.muted))
-                    .child(div().min_w(px(0.)).flex_1().child(crate::ui::text_input::flat(&input).cleanable(true))),
+                    .child(
+                        div()
+                            .min_w(px(0.))
+                            .flex_1()
+                            .child(crate::ui::text_input::flat(&input).cleanable(true)),
+                    ),
             )
             .child(div().h(px(list_h)).w_full().child(list));
         let panel = if self.state.settings.disable_animations || cx.reduce_motion() {
@@ -1066,7 +1326,15 @@ impl App {
                 .flex_1()
                 .child(rust_i18n::t!("sp_options_count", count = count).to_string())
                 .into_any_element(),
-            hint(colors, &["up", "down"], if preview.is_some() { "sp_hint_preview" } else { "sp_hint_move" }),
+            hint(
+                colors,
+                &["up", "down"],
+                if preview.is_some() {
+                    "sp_hint_preview"
+                } else {
+                    "sp_hint_move"
+                },
+            ),
             hint(colors, &["enter"], "sp_hint_apply"),
             hint(colors, &["escape"], "sp_hint_back"),
         ];
@@ -1078,7 +1346,12 @@ impl App {
         colors: Colors,
         cx: &mut Context<Self>,
     ) -> (AnyElement, Vec<AnyElement>, Option<AnyElement>) {
-        let Some(def) = self.settings_ui.drill.as_ref().and_then(|d| find(d.setting)) else {
+        let Some(def) = self
+            .settings_ui
+            .drill
+            .as_ref()
+            .and_then(|d| find(d.setting))
+        else {
             return (div().into_any_element(), Vec::new(), None);
         };
         let body = div()
@@ -1101,7 +1374,12 @@ impl App {
     }
 
     /// "‹ Settings / Theme" pill shown in the search row while drilled in.
-    fn settings_crumb(&self, def: &'static SettingDef, colors: Colors, cx: &mut Context<Self>) -> AnyElement {
+    fn settings_crumb(
+        &self,
+        def: &'static SettingDef,
+        colors: Colors,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let view = cx.entity();
         h_flex()
             .id("sp-crumb")
@@ -1117,10 +1395,18 @@ impl App {
             .cursor_pointer()
             .hover(|h| h.bg(colors.fg.opacity(0.10)))
             .child(icon(AtlasIcon::ArrowLeft, 12.0, colors.muted))
-            .child(div().text_color(colors.muted).child(rust_i18n::t!("settings_title").to_string()))
+            .child(
+                div()
+                    .text_color(colors.muted)
+                    .child(rust_i18n::t!("settings_title").to_string()),
+            )
             .child(div().text_color(colors.muted).child("/"))
             .child(icon(def.icon, 12.0, colors.fg))
-            .child(div().font_weight(FontWeight::MEDIUM).child(plain_title(def)))
+            .child(
+                div()
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(plain_title(def)),
+            )
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                 cx.stop_propagation();
                 view.update(cx, |app, cx| app.settings_leave_drill(false, cx));
@@ -1144,7 +1430,10 @@ impl App {
     }
 
     fn settings_selected_def(&self) -> Option<&'static SettingDef> {
-        self.settings_ui.visible.get(self.settings_ui.selected).and_then(|id| find(id))
+        self.settings_ui
+            .visible
+            .get(self.settings_ui.selected)
+            .and_then(|id| find(id))
     }
 
     fn settings_set_category(&mut self, category: Option<Category>) {
@@ -1164,13 +1453,20 @@ impl App {
             .and_then(|c| Category::ALL.iter().position(|x| *x == c))
             .map_or(0, |i| i as i32 + 1);
         let next = (current + dir).rem_euclid(slots);
-        self.settings_set_category(if next == 0 { None } else { Category::ALL.get(next as usize - 1).copied() });
+        self.settings_set_category(if next == 0 {
+            None
+        } else {
+            Category::ALL.get(next as usize - 1).copied()
+        });
     }
 
     fn settings_move(&mut self, delta: i32) {
         let (selected, count) = match &mut self.settings_ui.drill {
             Some(drill) => (&mut drill.selected, drill.visible.len()),
-            None => (&mut self.settings_ui.selected, self.settings_ui.visible.len()),
+            None => (
+                &mut self.settings_ui.selected,
+                self.settings_ui.visible.len(),
+            ),
         };
         if count == 0 {
             return;
@@ -1178,16 +1474,27 @@ impl App {
         let next = (*selected as i64 + i64::from(delta)).rem_euclid(count as i64) as usize;
         *selected = next;
         if self.settings_ui.drill.is_some() {
-            self.settings_ui.options_scroll.scroll_to_item(next, ScrollStrategy::Nearest);
+            self.settings_ui
+                .options_scroll
+                .scroll_to_item(next, ScrollStrategy::Nearest);
         } else {
             self.settings_ui.scroll_to_selected = true;
         }
     }
 
     /// ←/→ — returns whether the key was consumed (otherwise it moves the caret).
-    fn settings_horizontal(&mut self, dir: i32, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    fn settings_horizontal(
+        &mut self,
+        dir: i32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if self.settings_ui.drill.is_some() {
-            let input = self.settings_ui.drill.as_ref().and_then(|d| d.input.as_ref());
+            let input = self
+                .settings_ui
+                .drill
+                .as_ref()
+                .and_then(|d| d.input.as_ref());
             let empty = input.is_none_or(|input| input.read(cx).value().is_empty());
             if dir < 0 && empty {
                 self.settings_leave_drill(false, cx);
@@ -1211,7 +1518,9 @@ impl App {
                 set(self, on);
                 self.settings_ui.animate = Some(def.id);
             }
-            Control::Segmented { labels, get, set, .. } => {
+            Control::Segmented {
+                labels, get, set, ..
+            } => {
                 let len = labels().len() as i32;
                 let next = (get(self) as i32 + dir).clamp(0, len - 1) as usize;
                 set(self, next);
@@ -1269,14 +1578,21 @@ impl App {
         }
     }
 
-    fn settings_activate(&mut self, def: &'static SettingDef, window: &mut Window, cx: &mut Context<Self>) {
+    fn settings_activate(
+        &mut self,
+        def: &'static SettingDef,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match &def.control {
             Control::Toggle { get, set, .. } => {
                 let on = !get(self);
                 set(self, on);
                 self.settings_ui.animate = Some(def.id);
             }
-            Control::Segmented { labels, get, set, .. } => {
+            Control::Segmented {
+                labels, get, set, ..
+            } => {
                 let len = labels().len().max(1);
                 set(self, (get(self) + 1) % len);
             }
@@ -1295,15 +1611,25 @@ impl App {
         self.settings_after_change(cx);
     }
 
-    fn settings_enter_drill(&mut self, def: &'static SettingDef, window: &mut Window, cx: &mut Context<Self>) {
+    fn settings_enter_drill(
+        &mut self,
+        def: &'static SettingDef,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let is_choice = matches!(def.control, Control::Choice { .. });
         if def.id == "icon-style" {
             super::refresh_icon_inventory();
         }
         let selected = match &def.control {
-            Control::Choice { options, current, .. } => {
+            Control::Choice {
+                options, current, ..
+            } => {
                 let committed = current(self);
-                options(self, cx).iter().position(|o| o.id == committed).unwrap_or(0)
+                options(self, cx)
+                    .iter()
+                    .position(|o| o.id == committed)
+                    .unwrap_or(0)
             }
             _ => 0,
         };
@@ -1311,11 +1637,14 @@ impl App {
         let (input, input_sub) = if is_choice {
             let placeholder = rust_i18n::t!("sp_search_in", name = plain_title(def)).to_string();
             let input = crate::ui::text_input::single_line(window, cx, placeholder, "");
-            let sub = cx.subscribe(&input, |_, _, ev: &gpui_component::input::InputEvent, cx| {
-                if matches!(ev, gpui_component::input::InputEvent::Change) {
-                    cx.notify();
-                }
-            });
+            let sub = cx.subscribe(
+                &input,
+                |_, _, ev: &gpui_component::input::InputEvent, cx| {
+                    if matches!(ev, gpui_component::input::InputEvent::Change) {
+                        cx.notify();
+                    }
+                },
+            );
             (Some(input), Some(sub))
         } else {
             (None, None)
@@ -1341,7 +1670,9 @@ impl App {
             previewed: None,
             visible: Vec::new(),
         });
-        self.settings_ui.options_scroll.scroll_to_item(selected, ScrollStrategy::Center);
+        self.settings_ui
+            .options_scroll
+            .scroll_to_item(selected, ScrollStrategy::Center);
         if !is_choice {
             self.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
         }
@@ -1372,7 +1703,13 @@ impl App {
         self.settings_after_change(cx);
     }
 
-    fn settings_drag_to(&mut self, id: &'static str, x: Pixels, bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+    fn settings_drag_to(
+        &mut self,
+        id: &'static str,
+        x: Pixels,
+        bounds: Bounds<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(Control::Slider(slider)) = find(id).map(|d| &d.control) else {
             return;
         };
@@ -1397,7 +1734,9 @@ impl App {
         let Some((id, pending)) = self.settings_ui.drag.take() else {
             return;
         };
-        if let (Some(value), Some(Control::Slider(slider))) = (pending, find(id).map(|d| &d.control)) {
+        if let (Some(value), Some(Control::Slider(slider))) =
+            (pending, find(id).map(|d| &d.control))
+        {
             (slider.set)(self, value);
         }
         self.settings_after_change(cx);
@@ -1483,7 +1822,8 @@ fn switch(id: &'static str, on: bool, animate: bool, colors: Colors) -> AnyEleme
         )
         .into_any_element()
     } else {
-        knob.left(rem_px(if on { 2.0 + TRAVEL } else { 2.0 })).into_any_element()
+        knob.left(rem_px(if on { 2.0 + TRAVEL } else { 2.0 }))
+            .into_any_element()
     };
     div()
         .relative()
@@ -1491,7 +1831,11 @@ fn switch(id: &'static str, on: bool, animate: bool, colors: Colors) -> AnyEleme
         .h(rem_px(20.))
         .flex_shrink_0()
         .rounded_full()
-        .bg(if on { colors.primary } else { colors.fg.opacity(0.18) })
+        .bg(if on {
+            colors.primary
+        } else {
+            colors.fg.opacity(0.18)
+        })
         .child(knob)
         .into_any_element()
 }
@@ -1530,14 +1874,21 @@ fn option_row(
         .border_1()
         .border_color(gpui::transparent_black())
         .cursor_pointer()
-        .when(selected, |d| d.bg(colors.accent.opacity(0.14)).border_color(colors.accent.opacity(0.45)))
+        .when(selected, |d| {
+            d.bg(colors.accent.opacity(0.14))
+                .border_color(colors.accent.opacity(0.45))
+        })
         .child(
             div()
                 .size(rem_px(16.))
                 .flex_shrink_0()
                 .children(committed.then(|| icon(AtlasIcon::Check, 14.0, colors.primary))),
         )
-        .children(option.swatch.map(|dots| swatch(dots, colors.fg.opacity(0.25))))
+        .children(
+            option
+                .swatch
+                .map(|dots| swatch(dots, colors.fg.opacity(0.25))),
+        )
         .child(
             div()
                 .min_w(px(0.))
@@ -1548,7 +1899,11 @@ fn option_row(
                 .child(label),
         )
         .children(option.detail.clone().map(|detail| {
-            div().flex_shrink_0().text_xs().text_color(colors.muted).child(detail)
+            div()
+                .flex_shrink_0()
+                .text_xs()
+                .text_color(colors.muted)
+                .child(detail)
         }))
         .on_hover(move |hovered, _, cx| {
             if *hovered {

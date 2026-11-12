@@ -1563,9 +1563,17 @@ mod tests {
             on_conflict: Resolution::Rename,
         }];
         let report = run(pairs, TransferKind::Copy, not_cancelled()).await;
-        assert!(report.errors.is_empty(), "copy had errors: {:?}", report.errors);
+        assert!(
+            report.errors.is_empty(),
+            "copy had errors: {:?}",
+            report.errors
+        );
         assert!(dst.exists());
         let dst_mode = std::fs::metadata(&dst).unwrap().permissions().mode();
-        assert_eq!(dst_mode & 0o111, 0o111, "execute bits preserved: {dst_mode:o}");
+        assert_eq!(
+            dst_mode & 0o111,
+            0o111,
+            "execute bits preserved: {dst_mode:o}"
+        );
     }
 }

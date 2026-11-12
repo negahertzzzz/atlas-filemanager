@@ -1,13 +1,13 @@
+use super::brand;
 use crate::app::App;
 use crate::input::action::Action;
-use super::brand;
 use crate::ui::icons::{atlas_logo, icon, AtlasIcon};
 use atlas_model::settings::ViewMode;
 use gpui::prelude::*;
 use gpui::ColorExt as _;
 use gpui::{
-    deferred, div, hsla, linear_color_stop, linear_gradient, px, AnyElement,
-    Context, Entity, FocusHandle, Focusable, KeyDownEvent, MouseButton, SharedString, Window,
+    deferred, div, hsla, linear_color_stop, linear_gradient, px, AnyElement, Context, Entity,
+    FocusHandle, Focusable, KeyDownEvent, MouseButton, SharedString, Window,
 };
 use gpui_component::input::InputState;
 use gpui_component::{h_flex, scroll::ScrollableElement, v_flex};
@@ -470,8 +470,16 @@ impl App {
                     .py_2()
                     .rounded(px(12.))
                     .border_1()
-                    .border_color(if selected { brand::soft().opacity(0.55) } else { border })
-                    .bg(if selected { brand::wash_hover() } else { setup_tile() })
+                    .border_color(if selected {
+                        brand::soft().opacity(0.55)
+                    } else {
+                        border
+                    })
+                    .bg(if selected {
+                        brand::wash_hover()
+                    } else {
+                        setup_tile()
+                    })
                     .text_color(if selected { fg } else { muted })
                     .text_sm()
                     .cursor_pointer()
@@ -518,7 +526,11 @@ impl App {
         setup_page(
             "getting_started_theme_title",
             "getting_started_theme_desc",
-            v_flex().gap_4().child(theme_list).child(icons).into_any_element(),
+            v_flex()
+                .gap_4()
+                .child(theme_list)
+                .child(icons)
+                .into_any_element(),
             muted,
         )
     }
@@ -816,18 +828,13 @@ fn welcome_bento(fg: gpui::Hsla, muted: gpui::Hsla, border: gpui::Hsla) -> AnyEl
         .gap_3()
         .child(profile)
         .child(
-            v_flex()
-                .flex_1()
-                .h_full()
-                .gap_3()
-                .child(palette)
-                .child(
-                    h_flex()
-                        .flex_1()
-                        .gap_3()
-                        .child(extensions)
-                        .child(integrations),
-                ),
+            v_flex().flex_1().h_full().gap_3().child(palette).child(
+                h_flex()
+                    .flex_1()
+                    .gap_3()
+                    .child(extensions)
+                    .child(integrations),
+            ),
         )
         .into_any_element()
 }
@@ -849,8 +856,16 @@ fn option_tile(
         .gap_2()
         .rounded(px(16.))
         .border_1()
-        .border_color(if selected { brand::soft().opacity(0.55) } else { border })
-        .bg(if selected { brand::wash_hover() } else { setup_tile() })
+        .border_color(if selected {
+            brand::soft().opacity(0.55)
+        } else {
+            border
+        })
+        .bg(if selected {
+            brand::wash_hover()
+        } else {
+            setup_tile()
+        })
         .cursor_pointer()
         .hover(|h| h.bg(brand::wash_hover()))
         .child(icon(icon_kind, 20., if selected { fg } else { muted }))

@@ -91,7 +91,12 @@ impl App {
             .map(|ts| ts.miller.columns.len())
             .unwrap_or_default();
         for ci in 0..column_count {
-            let visible = self.state.tab_states.get(&pane_id).map(|ts| ts.miller_visible_indices(ci)).unwrap_or_default();
+            let visible = self
+                .state
+                .tab_states
+                .get(&pane_id)
+                .map(|ts| ts.miller_visible_indices(ci))
+                .unwrap_or_default();
             if let Some(col) = self
                 .state
                 .tab_states
@@ -107,7 +112,9 @@ impl App {
                             Some(rust_i18n::t!("miller_error"))
                         }
                         LoadState::Error(error) => Some(error.clone().into()),
-                        _ if col.has_excluded_items || !col.entries.is_empty() => Some(rust_i18n::t!("view_all_items_hidden")),
+                        _ if col.has_excluded_items || !col.entries.is_empty() => {
+                            Some(rust_i18n::t!("view_all_items_hidden"))
+                        }
                         _ => Some(rust_i18n::t!("miller_empty")),
                     };
                     v_flex()
@@ -191,29 +198,35 @@ impl App {
                                                 pane_id,
                                                 &entry.path(),
                                             );
-                                        render_miller_row(MillerRowProps {
-                                            entry: &entry,
-                                            column: ci,
-                                            idx: i,
-                                            selected,
-                                            cursor,
-                                            show_checkbox,
-                                            pane_id,
-                                            view: &list_view,
-                                            accent,
-                                            accent_fg,
-                                            hover,
-                                            flashing,
-                                            file_icon,
-                                            rename_input,
-                                            cut: app.state.system_cut_paths.contains(&entry.path()),
-                                            dimmed: crate::ui::views::rename::dim_other_path(
-                                                app,
+                                        render_miller_row(
+                                            MillerRowProps {
+                                                entry: &entry,
+                                                column: ci,
+                                                idx: i,
+                                                selected,
+                                                cursor,
+                                                show_checkbox,
                                                 pane_id,
-                                                &entry.path(),
-                                            ),
-                                            window,
-                                        }, cx)
+                                                view: &list_view,
+                                                accent,
+                                                accent_fg,
+                                                hover,
+                                                flashing,
+                                                file_icon,
+                                                rename_input,
+                                                cut: app
+                                                    .state
+                                                    .system_cut_paths
+                                                    .contains(&entry.path()),
+                                                dimmed: crate::ui::views::rename::dim_other_path(
+                                                    app,
+                                                    pane_id,
+                                                    &entry.path(),
+                                                ),
+                                                window,
+                                            },
+                                            cx,
+                                        )
                                         .into_any_element()
                                     })
                                     .collect::<Vec<_>>()
@@ -246,8 +259,15 @@ impl App {
                             if this.rename_edit.is_some() {
                                 this.commit_rename(cx);
                             }
-                            this.selection_left_mouse_down(crate::app::RubberTarget::MillerColumn(pane_id, ci), None,
-                                pos, ev.modifiers.shift, ev.modifiers.control || ev.modifiers.platform, ev.click_count, cx);
+                            this.selection_left_mouse_down(
+                                crate::app::RubberTarget::MillerColumn(pane_id, ci),
+                                None,
+                                pos,
+                                ev.modifiers.shift,
+                                ev.modifiers.control || ev.modifiers.platform,
+                                ev.click_count,
+                                cx,
+                            );
                             cx.notify();
                         });
                         cx.stop_propagation();
@@ -414,7 +434,11 @@ fn render_miller_row(props: MillerRowProps, cx: &gpui::App) -> AnyElement {
         icon(
             AtlasIcon::CaretRight,
             12.0,
-            if selected && rename_input.is_none() { accent_fg } else { accent },
+            if selected && rename_input.is_none() {
+                accent_fg
+            } else {
+                accent
+            },
         )
     } else {
         div()
@@ -448,7 +472,9 @@ fn render_miller_row(props: MillerRowProps, cx: &gpui::App) -> AnyElement {
         .when(selected && rename_input.is_none(), |s| {
             s.bg(accent).text_color(accent_fg)
         })
-        .when(flashing && (!selected || rename_input.is_some()), |s| s.bg(accent.opacity(0.38)))
+        .when(flashing && (!selected || rename_input.is_some()), |s| {
+            s.bg(accent.opacity(0.38))
+        })
         .when(!selected && rename_input.is_none(), |s| {
             s.hover(|h| h.bg(hover))
         })
@@ -608,7 +634,9 @@ fn render_miller_row(props: MillerRowProps, cx: &gpui::App) -> AnyElement {
             });
             let paths = {
                 let app = drag_view.read(&*cx);
-                let p = app.miller_selection_paths_for_pane(pane_id).unwrap_or_default();
+                let p = app
+                    .miller_selection_paths_for_pane(pane_id)
+                    .unwrap_or_default();
                 if p.is_empty() || !p.contains(&anchor) {
                     vec![anchor.clone()]
                 } else {
@@ -622,8 +650,11 @@ fn render_miller_row(props: MillerRowProps, cx: &gpui::App) -> AnyElement {
                 if !in_archive {
                     drag_view.read(&*cx).trigger_os_drag(paths, None);
                 }
-                gpui::AnyDrag::new(crate::ui::root::DragNoop, cx.new(|_| crate::ui::root::DragNoop))
-                    .cursor_style(cursor_style)
+                gpui::AnyDrag::new(
+                    crate::ui::root::DragNoop,
+                    cx.new(|_| crate::ui::root::DragNoop),
+                )
+                .cursor_style(cursor_style)
             }
             #[cfg(not(windows))]
             {
@@ -641,7 +672,9 @@ fn render_miller_row(props: MillerRowProps, cx: &gpui::App) -> AnyElement {
                         archive_items,
                     });
                 });
-                let payload = crate::ui::root::DraggedFiles { paths: paths.clone() };
+                let payload = crate::ui::root::DraggedFiles {
+                    paths: paths.clone(),
+                };
                 let ghost = cx.new(|_| crate::ui::root::DraggedFiles { paths });
                 gpui::AnyDrag::new(payload, ghost)
                     .offset(gpui::point(gpui::px(-12.0), gpui::px(-12.0)))

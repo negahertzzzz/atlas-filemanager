@@ -230,7 +230,10 @@ async fn cloud_directories_round_trip_and_accounts_stay_isolated() -> anyhow::Re
     }
     provider.prepare_shutdown().await?;
     provider.deconfigure("account-one").await?;
-    assert!(!provider.list("account-two", "").await?.is_empty(), "removing one account affected the other");
+    assert!(
+        !provider.list("account-two", "").await?.is_empty(),
+        "removing one account affected the other"
+    );
     provider.deconfigure("account-two").await?;
     Ok(())
 }

@@ -279,7 +279,14 @@ impl Placement {
             } else {
                 pad + d * 0.5
             };
-            (width, height, height - 2.0 * pad, wheel_x, height * 0.5, info_left)
+            (
+                width,
+                height,
+                height - 2.0 * pad,
+                wheel_x,
+                height * 0.5,
+                info_left,
+            )
         };
         let clamp = |v: f32, size: f32, room: f32| v.min(room - size - m).max(m);
         Self {
@@ -352,8 +359,7 @@ impl App {
             }
             "m" if choosing && plain => self.toggle_ring_mode(),
             _ if !choosing || count == 0 => {}
-            "left" | "right" | "up" | "down" | "pageup" | "pagedown" | "tab" | "home"
-            | "end" => {
+            "left" | "right" | "up" | "down" | "pageup" | "pagedown" | "tab" | "home" | "end" => {
                 let rings = geometry::rings(count);
                 let session = self.converter.as_mut().unwrap();
                 let current = session.selected.min(count - 1);
@@ -371,7 +377,11 @@ impl App {
                     "home" => 0,
                     "end" => count - 1,
                     _ => {
-                        let delta = if event.keystroke.modifiers.shift { -1 } else { 1 };
+                        let delta = if event.keystroke.modifiers.shift {
+                            -1
+                        } else {
+                            1
+                        };
                         (current as isize + delta).rem_euclid(count as isize) as usize
                     }
                 };
@@ -413,9 +423,8 @@ impl App {
         if session.minimized {
             let done_text = match &session.phase {
                 Phase::Running { done, total, .. } => format!("{done} / {total}"),
-                Phase::Finished(report) => {
-                    text("convert_done_count").replace("%{count}", &report.outputs().len().to_string())
-                }
+                Phase::Finished(report) => text("convert_done_count")
+                    .replace("%{count}", &report.outputs().len().to_string()),
                 _ => text("convert_title"),
             };
             let fraction = match &session.phase {
@@ -432,10 +441,18 @@ impl App {
                     .px_3()
                     .py_2()
                     .rounded_xl()
-                    .bg(if is_glass { popover.opacity(0.70) } else { popover.opacity(0.92) })
+                    .bg(if is_glass {
+                        popover.opacity(0.70)
+                    } else {
+                        popover.opacity(0.92)
+                    })
                     .when(is_glass, |s| s.backdrop_blur(px(16.0)))
                     .border_1()
-                    .border_color(if is_glass { border.opacity(0.35) } else { border.opacity(0.55) })
+                    .border_color(if is_glass {
+                        border.opacity(0.35)
+                    } else {
+                        border.opacity(0.55)
+                    })
                     .shadow_xl()
                     .occlude()
                     .child(icon(AtlasIcon::ArrowClockwise, 15., accent))
@@ -482,14 +499,17 @@ impl App {
                             .cursor_pointer()
                             .text_color(muted)
                             .hover(move |s| s.bg(fg.opacity(0.10)).text_color(fg))
-                            .on_mouse_down(MouseButton::Left, cx.listener(|app, _, _, cx| {
-                                if app.converter.as_ref().is_some_and(|s| s.running()) {
-                                    app.cancel_conversion();
-                                }
-                                app.dismiss_converter();
-                                cx.stop_propagation();
-                                cx.notify();
-                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|app, _, _, cx| {
+                                    if app.converter.as_ref().is_some_and(|s| s.running()) {
+                                        app.cancel_conversion();
+                                    }
+                                    app.dismiss_converter();
+                                    cx.stop_propagation();
+                                    cx.notify();
+                                }),
+                            )
                             .child(icon(AtlasIcon::X, 11., muted)),
                     ),
             )
@@ -607,7 +627,13 @@ impl App {
                             .h(px(3.))
                             .rounded_full()
                             .bg(fg.opacity(0.12))
-                            .child(div().h_full().w(px(bar * fraction)).rounded_full().bg(accent)),
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(px(bar * fraction))
+                                    .rounded_full()
+                                    .bg(accent),
+                            ),
                     )
                     .child(
                         div()
@@ -729,7 +755,9 @@ impl App {
                 div()
                     .id("convert-info")
                     .w_full()
-                    .h(px((place.info_h - footer_h - header_h - 2.0 * inner_pad).max(40.0)))
+                    .h(px(
+                        (place.info_h - footer_h - header_h - 2.0 * inner_pad).max(40.0)
+                    ))
                     .overflow_y_scrollbar()
                     // Gutter so an appearing scrollbar never covers the values.
                     .child(div().w_full().pr(px(10.0 * zoom)).child(body)),
@@ -759,12 +787,18 @@ impl App {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .when(!matches!(self.converter.as_ref().map(|s| &s.phase), Some(Phase::Choosing)), |s| {
-                        s.rounded_full()
-                            .bg(card_bg)
-                            .border_1()
-                            .border_color(card_border)
-                    })
+                    .when(
+                        !matches!(
+                            self.converter.as_ref().map(|s| &s.phase),
+                            Some(Phase::Choosing)
+                        ),
+                        |s| {
+                            s.rounded_full()
+                                .bg(card_bg)
+                                .border_1()
+                                .border_color(card_border)
+                        },
+                    )
                     .child(wheel_slot),
             )
             .child(info);
@@ -845,7 +879,12 @@ impl App {
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .child(text("ring_no_actions")),
                 )
-                .child(button("ring-to-convert", text("ring_mode_convert"), cx, App::toggle_ring_mode))
+                .child(button(
+                    "ring-to-convert",
+                    text("ring_mode_convert"),
+                    cx,
+                    App::toggle_ring_mode,
+                ))
                 .into_any_element();
         }
         let options = session.options();
@@ -914,7 +953,9 @@ impl App {
         let session = self.converter.as_mut().unwrap();
         let view = session
             .wheel
-            .get_or_insert_with(|| cx.new(|_| wheel_view::WheelView::new(app, opened, props.clone())))
+            .get_or_insert_with(|| {
+                cx.new(|_| wheel_view::WheelView::new(app, opened, props.clone()))
+            })
             .clone();
         view.update(cx, |v, cx| {
             if v.props != props {
@@ -1043,11 +1084,16 @@ impl App {
             }
             if running {
                 column = column
-                    .child(button("convert-minimize", text("convert_minimize"), cx, |app| {
-                        if let Some(s) = &mut app.converter {
-                            s.minimized = true;
-                        }
-                    }))
+                    .child(button(
+                        "convert-minimize",
+                        text("convert_minimize"),
+                        cx,
+                        |app| {
+                            if let Some(s) = &mut app.converter {
+                                s.minimized = true;
+                            }
+                        },
+                    ))
                     .child(button(
                         "convert-cancel",
                         text("convert_cancel"),
@@ -1222,7 +1268,12 @@ impl App {
         };
         let current = session.mode;
         let counts = [session.catalog.len(), session.actions.len()];
-        let mut row = h_flex().w_full().gap_1().p_0p5().rounded_lg().bg(fg.opacity(0.05));
+        let mut row = h_flex()
+            .w_full()
+            .gap_1()
+            .p_0p5()
+            .rounded_lg()
+            .bg(fg.opacity(0.05));
         for (index, (mode, id, key)) in [
             (Mode::Convert, "ring-mode-convert", "ring_mode_convert"),
             (Mode::Actions, "ring-mode-actions", "ring_mode_actions"),
@@ -1242,7 +1293,9 @@ impl App {
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .cursor_pointer()
                     .when(active, |s| s.bg(accent.opacity(0.16)).text_color(accent))
-                    .when(!active, |s| s.text_color(muted).hover(move |s| s.bg(fg.opacity(0.06))))
+                    .when(!active, |s| {
+                        s.text_color(muted).hover(move |s| s.bg(fg.opacity(0.06)))
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |app, _, _, cx| {
@@ -1276,12 +1329,9 @@ impl App {
             any = true;
             let size = format!("{:.1} MiB", request.tool.download_bytes as f64 / 1048576.0);
             column = column
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(rust_i18n::t!("convert_more_formats", engine = tool.name()).into_owned()),
-                )
+                .child(div().text_xs().text_color(muted).child(
+                    rust_i18n::t!("convert_more_formats", engine = tool.name()).into_owned(),
+                ))
                 .child(button(
                     "convert-unlock-engine",
                     rust_i18n::t!("convert_unlock_package", engine = tool.name(), size = size)
@@ -1303,7 +1353,12 @@ impl App {
         let session = self.converter.as_ref().unwrap();
         let (fg, muted, accent, accent_fg) = {
             let t = cx.theme();
-            (t.foreground, t.muted_foreground, t.accent, t.accent_foreground)
+            (
+                t.foreground,
+                t.muted_foreground,
+                t.accent,
+                t.accent_foreground,
+            )
         };
         let shown = session.hovered.unwrap_or(session.selected);
         let Some(action) = session
@@ -1311,7 +1366,12 @@ impl App {
             .get(shown.min(session.actions.len().saturating_sub(1)))
             .cloned()
         else {
-            column = column.child(div().text_xs().text_color(muted).child(text("ring_no_actions")));
+            column = column.child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(text("ring_no_actions")),
+            );
             return (column.into_any_element(), None);
         };
         let title = action_title(&action);
@@ -1364,8 +1424,12 @@ impl App {
                 let ext = source.extension().unwrap_or_default().to_string_lossy();
                 format!("{stem}{suffix}.{ext}")
             } else {
-                rust_i18n::t!("ring_output_multi", count = session.sources.len(), suffix = suffix)
-                    .into_owned()
+                rust_i18n::t!(
+                    "ring_output_multi",
+                    count = session.sources.len(),
+                    suffix = suffix
+                )
+                .into_owned()
             };
             column = column.child(row(text("convert_output_label"), output));
             let edge = settings.edge;
@@ -1453,7 +1517,11 @@ impl App {
                     .text_center()
                     .text_size(px(10.))
                     .text_color(muted.opacity(0.8))
-                    .child(text(if multi_ring { "ring_keys_rings" } else { "ring_keys" })),
+                    .child(text(if multi_ring {
+                        "ring_keys_rings"
+                    } else {
+                        "ring_keys"
+                    })),
             )
             .into_any_element();
         (column.into_any_element(), Some(footer))
@@ -1545,7 +1613,8 @@ impl App {
                                 // The URL comes from an extension manifest: only
                                 // web links, never a local program or URI handler.
                                 let lower = url.trim_start().to_ascii_lowercase();
-                                let is_web = lower.starts_with("https://") || lower.starts_with("http://");
+                                let is_web =
+                                    lower.starts_with("https://") || lower.starts_with("http://");
                                 if !is_web {
                                     tracing::warn!(%url, "refusing to open a non-web license link");
                                     return;

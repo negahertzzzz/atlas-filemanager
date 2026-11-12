@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build Linux artifacts from one version and one changelog (Python 3.10+)."""
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -135,13 +136,25 @@ def packages(version, repo, binary, output, tool_dir, data_dir):
         raise ValueError("Package output must be empty; use a fresh --output directory")
     info = metadata(version, repo, data_dir)
     icon = data_dir / "atlas.png"
-    run("rsvg-convert", "--width", "512", "--height", "512", "--output", icon,
-        ROOT / "packaging/icons/atlas.svg")
+    # Normalize the official Windows raster to a supported hicolor/AppImage
+    # size without using the original SVG's unsupported shadow filters.
+    encoded = base64.b64encode((ROOT / "packaging/icons/atlas.png").read_bytes()).decode('ascii')
+    wrapper = data_dir / 'atlas-icon.svg'
+    wrapper.write_text('<svg xmlns="http://www.w3.org/2000/svg" '
+                       'xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1 1">'
+                       f'<image width="1" height="1" xlink:href="data:image/png;base64,{encoded}"/>'
+                       '</svg>', encoding='utf-8')
+    run('rsvg-convert', '--width', '512', '--height', '512', '--output', icon, wrapper)
     output.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, ATLAS_VERSION=version, ATLAS_BINARY=str(binary), ATLAS_PACKAGE_DATA=str(data_dir))
+    companions = [binary.parent / name for name in ("atlas-search-service", "atlas-cloud-extension", "atlas-icon-extension")]
+    for companion in companions:
+        if not companion.is_file():
+            raise FileNotFoundError(f"Missing built companion: {companion}")
+    env = dict(os.environ, ATLAS_VERSION=version, ATLAS_BINARY=str(binary),
+               ATLAS_BINARY_DIR=str(binary.parent), ATLAS_PACKAGE_DATA=str(data_dir))
     # nFPM expands some metadata fields, but not content source paths.
     config = (ROOT / "packaging/linux/nfpm.yaml").read_text()
-    for name in ["ATLAS_VERSION", "ATLAS_BINARY", "ATLAS_PACKAGE_DATA"]:
+    for name in ["ATLAS_VERSION", "ATLAS_BINARY", "ATLAS_BINARY_DIR", "ATLAS_PACKAGE_DATA"]:
         config = config.replace("${" + name + "}", env[name])
     config = re.sub(r"^(\s*- src: )(.+)$", lambda match: match[1] + json.dumps(match[2]), config, flags=re.M)
     resolved_config = data_dir / "nfpm.yaml"
@@ -161,7 +174,9 @@ def packages(version, repo, binary, output, tool_dir, data_dir):
         data_dir / f"{APP_ID}.metainfo.xml": f"share/metainfo/{APP_ID}.metainfo.xml",
         ROOT / "CHANGELOG.md": "share/doc/atlas/CHANGELOG.md",
         ROOT / "LICENSE": "share/licenses/atlas/LICENSE",
+        ROOT / "legal/THIRD-PARTY-NOTICES.txt": "share/doc/atlas/THIRD-PARTY-NOTICES.txt",
     }
+    destinations.update({companion: f"bin/{companion.name}" for companion in companions})
     for source, relative in destinations.items():
         destination = stage / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -183,7 +198,7 @@ def packages(version, repo, binary, output, tool_dir, data_dir):
     aur = data_dir / "aur"
     aur.mkdir(exist_ok=True)
     pkgver = version.replace("-", "_")
-    dependencies = ["glibc", "gcc-libs", "libxkbcommon", "libxkbcommon-x11", "libxcb", "fontconfig", "wayland", "vulkan-icd-loader", "libglvnd", "ttf-dejavu"]
+    dependencies = ["glibc", "gcc-libs", "openssl", "libxkbcommon", "libxkbcommon-x11", "libxcb", "fontconfig", "wayland", "vulkan-icd-loader", "libglvnd", "ttf-dejavu"]
     # This recipe only unpacks a pinned, checksummed upstream artifact.
     recipe = f'''# Maintained upstream; generated for Atlas {version}.
 pkgname=atlas-bin
@@ -200,7 +215,9 @@ options=('!strip')
 source=('{info["release_url"].replace("/tag/", "/download/")}/{tarball.name}')
 sha256sums=('{sha256(tarball)}')
 package() {{
-    install -Dm755 "$srcdir/{name}/bin/atlas" "$pkgdir/usr/bin/atlas"
+    for binary in atlas atlas-search-service atlas-cloud-extension atlas-icon-extension; do
+        install -Dm755 "$srcdir/{name}/bin/$binary" "$pkgdir/usr/bin/$binary"
+    done
     mkdir -p "$pkgdir/usr/share"
     cp -a "$srcdir/{name}/share/." "$pkgdir/usr/share/"
 }}

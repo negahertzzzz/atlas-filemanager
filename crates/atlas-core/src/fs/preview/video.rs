@@ -10,7 +10,9 @@ use atlas_model::preview_cache::PreviewResult;
 use super::MAX_IMAGE_PREVIEW_EDGE;
 
 pub(super) fn preview_video(path: &Path) -> PreviewResult {
-    if super::is_cloud_placeholder(path) { return super::offline_preview(); }
+    if super::is_cloud_placeholder(path) {
+        return super::offline_preview();
+    }
     let meta = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(e) => return PreviewResult::Error(e.to_string()),
@@ -29,17 +31,26 @@ pub(super) fn preview_video(path: &Path) -> PreviewResult {
     let probe = std::thread::spawn(move || read_video_info(&probe_path));
 
     let mut cmd = Command::new("ffmpeg");
-    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-noaccurate_seek", "-ss", "0.5", "-i"])
-        .arg(path)
-        .args([
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale=min(1600\\,iw):-1",
-            "-update",
-            "1",
-        ])
-        .arg(&png_path);
+    cmd.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-noaccurate_seek",
+        "-ss",
+        "0.5",
+        "-i",
+    ])
+    .arg(path)
+    .args([
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=min(1600\\,iw):-1",
+        "-update",
+        "1",
+    ])
+    .arg(&png_path);
 
     #[cfg(windows)]
     {
@@ -138,7 +149,10 @@ pub(super) fn video_exif(path: &Path) -> Vec<(String, String)> {
         }
         if let Some(dur) = dur {
             let total = dur.round() as u64;
-            exif.push(("Duration".to_string(), format!("{}:{:02}", total / 60, total % 60)));
+            exif.push((
+                "Duration".to_string(),
+                format!("{}:{:02}", total / 60, total % 60),
+            ));
         }
         if let Some(codec) = codec {
             exif.push(("Codec".to_string(), codec));

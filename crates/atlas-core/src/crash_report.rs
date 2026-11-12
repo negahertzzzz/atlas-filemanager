@@ -21,7 +21,11 @@ struct Payload<'a> {
 
 /// Uploads the `.panic.txt` / `.stack.txt` among `reports`. Returns the
 /// server's report id on success.
-pub async fn send(reports: &[impl AsRef<Path>], version: &str, summary: Option<&str>) -> Result<String, String> {
+pub async fn send(
+    reports: &[impl AsRef<Path>],
+    version: &str,
+    summary: Option<&str>,
+) -> Result<String, String> {
     let read = |suffix: &str| {
         reports
             .iter()
@@ -58,7 +62,11 @@ pub async fn send(reports: &[impl AsRef<Path>], version: &str, summary: Option<&
     struct Ack {
         id: String,
     }
-    Ok(response.json::<Ack>().await.map(|ack| ack.id).unwrap_or_default())
+    Ok(response
+        .json::<Ack>()
+        .await
+        .map(|ack| ack.id)
+        .unwrap_or_default())
 }
 
 fn prepare(text: &str) -> String {
@@ -75,8 +83,12 @@ fn prepare(text: &str) -> String {
 
 /// Replaces the home directory and account name with placeholders.
 fn redact(text: &str) -> String {
-    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
-    let user = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_default();
+    let user = std::env::var("USERNAME")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_default();
     redact_with(text, &home, &user)
 }
 

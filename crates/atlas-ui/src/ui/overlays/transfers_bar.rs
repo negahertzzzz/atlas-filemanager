@@ -49,10 +49,21 @@ impl App {
         #[cfg(feature = "provider-host")]
         if self.state.cloud.show_transfers {
             for transfer in &self.state.cloud.transfers {
-                let account = |id: &str| self.state.cloud.remotes.iter().find(|remote| remote.id == id)
-                    .map_or_else(|| id.to_string(), |remote| format!("{} ({id})", remote.name));
-                let route = transfer.source.as_ref().map_or_else(|| account(&transfer.remote_id),
-                    |source| format!("{} → {}", account(&source.id), account(&transfer.remote_id)));
+                let account = |id: &str| {
+                    self.state
+                        .cloud
+                        .remotes
+                        .iter()
+                        .find(|remote| remote.id == id)
+                        .map_or_else(
+                            || id.to_string(),
+                            |remote| format!("{} ({id})", remote.name),
+                        )
+                };
+                let route = transfer.source.as_ref().map_or_else(
+                    || account(&transfer.remote_id),
+                    |source| format!("{} → {}", account(&source.id), account(&transfer.remote_id)),
+                );
                 rows = rows.child(cloud_transfer_row(
                     transfer, route, fg, muted, border, danger, _success, &view,
                 ));
@@ -236,7 +247,13 @@ fn cloud_transfer_row(
     let state_label = match &t.state {
         TransferState::Queued => rust_i18n::t!("cloud_transfer_queued").to_string(),
         TransferState::Running if t.bytes_total > 0 => format!("{pct}%"),
-        TransferState::Running => if t.bytes_done > 0 { format_size(t.bytes_done) } else { rust_i18n::t!("cloud_transfer_running").to_string() },
+        TransferState::Running => {
+            if t.bytes_done > 0 {
+                format_size(t.bytes_done)
+            } else {
+                rust_i18n::t!("cloud_transfer_running").to_string()
+            }
+        }
         TransferState::Paused => rust_i18n::t!("cloud_transfer_paused").to_string(),
         TransferState::Pausing => rust_i18n::t!("cloud_transfer_pausing").to_string(),
         TransferState::Cancelling => rust_i18n::t!("cloud_transfer_cancelling").to_string(),
@@ -250,7 +267,13 @@ fn cloud_transfer_row(
         TransferState::Done => success,
         _ => muted,
     };
-    let bar_pct = if t.state == TransferState::Done { 1.0 } else if t.state == TransferState::Running && t.bytes_total == 0 { 0.35 } else { t.fraction().clamp(0.0, 1.0) };
+    let bar_pct = if t.state == TransferState::Done {
+        1.0
+    } else if t.state == TransferState::Running && t.bytes_total == 0 {
+        0.35
+    } else {
+        t.fraction().clamp(0.0, 1.0)
+    };
     let id = t.id;
 
     let mut actions = h_flex().gap_1().flex_shrink_0();
@@ -277,19 +300,19 @@ fn cloud_transfer_row(
         }
         TransferState::Paused | TransferState::Queued => {
             let (button, action, name) = if t.state == TransferState::Queued {
-                (AtlasIcon::Square, CloudAction::PauseTransfer(id), format!("xfer-pause-{id}"))
+                (
+                    AtlasIcon::Square,
+                    CloudAction::PauseTransfer(id),
+                    format!("xfer-pause-{id}"),
+                )
             } else {
-                (AtlasIcon::CaretRight, CloudAction::ResumeTransfer(id), format!("xfer-resume-{id}"))
+                (
+                    AtlasIcon::CaretRight,
+                    CloudAction::ResumeTransfer(id),
+                    format!("xfer-resume-{id}"),
+                )
             };
-            actions = actions.child(transfer_btn(
-                button,
-                muted,
-                fg,
-                border,
-                view,
-                action,
-                name,
-            ));
+            actions = actions.child(transfer_btn(button, muted, fg, border, view, action, name));
             actions = actions.child(transfer_btn(
                 AtlasIcon::X,
                 muted,
@@ -312,15 +335,27 @@ fn cloud_transfer_row(
             ));
         }
         TransferState::Pausing => {
-            actions = actions.child(transfer_btn(AtlasIcon::X, muted, fg, border, view,
-                CloudAction::CancelTransfer(id), format!("xfer-cancel-{id}")));
+            actions = actions.child(transfer_btn(
+                AtlasIcon::X,
+                muted,
+                fg,
+                border,
+                view,
+                CloudAction::CancelTransfer(id),
+                format!("xfer-cancel-{id}"),
+            ));
         }
-        TransferState::Done | TransferState::Cancelling | TransferState::Cancelled | TransferState::Interrupted(_) => {}
+        TransferState::Done
+        | TransferState::Cancelling
+        | TransferState::Cancelled
+        | TransferState::Interrupted(_) => {}
     }
 
     // Surface the failure reason: a bare "Failed" label is undebuggable.
     let fail_reason = match &t.state {
-        TransferState::Failed(err) | TransferState::Interrupted(err) if !err.is_empty() => Some(err.clone()),
+        TransferState::Failed(err) | TransferState::Interrupted(err) if !err.is_empty() => {
+            Some(err.clone())
+        }
         _ => None,
     };
     h_flex()

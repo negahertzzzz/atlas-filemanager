@@ -120,7 +120,8 @@ pub struct DuplicateGroup {
 impl DuplicateGroup {
     /// Space freed by keeping a single copy.
     pub const fn wasted(&self) -> u64 {
-        self.bytes.saturating_mul(self.paths.len().saturating_sub(1) as u64)
+        self.bytes
+            .saturating_mul(self.paths.len().saturating_sub(1) as u64)
     }
 }
 

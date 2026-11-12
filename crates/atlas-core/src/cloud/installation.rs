@@ -71,8 +71,16 @@ pub fn prepare() -> anyhow::Result<(PathBuf, atlas_model::ext_model::Sidecar)> {
             install_binary(&source, &directory.join(binary))?;
             // The provider resolves rclone beside itself. A host-side companion
             // alone is invisible after copying the provider to extensions/cloud.
-            let rclone = if cfg!(windows) { "rclone.exe" } else { "rclone" };
-            if let Some(bundled) = source.parent().map(|parent| parent.join(rclone)).filter(|path| path.is_file()) {
+            let rclone = if cfg!(windows) {
+                "rclone.exe"
+            } else {
+                "rclone"
+            };
+            if let Some(bundled) = source
+                .parent()
+                .map(|parent| parent.join(rclone))
+                .filter(|path| path.is_file())
+            {
                 install_binary(&bundled, &directory.join(rclone))?;
             }
         }

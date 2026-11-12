@@ -2,10 +2,10 @@
 //! The model owns preferences; header, rows, rename and input share this projection.
 //! Resize follows the pointer directly. Reordering uses retained native springs.
 
-use atlas_model::clamp::ClampLenient;
 use crate::app::{App, ColWidths, DetailsColumn};
 use crate::ui::dg::table::{fit_columns, ColumnSpec};
 use crate::ui::views::details::{DetailsColumnLayout, DetailsRowLayout, CELL_PAD, ROW_NAME_X};
+use atlas_model::clamp::ClampLenient;
 use atlas_model::pane::TabId;
 use gpui::{AnyElement, Context, SharedString, Window};
 use std::time::Instant;
@@ -184,13 +184,15 @@ mod tests {
     fn proportions_scale_with_pane_and_survive_saved_preferences() {
         let mut widths = ColWidths::default();
         widths.resize("name", 400.0, 1300.0);
-        let restored: ColWidths = serde_json::from_str(&serde_json::to_string(&widths).unwrap()).unwrap();
+        let restored: ColWidths =
+            serde_json::from_str(&serde_json::to_string(&widths).unwrap()).unwrap();
         let full = restored.projected(1300.0);
         let half = restored.projected(650.0);
         assert!((full.name - 400.0).abs() < 0.001);
         assert!((half.name - 200.0).abs() < 0.001);
         assert!((full.name + full.size + full.modified + full.type_w - 1300.0).abs() < 0.001);
-        let legacy: ColWidths = serde_json::from_str(r#"{"name":300,"size":90,"modified":150,"type_w":110}"#).unwrap();
+        let legacy: ColWidths =
+            serde_json::from_str(r#"{"name":300,"size":90,"modified":150,"type_w":110}"#).unwrap();
         assert_eq!(legacy.projected(1300.0).name, 300.0);
     }
 

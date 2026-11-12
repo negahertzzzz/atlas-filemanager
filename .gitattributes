@@ -9,6 +9,7 @@
 *.json text eol=lf
 *.sh text eol=lf
 *.ps1 text eol=crlf
+packaging/windows/msix/RCLONE-THIRD-PARTY-NOTICES.txt text eol=lf
 
 vendor/** -whitespace
 

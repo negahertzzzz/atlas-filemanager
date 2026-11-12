@@ -5,8 +5,8 @@ use crate::app::App;
 use crate::input::action::Action;
 use atlas_model::{grouping::GroupHeader, pane::TabId};
 use gpui::{
-    ColorExt,
-    div, prelude::*, px, AnyElement, Entity, FontWeight, Hsla, MouseButton, Pixels, SharedString,
+    div, prelude::*, px, AnyElement, ColorExt, Entity, FontWeight, Hsla, MouseButton, Pixels,
+    SharedString,
 };
 use gpui_component::h_flex;
 
@@ -32,13 +32,17 @@ pub(crate) fn group_header(
     let id = header.id.clone();
     let toggle = view.clone();
     let dim = colors.muted;
-    let label_text = if header.label.starts_with("group_") || header.label.starts_with("file_kind_") {
+    let label_text = if header.label.starts_with("group_") || header.label.starts_with("file_kind_")
+    {
         rust_i18n::t!(&header.label).into_owned()
     } else {
         header.label.clone()
     };
     h_flex()
-        .id(SharedString::from(format!("group-header-{}-{}", pane.0, header.id)))
+        .id(SharedString::from(format!(
+            "group-header-{}-{}",
+            pane.0, header.id
+        )))
         .absolute()
         .left(left)
         .top(top)

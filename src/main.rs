@@ -35,14 +35,15 @@ macro_rules! eprint {
     }};
 }
 
-
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 fn main() {
     #[cfg(windows)]
-    if atlas_win_space::mft_space::helper::try_run() { return; }
+    if atlas_win_space::mft_space::helper::try_run() {
+        return;
+    }
     let version = option_env!("ATLAS_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     // Package smoke tests must verify the ELF and version without opening a window.
     if std::env::args_os()

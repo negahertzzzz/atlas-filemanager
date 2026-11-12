@@ -34,8 +34,7 @@ pub(crate) struct ColumnTransfer {
     pub scroll_offset: [f32; 2],
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default)]
 pub(crate) struct ViewFilters {
     pub types: std::collections::HashSet<String>,
     pub sizes: std::collections::HashSet<crate::ui::size_filter_menu::SizeFilter>,
@@ -101,33 +100,64 @@ impl TabTransfer {
 
     pub(crate) fn matches_runtime_search(&self, state: &atlas_model::tab::TabState) -> bool {
         let search = self.search_state();
-        state.search.active == search.active && state.search.query == search.query && state.search.recursive == search.recursive
+        state.search.active == search.active
+            && state.search.query == search.query
+            && state.search.recursive == search.recursive
     }
 
     pub(crate) fn search_results_ready(&self, state: &atlas_model::tab::TabState) -> bool {
-        self.matches_runtime_search(state) && (!state.search.is_filtering() || matches!(state.search.status,
-            atlas_model::tab::SearchStatus::Ready | atlas_model::tab::SearchStatus::Error))
+        self.matches_runtime_search(state)
+            && (!state.search.is_filtering()
+                || matches!(
+                    state.search.status,
+                    atlas_model::tab::SearchStatus::Ready | atlas_model::tab::SearchStatus::Error
+                ))
     }
 
     pub(crate) fn restore_selection(&self, state: &mut atlas_model::tab::TabState) -> bool {
-        if !self.search_results_ready(state) { return false; }
+        if !self.search_results_ready(state) {
+            return false;
+        }
         let rows: Vec<_> = if self.tab.view_mode == atlas_model::settings::ViewMode::Tree {
-            state.visible_tree_rows_snapshot().into_iter().map(|row| row.0.path()).collect()
-        } else { state.entries.iter().map(|entry| entry.path()).collect() };
+            state
+                .visible_tree_rows_snapshot()
+                .into_iter()
+                .map(|row| row.0.path())
+                .collect()
+        } else {
+            state.entries.iter().map(|entry| entry.path()).collect()
+        };
         let selected: std::collections::HashSet<_> = self.selected_paths.iter().collect();
-        state.selection.selected = rows.iter().enumerate()
-            .filter(|(_, path)| selected.contains(path)).map(|(i, _)| i).collect();
-        state.selection.keyboard_cursor = self.cursor_path.as_ref().and_then(|path| rows.iter().position(|entry| entry == path));
+        state.selection.selected = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, path)| selected.contains(path))
+            .map(|(i, _)| i)
+            .collect();
+        state.selection.keyboard_cursor = self
+            .cursor_path
+            .as_ref()
+            .and_then(|path| rows.iter().position(|entry| entry == path));
         state.selection.selection_anchor = state.selection.keyboard_cursor;
         state.selection.last_clicked_index = state.selection.keyboard_cursor;
         state.selection.scroll_to_selected = false;
         for (index, column) in state.miller.columns.iter_mut().enumerate() {
             if let Some(snapshot) = self.miller_columns.get(index) {
-                let selected: std::collections::HashSet<_> = snapshot.selected_paths.iter().collect();
-                column.selection.selected = column.entries.iter().enumerate()
-                    .filter(|(_, entry)| selected.contains(&entry.path())).map(|(i, _)| i).collect();
-                column.selection.keyboard_cursor = snapshot.cursor_path.as_ref()
-                    .and_then(|path| column.entries.iter().position(|entry| entry.path() == *path));
+                let selected: std::collections::HashSet<_> =
+                    snapshot.selected_paths.iter().collect();
+                column.selection.selected = column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| selected.contains(&entry.path()))
+                    .map(|(i, _)| i)
+                    .collect();
+                column.selection.keyboard_cursor = snapshot.cursor_path.as_ref().and_then(|path| {
+                    column
+                        .entries
+                        .iter()
+                        .position(|entry| entry.path() == *path)
+                });
                 column.selection.selection_anchor = column.selection.keyboard_cursor;
                 column.selection.last_clicked_index = column.selection.keyboard_cursor;
                 column.selection.scroll_to_selected = false;
@@ -139,41 +169,110 @@ impl TabTransfer {
 }
 
 fn decode_tab_transfer(bytes: &[u8], token: &str) -> Option<TabTransfer> {
-    if bytes.len() < 4 || bytes.len() > 16 * 1024 * 1024 { return None; }
+    if bytes.len() < 4 || bytes.len() > 16 * 1024 * 1024 {
+        return None;
+    }
     let len = u32::from_le_bytes(bytes[..4].try_into().ok()?) as usize;
-    serde_json::from_slice::<TabTransfer>(bytes.get(4..4usize.checked_add(len)?)?).ok()
+    serde_json::from_slice::<TabTransfer>(bytes.get(4..4usize.checked_add(len)?)?)
+        .ok()
         .filter(|payload| payload.version == 1 && payload.token == token)
 }
 
 /// Publish a versioned OLE snapshot. A token prevents importing an unrelated tab.
-fn tab_snapshot(token: &str, tab: &atlas_model::pane::TabData, runtime: Option<&atlas_model::tab::TabState>, scroll_offset: [f32; 2], miller_offsets: &[[f32; 2]]) -> TabTransfer {
-    let selected_paths = runtime.map_or_else(Vec::new, |state| state.selected_entries(&tab.view_mode)
-        .into_iter().map(|entry| entry.path()).collect());
-    let cursor_path = runtime.and_then(|state| {
-        match tab.view_mode {
-            atlas_model::settings::ViewMode::Miller => state.miller.columns.get(state.miller.focused)
-                .and_then(|column| column.selection.keyboard_cursor.and_then(|i| column.entries.get(i))).map(|e| e.path()),
-            atlas_model::settings::ViewMode::Tree => state.selection.keyboard_cursor
-                .and_then(|i| state.visible_tree_rows_snapshot().get(i).map(|row| row.0.path())),
-            _ => state.selection.keyboard_cursor.and_then(|i| state.entries.get(i)).map(|e| e.path()),
-        }
+fn tab_snapshot(
+    token: &str,
+    tab: &atlas_model::pane::TabData,
+    runtime: Option<&atlas_model::tab::TabState>,
+    scroll_offset: [f32; 2],
+    miller_offsets: &[[f32; 2]],
+) -> TabTransfer {
+    let selected_paths = runtime.map_or_else(Vec::new, |state| {
+        state
+            .selected_entries(&tab.view_mode)
+            .into_iter()
+            .map(|entry| entry.path())
+            .collect()
     });
-    let miller_columns = runtime.map_or_else(Vec::new, |state| state.miller.columns.iter().enumerate().map(|(index, column)| ColumnTransfer {
-        location: column.location.clone(),
-        selected_paths: column.selection.selected.iter().filter_map(|i| column.entries.get(*i)).map(|e| e.path()).collect(),
-        cursor_path: column.selection.keyboard_cursor.and_then(|i| column.entries.get(i)).map(|e| e.path()),
-        scroll_offset: miller_offsets.get(index).copied().unwrap_or_default(),
-    }).collect());
-    TabTransfer { version: 1, token: token.to_owned(), tab: tab.clone(),
-        filter: runtime.map_or_else(String::new, |state| state.filter.clone()), selected_paths, cursor_path, scroll_offset,
-        tree_expanded: runtime.map_or_else(Vec::new, |state| state.tree.expanded.iter().cloned().collect()),
-        miller_columns, miller_focused: runtime.map_or(0, |state| state.miller.focused), restore_initialized: false,
-        view_filters: ViewFilters::default(), search: runtime.map(|state| SearchTransfer {
-            active: state.search.active, query: state.search.query.clone(), recursive: state.search.recursive,
-        }) }
+    let cursor_path = runtime.and_then(|state| match tab.view_mode {
+        atlas_model::settings::ViewMode::Miller => state
+            .miller
+            .columns
+            .get(state.miller.focused)
+            .and_then(|column| {
+                column
+                    .selection
+                    .keyboard_cursor
+                    .and_then(|i| column.entries.get(i))
+            })
+            .map(|e| e.path()),
+        atlas_model::settings::ViewMode::Tree => state.selection.keyboard_cursor.and_then(|i| {
+            state
+                .visible_tree_rows_snapshot()
+                .get(i)
+                .map(|row| row.0.path())
+        }),
+        _ => state
+            .selection
+            .keyboard_cursor
+            .and_then(|i| state.entries.get(i))
+            .map(|e| e.path()),
+    });
+    let miller_columns = runtime.map_or_else(Vec::new, |state| {
+        state
+            .miller
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| ColumnTransfer {
+                location: column.location.clone(),
+                selected_paths: column
+                    .selection
+                    .selected
+                    .iter()
+                    .filter_map(|i| column.entries.get(*i))
+                    .map(|e| e.path())
+                    .collect(),
+                cursor_path: column
+                    .selection
+                    .keyboard_cursor
+                    .and_then(|i| column.entries.get(i))
+                    .map(|e| e.path()),
+                scroll_offset: miller_offsets.get(index).copied().unwrap_or_default(),
+            })
+            .collect()
+    });
+    TabTransfer {
+        version: 1,
+        token: token.to_owned(),
+        tab: tab.clone(),
+        filter: runtime.map_or_else(String::new, |state| state.filter.clone()),
+        selected_paths,
+        cursor_path,
+        scroll_offset,
+        tree_expanded: runtime.map_or_else(Vec::new, |state| {
+            state.tree.expanded.iter().cloned().collect()
+        }),
+        miller_columns,
+        miller_focused: runtime.map_or(0, |state| state.miller.focused),
+        restore_initialized: false,
+        view_filters: ViewFilters::default(),
+        search: runtime.map(|state| SearchTransfer {
+            active: state.search.active,
+            query: state.search.query.clone(),
+            recursive: state.search.recursive,
+        }),
+    }
 }
 
-pub fn publish_tab_transfer(token: &str, tab: &atlas_model::pane::TabData, runtime: Option<&atlas_model::tab::TabState>, scroll_offset: [f32; 2], miller_offsets: &[[f32; 2]], keep_navigation: bool, view_filters: ViewFilters) -> Result<(), String> {
+pub fn publish_tab_transfer(
+    token: &str,
+    tab: &atlas_model::pane::TabData,
+    runtime: Option<&atlas_model::tab::TabState>,
+    scroll_offset: [f32; 2],
+    miller_offsets: &[[f32; 2]],
+    keep_navigation: bool,
+    view_filters: ViewFilters,
+) -> Result<(), String> {
     let mut snapshot = tab_snapshot(token, tab, runtime, scroll_offset, miller_offsets);
     snapshot.view_filters = view_filters;
     if !keep_navigation {
@@ -184,17 +283,32 @@ pub fn publish_tab_transfer(token: &str, tab: &atlas_model::pane::TabData, runti
         snapshot.miller_focused = 0;
         snapshot.scroll_offset = [0.0; 2];
     }
-    let payload = serde_json::to_vec(&snapshot)
-        .map_err(|error| error.to_string())?;
+    let payload = serde_json::to_vec(&snapshot).map_err(|error| error.to_string())?;
     let mut framed = (payload.len() as u32).to_le_bytes().to_vec();
     framed.extend(payload);
     let hg = unsafe { build_bytes_hglobal(&framed) };
-    if hg == 0 { return Err("Cannot allocate tab transfer".into()); }
-    let paths: Vec<PathBuf> = tab.location.fs_dir().map(|path| vec![path.to_path_buf()]).unwrap_or_default();
-    let object = AtlasDataObject::with_extras(&paths, DROPEFFECT_COPY, Arc::new(AtomicU32::new(0)),
-        vec![FormatEntry::new_hglobal(super::clipboard_formats::cf_open_window(), hg)], None)
-        .ok_or_else(|| "Cannot construct tab transfer".to_owned())?;
-    unsafe { OleSetClipboard(&object).map_err(|error| error.message())?; }
+    if hg == 0 {
+        return Err("Cannot allocate tab transfer".into());
+    }
+    let paths: Vec<PathBuf> = tab
+        .location
+        .fs_dir()
+        .map(|path| vec![path.to_path_buf()])
+        .unwrap_or_default();
+    let object = AtlasDataObject::with_extras(
+        &paths,
+        DROPEFFECT_COPY,
+        Arc::new(AtomicU32::new(0)),
+        vec![FormatEntry::new_hglobal(
+            super::clipboard_formats::cf_open_window(),
+            hg,
+        )],
+        None,
+    )
+    .ok_or_else(|| "Cannot construct tab transfer".to_owned())?;
+    unsafe {
+        OleSetClipboard(&object).map_err(|error| error.message())?;
+    }
     Ok(())
 }
 
@@ -212,14 +326,18 @@ pub(crate) fn take_tab_transfer(token: &str) -> Option<TabTransfer> {
             let bytes = std::slice::from_raw_parts(ptr, size);
             decode_tab_transfer(bytes, token)
         };
-        if !ptr.is_null() { let _ = GlobalUnlock(handle); }
+        if !ptr.is_null() {
+            let _ = GlobalUnlock(handle);
+        }
         windows::Win32::System::Ole::ReleaseStgMedium(&mut medium);
         result
     }
 }
 
 fn transfer_event_name(token: &str) -> Vec<u16> {
-    format!("Local\\AtlasTabTransfer-{token}\0").encode_utf16().collect()
+    format!("Local\\AtlasTabTransfer-{token}\0")
+        .encode_utf16()
+        .collect()
 }
 
 /// Acknowledge only after startup has applied the transferred snapshot.
@@ -227,7 +345,11 @@ pub fn acknowledge_tab_transfer(token: &str) {
     use windows::Win32::System::Threading::{OpenEventW, SetEvent, EVENT_MODIFY_STATE};
     let name = transfer_event_name(token);
     unsafe {
-        if let Ok(event) = OpenEventW(EVENT_MODIFY_STATE, false, windows::core::PCWSTR(name.as_ptr())) {
+        if let Ok(event) = OpenEventW(
+            EVENT_MODIFY_STATE,
+            false,
+            windows::core::PCWSTR(name.as_ptr()),
+        ) {
             let _ = SetEvent(event);
             let _ = windows::Win32::Foundation::CloseHandle(event);
         }
@@ -238,8 +360,11 @@ pub fn acknowledge_tab_transfer(token: &str) {
 pub fn prepare_transfer_ack(token: &str) -> Result<isize, String> {
     use windows::Win32::System::Threading::CreateEventW;
     let name = transfer_event_name(token);
-    unsafe { CreateEventW(None, true, false, windows::core::PCWSTR(name.as_ptr()))
-        .map(|event| event.0 as isize).map_err(|error| error.message()) }
+    unsafe {
+        CreateEventW(None, true, false, windows::core::PCWSTR(name.as_ptr()))
+            .map(|event| event.0 as isize)
+            .map_err(|error| error.message())
+    }
 }
 
 pub fn wait_transfer_ack(event: isize) -> bool {
@@ -331,7 +456,10 @@ fn build_dib(img: &image::RgbaImage) -> Vec<u8> {
 
 /// PNG + DIB clipboard entries for a single image file, when cheap enough.
 fn image_format_entries(paths: &[PathBuf]) -> Vec<FormatEntry> {
-    if paths.iter().any(|path| atlas_core::fs::preview::is_cloud_placeholder(path)) {
+    if paths
+        .iter()
+        .any(|path| atlas_core::fs::preview::is_cloud_placeholder(path))
+    {
         return Vec::new();
     }
     let [path] = paths else { return Vec::new() };
@@ -475,22 +603,45 @@ mod transfer_tests {
 
     fn entry(path: &str, directory: bool) -> atlas_model::file_entry::FileEntry {
         atlas_model::file_entry::FileEntryData {
-            name: Path::new(path).file_name().unwrap().to_string_lossy().as_ref().into(),
-            path: path.into(), kind: if directory { atlas_model::file_entry::FileKind::Dir } else { atlas_model::file_entry::FileKind::File },
-            size: None, modified: None, _is_hidden: false, _is_symlink: false,
-            archive_root: None, recycle_info: None,
-        }.into()
+            name: Path::new(path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .as_ref()
+                .into(),
+            path: path.into(),
+            kind: if directory {
+                atlas_model::file_entry::FileKind::Dir
+            } else {
+                atlas_model::file_entry::FileKind::File
+            },
+            size: None,
+            modified: None,
+            _is_hidden: false,
+            _is_symlink: false,
+            archive_root: None,
+            recycle_info: None,
+        }
+        .into()
     }
 
     #[test]
     fn snapshot_uses_tree_rows_and_preserves_the_entire_miller_cascade() {
-        use atlas_model::{settings::ViewMode, tab::{TabState, MillerColumn}, location::Location};
-        let mut tab = atlas_model::pane::TabData::with_view("C:/test".into(), ViewMode::Tree, 192.0, true);
+        use atlas_model::{
+            location::Location,
+            settings::ViewMode,
+            tab::{MillerColumn, TabState},
+        };
+        let mut tab =
+            atlas_model::pane::TabData::with_view("C:/test".into(), ViewMode::Tree, 192.0, true);
         let mut state = TabState::default();
         let parent = PathBuf::from("C:/test/dir");
         state.set_entries(vec![entry("C:/test/dir", true)].into());
         state.tree.expanded.insert(parent.clone());
-        state.tree.children.insert(parent.clone(), vec![entry("C:/test/dir/child.txt", false)].into());
+        state.tree.children.insert(
+            parent.clone(),
+            vec![entry("C:/test/dir/child.txt", false)].into(),
+        );
         state.selection.selected.insert(1);
         state.selection.keyboard_cursor = Some(1);
         state.filter = "child".into();
@@ -498,8 +649,14 @@ mod transfer_tests {
         // below after establishing the actual visible-row identity.
         state.filter.clear();
         let snapshot = tab_snapshot("token", &tab, Some(&state), [0.0, -200.0], &[]);
-        assert_eq!(snapshot.selected_paths, vec![PathBuf::from("C:/test/dir/child.txt")]);
-        assert_eq!(snapshot.cursor_path, snapshot.selected_paths.first().cloned());
+        assert_eq!(
+            snapshot.selected_paths,
+            vec![PathBuf::from("C:/test/dir/child.txt")]
+        );
+        assert_eq!(
+            snapshot.cursor_path,
+            snapshot.selected_paths.first().cloned()
+        );
         assert_eq!(snapshot.tree_expanded, vec![parent]);
         tab.view_mode = ViewMode::Miller;
         let mut root = MillerColumn::new(Location::Directory("C:/test".into()));
@@ -512,26 +669,56 @@ mod transfer_tests {
         state.miller.columns = vec![root, child];
         state.miller.focused = 1;
         state.filter = "child".into();
-        let snapshot = tab_snapshot("token", &tab, Some(&state), [0.0, -200.0], &[[0.0, -50.0], [0.0, -100.0]]);
-        let decoded: TabTransfer = serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+        let snapshot = tab_snapshot(
+            "token",
+            &tab,
+            Some(&state),
+            [0.0, -200.0],
+            &[[0.0, -50.0], [0.0, -100.0]],
+        );
+        let decoded: TabTransfer =
+            serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
         assert_eq!(decoded.miller_columns.len(), 2);
         assert_eq!(decoded.miller_focused, 1);
-        assert_eq!(decoded.selected_paths, vec![PathBuf::from("C:/test/dir/child.txt")]);
-        assert_eq!(decoded.miller_columns[0].selected_paths, vec![PathBuf::from("C:/test/dir")]);
+        assert_eq!(
+            decoded.selected_paths,
+            vec![PathBuf::from("C:/test/dir/child.txt")]
+        );
+        assert_eq!(
+            decoded.miller_columns[0].selected_paths,
+            vec![PathBuf::from("C:/test/dir")]
+        );
         assert_eq!(decoded.miller_columns[1].scroll_offset, [0.0, -100.0]);
         assert_eq!(decoded.filter, "child");
     }
 
     #[test]
     fn framed_snapshot_keeps_runtime_state_and_rejects_wrong_or_truncated_payloads() {
-        let tab = atlas_model::pane::TabData::with_view("C:/test".into(),
-            atlas_model::settings::ViewMode::Details, 192.0, true);
-        let transfer = TabTransfer { version: 1, token: "test-token".into(), tab,
-            filter: "résumé".into(), selected_paths: vec!["C:/test/a.txt".into()],
-            cursor_path: Some("C:/test/a.txt".into()), scroll_offset: [0.0, -200.0],
-            tree_expanded: vec![], miller_columns: vec![], miller_focused: 0, restore_initialized: false,
-            view_filters: ViewFilters { types: ["Imagen".into()].into(),
-                sizes: [crate::ui::size_filter_menu::SizeFilter::Large].into(), show_hidden: Some(true) }, search: None };
+        let tab = atlas_model::pane::TabData::with_view(
+            "C:/test".into(),
+            atlas_model::settings::ViewMode::Details,
+            192.0,
+            true,
+        );
+        let transfer = TabTransfer {
+            version: 1,
+            token: "test-token".into(),
+            tab,
+            filter: "résumé".into(),
+            selected_paths: vec!["C:/test/a.txt".into()],
+            cursor_path: Some("C:/test/a.txt".into()),
+            scroll_offset: [0.0, -200.0],
+            tree_expanded: vec![],
+            miller_columns: vec![],
+            miller_focused: 0,
+            restore_initialized: false,
+            view_filters: ViewFilters {
+                types: ["Imagen".into()].into(),
+                sizes: [crate::ui::size_filter_menu::SizeFilter::Large].into(),
+                show_hidden: Some(true),
+            },
+            search: None,
+        };
         let payload = serde_json::to_vec(&transfer).unwrap();
         let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
         frame.extend(payload);
@@ -550,8 +737,12 @@ mod transfer_tests {
 
     #[test]
     fn transfer_recreates_the_search_input_and_waits_for_results_before_remapping_selection() {
-        use atlas_model::{settings::ViewMode, tab::{TabState, SearchStatus}};
-        let tab = atlas_model::pane::TabData::with_view("C:/test".into(), ViewMode::Details, 192.0, true);
+        use atlas_model::{
+            settings::ViewMode,
+            tab::{SearchStatus, TabState},
+        };
+        let tab =
+            atlas_model::pane::TabData::with_view("C:/test".into(), ViewMode::Details, 192.0, true);
         let mut source = TabState::default();
         source.set_entries(vec![entry("C:/test/sub/result.txt", false)].into());
         source.selection.selected.insert(0);
@@ -560,7 +751,8 @@ mod transfer_tests {
         source.search.recursive = true;
         source.search.query = "r\u{00e9}sultat".into();
         let snapshot = tab_snapshot("token", &tab, Some(&source), [0.0, -400.0], &[]);
-        let received: TabTransfer = serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+        let received: TabTransfer =
+            serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
         let mut target = TabState::default();
         received.apply_runtime(&mut target);
         assert!(target.search.active && target.search.recursive);
@@ -570,13 +762,22 @@ mod transfer_tests {
         target.search.status = SearchStatus::Searching;
         assert!(!received.restore_selection(&mut target));
         assert_eq!(target.selection.selected, [0].into());
-        target.set_entries(vec![entry("C:/test/other-result.txt", false), entry("C:/test/sub/result.txt", false)].into());
+        target.set_entries(
+            vec![
+                entry("C:/test/other-result.txt", false),
+                entry("C:/test/sub/result.txt", false),
+            ]
+            .into(),
+        );
         target.search.status = SearchStatus::Ready;
         assert!(received.restore_selection(&mut target));
         assert_eq!(target.selection.selected, [1].into());
         assert_eq!(target.selection.keyboard_cursor, Some(1));
         assert!(!target.selection.scroll_to_selected);
-        assert!(target.filter.is_empty(), "recursive results must not inherit an old fuzzy filter");
+        assert!(
+            target.filter.is_empty(),
+            "recursive results must not inherit an old fuzzy filter"
+        );
         target.search.query = "a new query".into();
         assert!(!received.matches_runtime_search(&target));
         assert!(!received.restore_selection(&mut target));
@@ -584,8 +785,12 @@ mod transfer_tests {
 
     #[test]
     fn legacy_filter_only_snapshots_restore_a_visible_filter_input() {
-        use atlas_model::{settings::ViewMode, tab::{TabState, SearchStatus}};
-        let tab = atlas_model::pane::TabData::with_view("C:/test".into(), ViewMode::Details, 192.0, true);
+        use atlas_model::{
+            settings::ViewMode,
+            tab::{SearchStatus, TabState},
+        };
+        let tab =
+            atlas_model::pane::TabData::with_view("C:/test".into(), ViewMode::Details, 192.0, true);
         let mut source = TabState::default();
         source.filter = "*.rs".into();
         let snapshot = tab_snapshot("token", &tab, Some(&source), [0.0; 2], &[]);

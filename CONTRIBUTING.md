@@ -8,9 +8,30 @@ Before opening a PR or commit you care about, run:
 
 ```powershell
 cargo fmt --check
-cargo check --workspace
-cargo test --workspace
+cargo build --workspace --locked
+$env:RUST_MIN_STACK = "16777216"
+cargo test --workspace --locked --no-fail-fast
 ```
+
+The debug translation initializer needs more than the default 2 MiB test-thread
+stack. `RUST_MIN_STACK` gives tests 16 MiB, matching the Windows application's
+main-thread stack. CI sets this variable on both Windows and Linux.
+
+On Ubuntu 24.04, install the native build dependencies first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y clang g++ pkg-config libasound2-dev libfontconfig-dev \
+  libssl-dev libvulkan-dev libxcb1-dev libwayland-dev libx11-xcb-dev \
+  libxkbcommon-x11-dev libbz2-dev liblzma-dev ffmpeg
+cargo fmt --check
+cargo build --workspace --locked
+RUST_MIN_STACK=16777216 cargo test --workspace --locked --no-fail-fast
+```
+
+FFmpeg enables the independent subtitle-reader tests. Tests requiring the
+optional cloud extension also need that extension and `rclone` installed;
+ordinary workspace tests skip that integration when it is unavailable.
 
 Strict clippy is tracked as cleanup work, but it is not a required gate yet:
 

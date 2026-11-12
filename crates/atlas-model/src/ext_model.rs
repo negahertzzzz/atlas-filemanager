@@ -238,16 +238,18 @@ pub fn validate_extension_id(id: &str) -> anyhow::Result<()> {
     if id.is_empty() {
         anyhow::bail!("Extension ID cannot be empty");
     }
-    if id.contains("..") || id.contains('/') || id.contains('\\') || id.chars().any(|c| c.is_control()) {
+    if id.contains("..")
+        || id.contains('/')
+        || id.contains('\\')
+        || id.chars().any(|c| c.is_control())
+    {
         anyhow::bail!("Extension ID contains invalid or traversal characters: {id:?}");
     }
     if !id
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
     {
-        anyhow::bail!(
-            "Extension ID must only contain [a-z0-9_-]+: {id:?}"
-        );
+        anyhow::bail!("Extension ID must only contain [a-z0-9_-]+: {id:?}");
     }
     Ok(())
 }
@@ -264,7 +266,6 @@ impl Manifest {
         Ok(manifest)
     }
 }
-
 
 // ── Marketplace / remote registry ────────────────────────────────────────────
 

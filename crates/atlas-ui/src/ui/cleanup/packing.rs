@@ -41,9 +41,9 @@ pub(super) fn pack(weights: &[u64], width: f32, height: f32) -> Vec<Circle> {
                 for i in 0..placed.len() {
                     for j in i + 1..placed.len() {
                         for (x, y) in tangent(placed[i], placed[j], r) {
-                            let free = placed.iter().all(|c| {
-                                (x - c.0).hypot(y - c.1) >= c.2 + r - 1e-6 * (c.2 + r)
-                            });
+                            let free = placed
+                                .iter()
+                                .all(|c| (x - c.0).hypot(y - c.1) >= c.2 + r - 1e-6 * (c.2 + r));
                             let d = (x - cx).hypot(y - cy);
                             if free && best.is_none_or(|b| d < b.2) {
                                 best = Some((x, y, d));

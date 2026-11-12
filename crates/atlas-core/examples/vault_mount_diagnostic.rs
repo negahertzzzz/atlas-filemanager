@@ -73,18 +73,28 @@ fn main() -> anyhow::Result<()> {
         .open(path.join("Replace.txt"))?;
     fs::write(path.join("Replace.tmp"), b"new version")?;
     let sharing = fs::rename(path.join("Replace.tmp"), path.join("Replace.txt"));
-    anyhow::ensure!(sharing.as_ref().err().and_then(std::io::Error::raw_os_error) == Some(5), "replacement must match NTFS sharing rules");
+    anyhow::ensure!(
+        sharing
+            .as_ref()
+            .err()
+            .and_then(std::io::Error::raw_os_error)
+            == Some(5),
+        "replacement must match NTFS sharing rules"
+    );
     let mut original = Vec::new();
-    old.read_to_end(&mut original).context("read the old native handle")?;
+    old.read_to_end(&mut original)
+        .context("read the old native handle")?;
     anyhow::ensure!(
         original == b"old version",
         "replacement invalidated open inode"
     );
     old.seek(SeekFrom::Start(0))?;
-    old.write_all(b"OLD").context("write the old native handle")?;
+    old.write_all(b"OLD")
+        .context("write the old native handle")?;
     old.sync_all().context("flush the old native handle")?;
     drop(old);
-    fs::rename(path.join("Replace.tmp"), path.join("Replace.txt")).context("replace after closing the target")?;
+    fs::rename(path.join("Replace.tmp"), path.join("Replace.txt"))
+        .context("replace after closing the target")?;
     anyhow::ensure!(
         fs::read(path.join("Replace.txt"))? == b"new version",
         "old handle overwrote replacement"

@@ -1,9 +1,9 @@
 //! Arithmetic popover chrome, DG text input and scrollbar. Rows are one DG leaf.
-use atlas_model::clamp::ClampLenient;
 use crate::app::App as AtlasApp;
 use crate::ui::dg::{menu::MenuCanvas, DgTextInputState};
 use crate::ui::icons::AtlasIcon;
 use crate::ui::surface::{paint_fill, paint_rounded, paint_theme_icon, shape_text, Slot};
+use atlas_model::clamp::ClampLenient;
 use gpui::{
     point, px, size, AnyElement, App, AvailableSpace, Bounds, BoxShadow, ColorExt, ContentMask,
     Corners, CursorStyle, DispatchPhase, Element, ElementId, ElementInputHandler, FocusHandle,

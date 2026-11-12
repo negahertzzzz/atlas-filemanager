@@ -104,7 +104,8 @@ pub fn render_first_page_png(source: &Path, max_edge: u32) -> Result<Vec<u8>, St
             options.SetDestinationWidth(width as u32)?;
             options.SetDestinationHeight(height as u32)?;
             let stream = InMemoryRandomAccessStream::new()?;
-            page.RenderWithOptionsToStreamAsync(&stream, &options)?.get()?;
+            page.RenderWithOptionsToStreamAsync(&stream, &options)?
+                .get()?;
             let length = stream.Size()?;
             if length == 0 || length > 256 * 1024 * 1024 {
                 return Err("Rendered page is too large or empty".into());

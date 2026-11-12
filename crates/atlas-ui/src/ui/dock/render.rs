@@ -1,8 +1,7 @@
 use gpui::prelude::*;
 use gpui::ColorExt as _;
 use gpui::{
-    div, px, relative, AnyElement, Context, Entity, Focusable, MouseButton,
-    SharedString, Window,
+    div, px, relative, AnyElement, Context, Entity, Focusable, MouseButton, SharedString, Window,
 };
 use gpui_component::{h_flex, v_flex, ActiveTheme as _, ElementExt as _};
 
@@ -269,9 +268,17 @@ fn pane_exit_paint_offset(
     // content to the shrinking slot. Both move the content, not just its clip.
     (
         current.x - retained.x
-            + if collapse_axis.0 > 0.0 { current.w - retained.w } else { 0.0 },
+            + if collapse_axis.0 > 0.0 {
+                current.w - retained.w
+            } else {
+                0.0
+            },
         current.y - retained.y
-            + if collapse_axis.1 > 0.0 { current.h - retained.h } else { 0.0 },
+            + if collapse_axis.1 > 0.0 {
+                current.h - retained.h
+            } else {
+                0.0
+            },
     )
 }
 
@@ -372,19 +379,30 @@ impl App {
         let is_dragging = cx.has_active_drag();
         if is_dragging {
             if let Some(pane) = self.state.dragging_pane {
-                let parent = self.state.find_tabs_container(pane).and_then(|id| self.state.find_parent_of(id));
+                let parent = self
+                    .state
+                    .find_tabs_container(pane)
+                    .and_then(|id| self.state.find_parent_of(id));
                 // A Ctrl toggle retargets only a drag collapse. A simultaneous
                 // real close in the same split must retain its own timeline.
-                let real_close = parent.is_some_and(|parent| self.pane_closing.keys()
-                    .any(|closing| self.state.container_contains_pane(parent, *closing)));
+                let real_close = parent.is_some_and(|parent| {
+                    self.pane_closing
+                        .keys()
+                        .any(|closing| self.state.container_contains_pane(parent, *closing))
+                });
                 let collapse = !window.modifiers().control;
-                if !real_close && parent.and_then(|id| self.dock_split_animations.get(&id))
-                    .is_some_and(|animation| animation.closing != collapse) {
+                if !real_close
+                    && parent
+                        .and_then(|id| self.dock_split_animations.get(&id))
+                        .is_some_and(|animation| animation.closing != collapse)
+                {
                     self.animate_pane_drag(pane, collapse);
                 }
             }
         }
-        if !is_dragging { self.tab_reorder_preview = None; }
+        if !is_dragging {
+            self.tab_reorder_preview = None;
+        }
         if !is_dragging && self.state.dragging_pane.is_some() {
             if !self.state.drag_pending {
                 let pane_id = self.state.dragging_pane.unwrap();
@@ -417,7 +435,10 @@ impl App {
                 // Use this layout pass's constraints. Measuring after building
                 // the absolute slots made them trail window resize by a frame.
                 this.dock_root_bounds = Some(bounds);
-                let content = this.state.pane_tree.root
+                let content = this
+                    .state
+                    .pane_tree
+                    .root
                     .and_then(|root| {
                         this.render_flat_tree(root, window, cx)
                             .or_else(|| this.render_tree(root, window, cx))
@@ -429,14 +450,31 @@ impl App {
         .into_any_element()
     }
 
-    fn with_root_drop_zones(&self, content: AnyElement, window: &Window, cx: &Context<Self>) -> AnyElement {
+    fn with_root_drop_zones(
+        &self,
+        content: AnyElement,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         use crate::ui::tab_reorder::RootDropEdge;
         let mut host = div().relative().size_full().child(content);
-        if !cx.active_drag().is_some_and(|drag| drag.value.is::<TabDrag>()) {
+        if !cx
+            .active_drag()
+            .is_some_and(|drag| drag.value.is::<TabDrag>())
+        {
             return host.into_any_element();
         }
-        if !window.modifiers().control && self.state.pane_tree.tiles.iter()
-            .filter(|(_, tile)| matches!(tile, Tile::Pane(_))).take(2).count() < 2 {
+        if !window.modifiers().control
+            && self
+                .state
+                .pane_tree
+                .tiles
+                .iter()
+                .filter(|(_, tile)| matches!(tile, Tile::Pane(_)))
+                .take(2)
+                .count()
+                < 2
+        {
             return host.into_any_element();
         }
         let band = 20.0 * f32::from(window.rem_size()) / crate::ui::BASE_PX;
@@ -445,39 +483,78 @@ impl App {
         let preview_app = cx.entity();
         // Canvas paints without a hitbox. Its translucent prediction therefore
         // cannot intercept the pointer or turn the whole half-window into a zone.
-        host = host.child(gpui::canvas(|bounds, _, _| bounds, move |_, bounds, window, cx| {
-            let mouse = window.mouse_position();
-            if preview_app.read(cx).tab_drop_target_at(f32::from(mouse.x), f32::from(mouse.y)).is_some() {
-                return;
-            }
-            let pos = mouse - bounds.origin;
-            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-            let Some(edge) = RootDropEdge::at(f32::from(pos.x), f32::from(pos.y), w, h, band) else { return; };
-            let [x, y, w, h] = edge.preview(w, h);
-            let prediction = gpui::Bounds::new(bounds.origin + gpui::point(px(x), px(y)), gpui::size(px(w), px(h)));
-            let pulse = if animate {
-                static CLOCK: OnceLock<Instant> = OnceLock::new();
-                let t = CLOCK.get_or_init(Instant::now).elapsed().as_secs_f32();
-                window.request_animation_frame();
-                0.68 + 0.24 * (t * 5.0).sin().abs()
-            } else { 0.85 };
-            window.paint_quad(gpui::quad(prediction, px(3.0), accent.opacity(0.16), px(2.0), accent.opacity(pulse), gpui::BorderStyle::Solid));
-        }).absolute().inset_0());
-        for edge in [RootDropEdge::RootTop, RootDropEdge::RootBottom, RootDropEdge::RootLeft, RootDropEdge::RootRight] {
+        host = host.child(
+            gpui::canvas(
+                |bounds, _, _| bounds,
+                move |_, bounds, window, cx| {
+                    let mouse = window.mouse_position();
+                    if preview_app
+                        .read(cx)
+                        .tab_drop_target_at(f32::from(mouse.x), f32::from(mouse.y))
+                        .is_some()
+                    {
+                        return;
+                    }
+                    let pos = mouse - bounds.origin;
+                    let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    let Some(edge) =
+                        RootDropEdge::at(f32::from(pos.x), f32::from(pos.y), w, h, band)
+                    else {
+                        return;
+                    };
+                    let [x, y, w, h] = edge.preview(w, h);
+                    let prediction = gpui::Bounds::new(
+                        bounds.origin + gpui::point(px(x), px(y)),
+                        gpui::size(px(w), px(h)),
+                    );
+                    let pulse = if animate {
+                        static CLOCK: OnceLock<Instant> = OnceLock::new();
+                        let t = CLOCK.get_or_init(Instant::now).elapsed().as_secs_f32();
+                        window.request_animation_frame();
+                        0.68 + 0.24 * (t * 5.0).sin().abs()
+                    } else {
+                        0.85
+                    };
+                    window.paint_quad(gpui::quad(
+                        prediction,
+                        px(3.0),
+                        accent.opacity(0.16),
+                        px(2.0),
+                        accent.opacity(pulse),
+                        gpui::BorderStyle::Solid,
+                    ));
+                },
+            )
+            .absolute()
+            .inset_0(),
+        );
+        for edge in [
+            RootDropEdge::RootTop,
+            RootDropEdge::RootBottom,
+            RootDropEdge::RootLeft,
+            RootDropEdge::RootRight,
+        ] {
             let app = cx.entity();
             let target_app = app.clone();
             // Root edges overlap the top/side tab controls. Let the tab under
             // the cursor receive its reorder drop instead of splitting the root.
-            let zone = div().id(SharedString::from(format!("root-drop-{edge:?}"))).absolute()
+            let zone = div()
+                .id(SharedString::from(format!("root-drop-{edge:?}")))
+                .absolute()
                 .can_drop(move |_, window, cx| {
                     let pos = window.mouse_position();
-                    target_app.read(cx).tab_drop_target_at(f32::from(pos.x), f32::from(pos.y)).is_none()
+                    target_app
+                        .read(cx)
+                        .tab_drop_target_at(f32::from(pos.x), f32::from(pos.y))
+                        .is_none()
                 });
             let zone = match edge {
                 RootDropEdge::RootTop => zone.top_0().left_0().right_0().h(px(band)),
                 RootDropEdge::RootBottom => zone.bottom_0().left_0().right_0().h(px(band)),
                 RootDropEdge::RootLeft => zone.left_0().top(px(band)).bottom(px(band)).w(px(band)),
-                RootDropEdge::RootRight => zone.right_0().top(px(band)).bottom(px(band)).w(px(band)),
+                RootDropEdge::RootRight => {
+                    zone.right_0().top(px(band)).bottom(px(band)).w(px(band))
+                }
             };
             host = host.child(zone.on_drop::<TabDrag>(move |drag, window, cx| {
                 app.update(cx, |this, cx| {
@@ -735,7 +812,9 @@ impl App {
             let seam = self
                 .dock_split_animations
                 .get(&splitter.container)
-                .filter(|animation| !animation.closing && Some(animation.started) == active_animation)
+                .filter(|animation| {
+                    !animation.closing && Some(animation.started) == active_animation
+                })
                 .map(|animation| {
                     let p = animation.progress();
                     let color = cx.theme().primary.opacity(0.32 * 4.0 * p * (1.0 - p));
@@ -780,7 +859,11 @@ impl App {
     }
 
     /// Last prepainted bounds of a pane slot, in dock-local coordinates.
-    fn previous_pane_rect(&self, tile: TileId, dock_origin: gpui::Point<gpui::Pixels>) -> Option<FlatRect> {
+    fn previous_pane_rect(
+        &self,
+        tile: TileId,
+        dock_origin: gpui::Point<gpui::Pixels>,
+    ) -> Option<FlatRect> {
         self.pane_tabs_bounds.get(&tile).map(|previous| FlatRect {
             x: f32::from(previous.origin.x - dock_origin.x),
             y: f32::from(previous.origin.y - dock_origin.y),
@@ -875,13 +958,19 @@ impl App {
                         }
                     }
                 }
-                let drag_collapsing = cx.has_active_drag() && !window.modifiers().control
-                    && self.state.dragging_pane.is_some_and(|pane| linear.children.iter()
-                        .any(|child| self.drag_vacates_container(*child, pane)));
-                let closing_layout = drag_collapsing || self
-                    .dock_split_animations
-                    .get(&id)
-                    .is_some_and(|animation| animation.closing)
+                let drag_collapsing = cx.has_active_drag()
+                    && !window.modifiers().control
+                    && self.state.dragging_pane.is_some_and(|pane| {
+                        linear
+                            .children
+                            .iter()
+                            .any(|child| self.drag_vacates_container(*child, pane))
+                    });
+                let closing_layout = drag_collapsing
+                    || self
+                        .dock_split_animations
+                        .get(&id)
+                        .is_some_and(|animation| animation.closing)
                     || linear.children.iter().any(|child| {
                         matches!(
                             self.split_motion_for_tile(*child),
@@ -897,7 +986,8 @@ impl App {
                     .dock_split_animations
                     .get(&id)
                     .filter(|animation| {
-                        !self.state.settings.disable_animations && !animation.done()
+                        !self.state.settings.disable_animations
+                            && !animation.done()
                             && animation.from.len() == linear.children.len()
                     })
                     .cloned();
@@ -924,8 +1014,17 @@ impl App {
                     .get(&id)
                     .filter(|animation| animation.closing)
                     .and_then(|animation| animation.closing_ix)
-                    .or_else(|| drag_collapsing.then(|| linear.children.iter().position(|child|
-                        self.state.dragging_pane.is_some_and(|pane| self.drag_vacates_container(*child, pane)))).flatten())
+                    .or_else(|| {
+                        drag_collapsing
+                            .then(|| {
+                                linear.children.iter().position(|child| {
+                                    self.state.dragging_pane.is_some_and(|pane| {
+                                        self.drag_vacates_container(*child, pane)
+                                    })
+                                })
+                            })
+                            .flatten()
+                    })
                     .or_else(|| {
                         linear.children.iter().position(|child| {
                             matches!(
@@ -935,14 +1034,24 @@ impl App {
                         })
                     });
                 let mut splitter_gaps = crate::app::DockSplitAnimation::gap_targets(&shares)
-                    .iter().map(|factor| splitter_size * factor).collect::<Vec<_>>();
-                if let Some(splitter_ix) = closing_ix.and_then(|ix| closing_splitter_index(ix, num_splitters)) {
+                    .iter()
+                    .map(|factor| splitter_size * factor)
+                    .collect::<Vec<_>>();
+                if let Some(splitter_ix) =
+                    closing_ix.and_then(|ix| closing_splitter_index(ix, num_splitters))
+                {
                     splitter_gaps[splitter_ix] = 0.0;
                 }
-                let start_splitter_gaps = flip_animation.as_ref()
+                let start_splitter_gaps = flip_animation
+                    .as_ref()
                     .filter(|animation| animation.from_gap_factors.len() == num_splitters)
-                    .map(|animation| animation.from_gap_factors.iter()
-                        .map(|factor| splitter_size * factor).collect::<Vec<_>>())
+                    .map(|animation| {
+                        animation
+                            .from_gap_factors
+                            .iter()
+                            .map(|factor| splitter_size * factor)
+                            .collect::<Vec<_>>()
+                    })
                     .unwrap_or_else(|| splitter_gaps.clone());
                 let available = (span - splitter_gaps.iter().sum::<f32>()).max(0.0);
                 let layout_available = (layout_span - splitter_gaps.iter().sum::<f32>()).max(0.0);
@@ -1154,13 +1263,19 @@ impl App {
                         }
                     }
                 }
-                let drag_collapsing = cx.has_active_drag() && !window.modifiers().control
-                    && self.state.dragging_pane.is_some_and(|pane| linear.children.iter()
-                        .any(|child| self.drag_vacates_container(*child, pane)));
-                let closing_layout = drag_collapsing || self
-                    .dock_split_animations
-                    .get(&id)
-                    .is_some_and(|animation| animation.closing)
+                let drag_collapsing = cx.has_active_drag()
+                    && !window.modifiers().control
+                    && self.state.dragging_pane.is_some_and(|pane| {
+                        linear
+                            .children
+                            .iter()
+                            .any(|child| self.drag_vacates_container(*child, pane))
+                    });
+                let closing_layout = drag_collapsing
+                    || self
+                        .dock_split_animations
+                        .get(&id)
+                        .is_some_and(|animation| animation.closing)
                     || linear.children.iter().any(|child| {
                         matches!(
                             self.split_motion_for_tile(*child),
@@ -1189,8 +1304,17 @@ impl App {
                     .get(&id)
                     .filter(|animation| animation.closing)
                     .and_then(|animation| animation.closing_ix)
-                    .or_else(|| drag_collapsing.then(|| linear.children.iter().position(|child|
-                        self.state.dragging_pane.is_some_and(|pane| self.drag_vacates_container(*child, pane)))).flatten())
+                    .or_else(|| {
+                        drag_collapsing
+                            .then(|| {
+                                linear.children.iter().position(|child| {
+                                    self.state.dragging_pane.is_some_and(|pane| {
+                                        self.drag_vacates_container(*child, pane)
+                                    })
+                                })
+                            })
+                            .flatten()
+                    })
                     .or_else(|| {
                         linear.children.iter().position(|child| {
                             matches!(
@@ -1453,10 +1577,13 @@ impl App {
         self.state.profiles.active().theme.hash(&mut h);
         // Tab icons come from the icon pack and arrive asynchronously.
         std::mem::discriminant(&self.state.settings.icon_style).hash(&mut h);
-        self.file_icon(&App::file_icon_ref_for_path(std::path::PathBuf::new(), true))
-            .texture()
-            .map(|tex| tex.id)
-            .hash(&mut h);
+        self.file_icon(&App::file_icon_ref_for_path(
+            std::path::PathBuf::new(),
+            true,
+        ))
+        .texture()
+        .map(|tex| tex.id)
+        .hash(&mut h);
         self.state.settings.glass_opacity.to_bits().hash(&mut h);
         self.state.settings.show_titlebar.hash(&mut h);
         if self.state.settings.show_titlebar {
@@ -1690,11 +1817,7 @@ impl App {
                 .tab_data_for(*pane_id)
                 .map(|t| {
                     let tag_color = match &t.location {
-                        Location::Tag(id) => self
-                            .state
-                            .tag_cache
-                            .def(*id)
-                            .map(|def| def.color),
+                        Location::Tag(id) => self.state.tag_cache.def(*id).map(|def| def.color),
                         _ => None,
                     };
                     let label = match &t.location {
@@ -1727,13 +1850,13 @@ impl App {
                 self.maybe_request_file_icon(&file);
                 self.file_icon(&file).texture_for_size(icon_px)
             });
-            let icon = self
-                .tab_data_for(*pane_id)
-                .map_or(AtlasIcon::Folder, |t| match &t.location {
-                    Location::RecycleBin => AtlasIcon::Trash,
-                    Location::Remote { .. } => AtlasIcon::Cloud,
-                    _ => AtlasIcon::Folder,
-                });
+            let icon =
+                self.tab_data_for(*pane_id)
+                    .map_or(AtlasIcon::Folder, |t| match &t.location {
+                        Location::RecycleBin => AtlasIcon::Trash,
+                        Location::Remote { .. } => AtlasIcon::Cloud,
+                        _ => AtlasIcon::Folder,
+                    });
 
             tab_items.push(crate::ui::views::tabs_bar_element::TabBarItem {
                 pane_id: *pane_id,
@@ -1747,9 +1870,13 @@ impl App {
         }
 
         let geometry = std::rc::Rc::new(std::cell::RefCell::new(
-            crate::ui::views::tabs_bar_element::TabDropGeometry::default()));
-        let reorder = self.tab_reorder_preview.as_ref().filter(|preview|
-            preview.children == children && cx.has_active_drag()).cloned();
+            crate::ui::views::tabs_bar_element::TabDropGeometry::default(),
+        ));
+        let reorder = self
+            .tab_reorder_preview
+            .as_ref()
+            .filter(|preview| preview.children == children && cx.has_active_drag())
+            .cloned();
         let instant = self.state.settings.disable_animations || cx.reduce_motion();
         let tabs_bar = crate::ui::views::tabs_bar_element::TabsBarElement::new(
             app.downgrade(),
@@ -1765,13 +1892,10 @@ impl App {
             tab_fg,
             muted,
             border,
-        ).interaction(geometry.clone(), reorder, instant);
+        )
+        .interaction(geometry.clone(), reorder, instant);
 
-        let mut strip_container = div()
-            .relative()
-            .w_full()
-            .h(strip_height)
-            .child(tabs_bar);
+        let mut strip_container = div().relative().w_full().h(strip_height).child(tabs_bar);
         let preview_app = app.clone();
         let preview_children = children.clone();
         let drop_app = app.clone();
@@ -1780,21 +1904,48 @@ impl App {
             .on_drag_move::<TabDrag>(move |event, _window, cx| {
                 let dragged = event.drag(cx).pane_id;
                 let inside = event.bounds.contains(&event.event.position);
-                let boundary = geometry.borrow().boundary_at(f32::from(event.event.position.x - event.bounds.left()));
+                let boundary = geometry
+                    .borrow()
+                    .boundary_at(f32::from(event.event.position.x - event.bounds.left()));
                 preview_app.update(cx, |this, cx| {
-                    let next = inside.then(|| crate::ui::tab_reorder::TabReorderPreview { dragged, children: preview_children.clone(), boundary, copying: event.event.modifiers.control });
-                    if !inside && this.tab_reorder_preview.as_ref().is_none_or(|preview| preview.children != preview_children) { return; }
+                    let next = inside.then(|| crate::ui::tab_reorder::TabReorderPreview {
+                        dragged,
+                        children: preview_children.clone(),
+                        boundary,
+                        copying: event.event.modifiers.control,
+                    });
+                    if !inside
+                        && this
+                            .tab_reorder_preview
+                            .as_ref()
+                            .is_none_or(|preview| preview.children != preview_children)
+                    {
+                        return;
+                    }
                     if this.tab_reorder_preview != next {
                         this.tab_reorder_preview = next;
-                        for view in this.pane_tabs_cache.values() { view.update(cx, |_, cx| cx.notify()); }
+                        for view in this.pane_tabs_cache.values() {
+                            view.update(cx, |_, cx| cx.notify());
+                        }
                         cx.notify();
                     }
                 });
             })
             .on_drop::<TabDrag>(move |drag, window, cx| {
                 drop_app.update(cx, |this, cx| {
-                    let boundary = this.tab_reorder_preview.as_ref().filter(|preview| preview.dragged == drag.pane_id && preview.children == drop_children).map_or(drop_children.len(), |preview| preview.boundary);
-                    tracing::debug!(pane = drag.pane_id.0, boundary, targets = drop_children.len(), "dnd tab strip drop");
+                    let boundary = this
+                        .tab_reorder_preview
+                        .as_ref()
+                        .filter(|preview| {
+                            preview.dragged == drag.pane_id && preview.children == drop_children
+                        })
+                        .map_or(drop_children.len(), |preview| preview.boundary);
+                    tracing::debug!(
+                        pane = drag.pane_id.0,
+                        boundary,
+                        targets = drop_children.len(),
+                        "dnd tab strip drop"
+                    );
                     if let Some(id) = this.tab_for_drop(drag.pane_id, window.modifiers().control) {
                         this.commit_tab_reorder(id, &drop_children, boundary);
                     }
@@ -1811,7 +1962,9 @@ impl App {
                     let paths = d.paths.clone();
                     drop_app_ext.update(cx, |this, cx| {
                         let pos = window.mouse_position();
-                        let target = this.tab_drop_target_at(f32::from(pos.x), f32::from(pos.y)).unwrap_or(target);
+                        let target = this
+                            .tab_drop_target_at(f32::from(pos.x), f32::from(pos.y))
+                            .unwrap_or(target);
                         if let Some(command) = this.tab_drop_command(target) {
                             this.execute_drag_hover_drop_command(command, paths, true);
                         }
@@ -1822,7 +1975,9 @@ impl App {
                     let paths = paths.paths().to_vec();
                     drop_app_ext2.update(cx, |this, cx| {
                         let pos = window.mouse_position();
-                        let target = this.tab_drop_target_at(f32::from(pos.x), f32::from(pos.y)).unwrap_or(target);
+                        let target = this
+                            .tab_drop_target_at(f32::from(pos.x), f32::from(pos.y))
+                            .unwrap_or(target);
                         if let Some(command) = this.tab_drop_command(target) {
                             this.execute_drag_hover_drop_command(command, paths, false);
                         }
@@ -1887,7 +2042,11 @@ impl App {
                     .w(relative(0.35))
                     .on_drop::<TabDrag>(move |drag, window, cx| {
                         overlay_left_app.update(cx, |this, cx| {
-                            if let Some(id) = this.tab_for_drop(drag.pane_id, window.modifiers().control) { this.split_existing_tab(target, id, false, true); }
+                            if let Some(id) =
+                                this.tab_for_drop(drag.pane_id, window.modifiers().control)
+                            {
+                                this.split_existing_tab(target, id, false, true);
+                            }
                             cx.notify();
                         });
                     })
@@ -1907,7 +2066,11 @@ impl App {
                     .w(relative(0.35))
                     .on_drop::<TabDrag>(move |drag, window, cx| {
                         overlay_right_app.update(cx, |this, cx| {
-                            if let Some(id) = this.tab_for_drop(drag.pane_id, window.modifiers().control) { this.split_existing_tab(target, id, false, false); }
+                            if let Some(id) =
+                                this.tab_for_drop(drag.pane_id, window.modifiers().control)
+                            {
+                                this.split_existing_tab(target, id, false, false);
+                            }
                             cx.notify();
                         });
                     })
@@ -1927,7 +2090,11 @@ impl App {
                     .h(relative(0.25))
                     .on_drop::<TabDrag>(move |drag, window, cx| {
                         overlay_top_app.update(cx, |this, cx| {
-                            if let Some(id) = this.tab_for_drop(drag.pane_id, window.modifiers().control) { this.split_existing_tab(target, id, true, true); }
+                            if let Some(id) =
+                                this.tab_for_drop(drag.pane_id, window.modifiers().control)
+                            {
+                                this.split_existing_tab(target, id, true, true);
+                            }
                             cx.notify();
                         });
                     })
@@ -1947,7 +2114,11 @@ impl App {
                     .h(relative(0.25))
                     .on_drop::<TabDrag>(move |drag, window, cx| {
                         overlay_bottom_app.update(cx, |this, cx| {
-                            if let Some(id) = this.tab_for_drop(drag.pane_id, window.modifiers().control) { this.split_existing_tab(target, id, true, false); }
+                            if let Some(id) =
+                                this.tab_for_drop(drag.pane_id, window.modifiers().control)
+                            {
+                                this.split_existing_tab(target, id, true, false);
+                            }
                             cx.notify();
                         });
                     })
@@ -1967,7 +2138,11 @@ impl App {
                     .bottom(relative(0.25))
                     .on_drop::<TabDrag>(move |drag, window, cx| {
                         overlay_center_app.update(cx, |this, cx| {
-                            if let Some(id) = this.tab_for_drop(drag.pane_id, window.modifiers().control) { this.move_tab_before(id, target); }
+                            if let Some(id) =
+                                this.tab_for_drop(drag.pane_id, window.modifiers().control)
+                            {
+                                this.move_tab_before(id, target);
+                            }
                             cx.notify();
                         });
                     })
@@ -2129,68 +2304,165 @@ mod tests {
 
     #[test]
     fn trailing_close_keeps_prepaint_inside_the_dock() {
-        let previous = FlatRect { x: 400.0, y: 0.0, w: 400.0, h: 500.0 };
-        let current = FlatRect { x: 700.0, w: 100.0, ..previous };
-        let final_rect = FlatRect { x: 800.0, w: 0.0, ..previous };
-        let (layout, _) = pane_visual_layout(current, final_rect, true, false, true, Some(previous));
+        let previous = FlatRect {
+            x: 400.0,
+            y: 0.0,
+            w: 400.0,
+            h: 500.0,
+        };
+        let current = FlatRect {
+            x: 700.0,
+            w: 100.0,
+            ..previous
+        };
+        let final_rect = FlatRect {
+            x: 800.0,
+            w: 0.0,
+            ..previous
+        };
+        let (layout, _) =
+            pane_visual_layout(current, final_rect, true, false, true, Some(previous));
         assert_eq!(layout.x, previous.x);
         assert_eq!(layout.w, previous.w);
         let offset = pane_exit_paint_offset(current, layout, (-1.0, 0.0));
-        assert_eq!(offset.0, 300.0, "content must leave with the seam, not stay pinned");
+        assert_eq!(
+            offset.0, 300.0,
+            "content must leave with the seam, not stay pinned"
+        );
     }
 
     #[test]
     fn closing_content_moves_outward_on_both_axes_with_stable_layout() {
-        let retained = FlatRect { x: 100.0, y: 200.0, w: 400.0, h: 300.0 };
+        let retained = FlatRect {
+            x: 100.0,
+            y: 200.0,
+            w: 400.0,
+            h: 300.0,
+        };
         for fraction in [0.0, 0.25, 0.5, 0.75, 1.0] {
             let horizontal_loss = retained.w * fraction;
             let vertical_loss = retained.h * fraction;
-            let leading_x = FlatRect { w: retained.w - horizontal_loss, ..retained };
-            let trailing_x = FlatRect { x: retained.x + horizontal_loss, ..leading_x };
-            let leading_y = FlatRect { h: retained.h - vertical_loss, ..retained };
-            let trailing_y = FlatRect { y: retained.y + vertical_loss, ..leading_y };
-            assert_eq!(pane_exit_paint_offset(leading_x, retained, (1.0, 0.0)), (-horizontal_loss, 0.0));
-            assert_eq!(pane_exit_paint_offset(trailing_x, retained, (-1.0, 0.0)), (horizontal_loss, 0.0));
-            assert_eq!(pane_exit_paint_offset(leading_y, retained, (0.0, 1.0)), (0.0, -vertical_loss));
-            assert_eq!(pane_exit_paint_offset(trailing_y, retained, (0.0, -1.0)), (0.0, vertical_loss));
+            let leading_x = FlatRect {
+                w: retained.w - horizontal_loss,
+                ..retained
+            };
+            let trailing_x = FlatRect {
+                x: retained.x + horizontal_loss,
+                ..leading_x
+            };
+            let leading_y = FlatRect {
+                h: retained.h - vertical_loss,
+                ..retained
+            };
+            let trailing_y = FlatRect {
+                y: retained.y + vertical_loss,
+                ..leading_y
+            };
+            assert_eq!(
+                pane_exit_paint_offset(leading_x, retained, (1.0, 0.0)),
+                (-horizontal_loss, 0.0)
+            );
+            assert_eq!(
+                pane_exit_paint_offset(trailing_x, retained, (-1.0, 0.0)),
+                (horizontal_loss, 0.0)
+            );
+            assert_eq!(
+                pane_exit_paint_offset(leading_y, retained, (0.0, 1.0)),
+                (0.0, -vertical_loss)
+            );
+            assert_eq!(
+                pane_exit_paint_offset(trailing_y, retained, (0.0, -1.0)),
+                (0.0, vertical_loss)
+            );
         }
     }
 
     #[test]
     fn expanding_survivor_uses_a_stable_target_extent() {
-        let previous = FlatRect { x: 0.0, y: 0.0, w: 200.0, h: 300.0 };
-        let final_rect = FlatRect { w: 400.0, h: 600.0, ..previous };
+        let previous = FlatRect {
+            x: 0.0,
+            y: 0.0,
+            w: 200.0,
+            h: 300.0,
+        };
+        let final_rect = FlatRect {
+            w: 400.0,
+            h: 600.0,
+            ..previous
+        };
         for fraction in [0.0, 0.2, 0.5, 0.9] {
-            let current = FlatRect { w: 200.0 + 200.0 * fraction, h: 300.0 + 300.0 * fraction, ..previous };
-            let (layout, _) = pane_visual_layout(current, final_rect, false, false, true, Some(previous));
+            let current = FlatRect {
+                w: 200.0 + 200.0 * fraction,
+                h: 300.0 + 300.0 * fraction,
+                ..previous
+            };
+            let (layout, _) =
+                pane_visual_layout(current, final_rect, false, false, true, Some(previous));
             assert_eq!((layout.w, layout.h), (400.0, 600.0));
         }
     }
 
     #[test]
     fn shifted_sibling_keeps_its_previous_origin_for_cache_reuse() {
-        let previous = FlatRect { x: 300.0, y: 0.0, w: 200.0, h: 500.0 };
-        let current = FlatRect { x: 270.0, w: 190.0, ..previous };
-        let final_rect = FlatRect { x: 240.0, w: 180.0, ..previous };
-        let (layout, _) = pane_visual_layout(current, final_rect, false, false, true, Some(previous));
+        let previous = FlatRect {
+            x: 300.0,
+            y: 0.0,
+            w: 200.0,
+            h: 500.0,
+        };
+        let current = FlatRect {
+            x: 270.0,
+            w: 190.0,
+            ..previous
+        };
+        let final_rect = FlatRect {
+            x: 240.0,
+            w: 180.0,
+            ..previous
+        };
+        let (layout, _) =
+            pane_visual_layout(current, final_rect, false, false, true, Some(previous));
         let layout = retain_previous_origin(layout, Some(previous), 1000.0, 500.0);
-        assert!(same_rect(layout, previous), "unchanged bounds keep the view cache valid");
+        assert!(
+            same_rect(layout, previous),
+            "unchanged bounds keep the view cache valid"
+        );
     }
 
     #[test]
     fn retained_origin_falls_back_when_it_would_leave_the_dock() {
-        let previous = FlatRect { x: 600.0, y: 0.0, w: 300.0, h: 500.0 };
-        let grown = FlatRect { x: 300.0, w: 600.0, ..previous };
+        let previous = FlatRect {
+            x: 600.0,
+            y: 0.0,
+            w: 300.0,
+            h: 500.0,
+        };
+        let grown = FlatRect {
+            x: 300.0,
+            w: 600.0,
+            ..previous
+        };
         let layout = retain_previous_origin(grown, Some(previous), 1000.0, 500.0);
         assert_eq!(layout.x, 300.0);
     }
 
     #[test]
     fn without_retention_uses_the_current_geometry() {
-        let current = FlatRect { x: 10.0, y: 20.0, w: 90.0, h: 400.0 };
-        let final_rect = FlatRect { w: 220.0, ..current };
+        let current = FlatRect {
+            x: 10.0,
+            y: 20.0,
+            w: 90.0,
+            h: 400.0,
+        };
+        let final_rect = FlatRect {
+            w: 220.0,
+            ..current
+        };
         let (layout, offset) = pane_visual_layout(current, final_rect, false, true, false, None);
-        assert_eq!((layout.x, layout.y, layout.w, layout.h), (10.0, 20.0, 90.0, 400.0));
+        assert_eq!(
+            (layout.x, layout.y, layout.w, layout.h),
+            (10.0, 20.0, 90.0, 400.0)
+        );
         assert_eq!(offset, (0.0, 0.0));
     }
 }

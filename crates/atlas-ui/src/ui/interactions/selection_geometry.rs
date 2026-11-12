@@ -39,8 +39,13 @@ pub(super) fn grid_hits(
     let first_col =
         (((left - model.pad_x - model.cell_w) / model.pitch_x).floor() + 1.0).max(0.0) as usize;
     let last_col = (((right - model.pad_x) / model.pitch_x).ceil().max(0.0) as usize).min(cols);
-    let first_row = model.bands.rows_through(top - model.pad_y - model.cell_h, model.pitch_y);
-    let last_row = model.bands.rows_through(bottom - model.pad_y - 0.001, model.pitch_y).min(rows);
+    let first_row = model
+        .bands
+        .rows_through(top - model.pad_y - model.cell_h, model.pitch_y);
+    let last_row = model
+        .bands
+        .rows_through(bottom - model.pad_y - 0.001, model.pitch_y)
+        .min(rows);
     for col in first_col..last_col {
         for row in first_row..last_row {
             let pos = if model.major_rows > 0 {
@@ -48,7 +53,9 @@ pub(super) fn grid_hits(
             } else {
                 row * model.cols.max(1) + col
             };
-            if let Some(index) = model.visible.get(pos).filter(|index| pos < model.total_count && !atlas_model::grouping::is_virtual_cell(**index)) {
+            if let Some(index) = model.visible.get(pos).filter(|index| {
+                pos < model.total_count && !atlas_model::grouping::is_virtual_cell(**index)
+            }) {
                 hits.insert(*index);
             }
         }

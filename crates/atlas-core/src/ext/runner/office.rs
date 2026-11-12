@@ -21,12 +21,10 @@ pub(crate) fn builtin_document_preview(
         "xls" | "xlsx" | "ods" => spreadsheet_preview(path),
         "docx" => crate::fs::preview::document::preview_docx(path),
         "pptx" => pptx_preview(path),
-        "pdf" => {
-            match tools.get("pdftoppm") {
-                Some(tool) => crate::fs::preview::preview_pdf_with_pdftoppm(path, tool),
-                None => crate::fs::preview::preview_pdf_public(path),
-            }
-        }
+        "pdf" => match tools.get("pdftoppm") {
+            Some(tool) => crate::fs::preview::preview_pdf_with_pdftoppm(path, tool),
+            None => crate::fs::preview::preview_pdf_public(path),
+        },
         "psd" | "psb" => {
             if let Some(tool) = tools.get("magick") {
                 super::img::run_magick_preview(path, tool)
@@ -45,7 +43,8 @@ fn delimited_preview(path: &Path, default_delimiter: u8) -> PreviewResult {
     use std::io::Read as _;
     let mut bytes = Vec::new();
     let read = std::fs::File::open(path).and_then(|file| {
-        file.take(DELIMITED_PREVIEW_BYTES + 1).read_to_end(&mut bytes)
+        file.take(DELIMITED_PREVIEW_BYTES + 1)
+            .read_to_end(&mut bytes)
     });
     if let Err(e) = read {
         return PreviewResult::Error(e.to_string());
@@ -77,10 +76,16 @@ pub(crate) fn delimited_bytes(bytes: &[u8], default_delimiter: u8, clipped: bool
 fn decode_delimited_text(bytes: &[u8]) -> String {
     if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
         let little = bytes[0] == 0xff;
-        let units: Vec<_> = bytes[2..].chunks_exact(2).map(|pair| {
-            if little { u16::from_le_bytes([pair[0], pair[1]]) }
-            else { u16::from_be_bytes([pair[0], pair[1]]) }
-        }).collect();
+        let units: Vec<_> = bytes[2..]
+            .chunks_exact(2)
+            .map(|pair| {
+                if little {
+                    u16::from_le_bytes([pair[0], pair[1]])
+                } else {
+                    u16::from_be_bytes([pair[0], pair[1]])
+                }
+            })
+            .collect();
         return String::from_utf16_lossy(&units);
     }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
@@ -175,25 +180,37 @@ fn delimited_records(text: &str, delimiter: u8) -> (Vec<Vec<String>>, bool) {
     let mut chars = text.char_indices().peekable();
     while let Some((index, ch)) = chars.next() {
         if ch == '"' {
-            if quoted && chars.peek().is_some_and(|(_, next)| *next == '"') { chars.next(); }
-            else if quoted { quoted = false; }
-            else if field_start { quoted = true; }
+            if quoted && chars.peek().is_some_and(|(_, next)| *next == '"') {
+                chars.next();
+            } else if quoted {
+                quoted = false;
+            } else if field_start {
+                quoted = true;
+            }
             field_start = false;
         } else if !quoted && ch == '\n' {
             let record = text[start..index].trim_end_matches('\r');
             start = index + 1;
             field_start = true;
-            if record.trim().is_empty() { continue; }
-            if rows.len() == 201 { return (rows, true); }
+            if record.trim().is_empty() {
+                continue;
+            }
+            if rows.len() == 201 {
+                return (rows, true);
+            }
             let mut cells = parse_delimited_line(record, delimiter);
             truncated |= cells.len() > 50;
             cells.truncate(50);
             rows.push(cells);
-        } else if !quoted { field_start = ch == char::from(delimiter); }
+        } else if !quoted {
+            field_start = ch == char::from(delimiter);
+        }
     }
     let record = text[start..].trim_end_matches('\r');
     if !record.trim().is_empty() {
-        if rows.len() == 201 { return (rows, true); }
+        if rows.len() == 201 {
+            return (rows, true);
+        }
         let mut cells = parse_delimited_line(record, delimiter);
         truncated |= cells.len() > 50;
         cells.truncate(50);
@@ -260,7 +277,11 @@ fn pptx_preview(path: &Path) -> PreviewResult {
         Err(e) => return PreviewResult::Error(e.to_string()),
     };
     let mut names: Vec<String> = (0..zip.len())
-        .filter_map(|i| zip.by_index(i).ok().and_then(|f| f.name().ok().map(std::borrow::Cow::into_owned)))
+        .filter_map(|i| {
+            zip.by_index(i)
+                .ok()
+                .and_then(|f| f.name().ok().map(std::borrow::Cow::into_owned))
+        })
         .filter(|name| name.starts_with("ppt/slides/slide") && name.ends_with(".xml"))
         .collect();
     names.sort();
@@ -270,11 +291,17 @@ fn pptx_preview(path: &Path) -> PreviewResult {
             continue;
         };
         const MAX_SLIDE_XML: u64 = 8 * 1024 * 1024;
-        if entry.size() > MAX_SLIDE_XML { return PreviewResult::Error("Slide XML exceeds 8 MiB".into()); }
+        if entry.size() > MAX_SLIDE_XML {
+            return PreviewResult::Error("Slide XML exceeds 8 MiB".into());
+        }
         let mut xml = String::new();
         use std::io::Read as _;
-        if let Err(error) = entry.take(MAX_SLIDE_XML + 1).read_to_string(&mut xml) { return PreviewResult::Error(error.to_string()); }
-        if xml.len() as u64 > MAX_SLIDE_XML { return PreviewResult::Error("Slide XML exceeds 8 MiB".into()); }
+        if let Err(error) = entry.take(MAX_SLIDE_XML + 1).read_to_string(&mut xml) {
+            return PreviewResult::Error(error.to_string());
+        }
+        if xml.len() as u64 > MAX_SLIDE_XML {
+            return PreviewResult::Error("Slide XML exceeds 8 MiB".into());
+        }
         {
             let blocks = xml_text_blocks(&xml);
             let title = blocks.first().cloned().unwrap_or_default();
@@ -341,10 +368,21 @@ mod tests {
         use std::io::Write as _;
         let file = tempfile::Builder::new().suffix(".docx").tempfile().unwrap();
         let mut writer = zip::ZipWriter::new(std::fs::File::create(file.path()).unwrap());
-        writer.start_file("word/document.xml", zip::write::SimpleFileOptions::default()).unwrap();
-        writer.write_all(br#"<document><p><r><t>Hello </t></r><r><t>world &#233;</t></r></p></document>"#).unwrap();
+        writer
+            .start_file(
+                "word/document.xml",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer
+            .write_all(
+                br#"<document><p><r><t>Hello </t></r><r><t>world &#233;</t></r></p></document>"#,
+            )
+            .unwrap();
         writer.finish().unwrap();
-        assert!(matches!(builtin_document_preview(file.path(), &HashMap::new()), PreviewResult::Document { blocks, .. } if blocks == ["Hello world é"]));
+        assert!(
+            matches!(builtin_document_preview(file.path(), &HashMap::new()), PreviewResult::Document { blocks, .. } if blocks == ["Hello world é"])
+        );
     }
 }
 
@@ -356,7 +394,10 @@ mod delimited_tests {
     fn sniffs_semicolons_and_strips_bom() {
         let text = decode_delimited_text("\u{FEFF}nombre;precio\nlápiz;0,85\n".as_bytes());
         assert_eq!(sniff_delimiter(&text, b','), b';');
-        assert_eq!(parse_delimited_line(text.lines().next().unwrap(), b';'), ["nombre", "precio"]);
+        assert_eq!(
+            parse_delimited_line(text.lines().next().unwrap(), b';'),
+            ["nombre", "precio"]
+        );
     }
 
     #[test]
@@ -372,7 +413,10 @@ mod delimited_tests {
 
     #[test]
     fn multiline_quotes_and_unicode_stay_in_one_record() {
-        let (rows, truncated) = delimited_records("nombre;nota\nniño;\"primera línea\n日本語 y \"\"comillas\"\"\"\n", b';');
+        let (rows, truncated) = delimited_records(
+            "nombre;nota\nniño;\"primera línea\n日本語 y \"\"comillas\"\"\"\n",
+            b';',
+        );
         assert!(!truncated);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[1], ["niño", "primera línea\n日本語 y \"comillas\""]);

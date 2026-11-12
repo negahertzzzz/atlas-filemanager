@@ -512,9 +512,16 @@ run = "definitely-not-installed-tool {input}"
         .unwrap();
         let registry = registry_with(manifest);
         let png = [std::path::PathBuf::from("a.png")];
-        let ids: Vec<_> = registry.ring_commands(&png).into_iter().map(|(_, c)| c.id).collect();
+        let ids: Vec<_> = registry
+            .ring_commands(&png)
+            .into_iter()
+            .map(|(_, c)| c.id)
+            .collect();
         assert_eq!(ids, ["ring-png"]);
-        let mixed = [std::path::PathBuf::from("a.png"), std::path::PathBuf::from("b.jpg")];
+        let mixed = [
+            std::path::PathBuf::from("a.png"),
+            std::path::PathBuf::from("b.jpg"),
+        ];
         assert!(registry.ring_commands(&mixed).is_empty());
         assert!(registry.ring_commands(&[]).is_empty());
     }

@@ -25,23 +25,21 @@ use crate::ui::drag_hover::{
     DragHoverCommand, DragHoverDropCommand, DragHoverId, DragHoverKind, DragHoverTarget,
 };
 use crate::ui::icons::AtlasIcon;
-use crate::ui::sidebar::{
-    place_sidebar_drop_zone, sidebar_label, SidebarStyle,
-};
-use atlas_model::profiles::SectionKind;
+use crate::ui::sidebar::{place_sidebar_drop_zone, sidebar_label, SidebarStyle};
 use crate::ui::surface::{
     line_width, paint_rounded, paint_theme_icon, shape_text_truncated, text_origin_y,
     wrap_text_lines, Slot,
 };
 use atlas_model::file_entry::FileKind;
 use atlas_model::location::Location;
+use atlas_model::profiles::SectionKind;
 use atlas_model::tag_cache::TagId;
 use gpui::ColorExt as _;
 use gpui::{
-    point, px, size, App as GpuiApp, Bounds, Corners, CursorStyle,
-    DispatchPhase, Edges, Element, ElementId, Font, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
-    InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, Pixels, Refineable,
-    SharedString, Style, StyleRefinement, Styled, TextAlign, WeakEntity, Window,
+    point, px, size, App as GpuiApp, Bounds, Corners, CursorStyle, DispatchPhase, Edges, Element,
+    ElementId, Font, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
+    IntoElement, LayoutId, MouseButton, MouseDownEvent, Pixels, Refineable, SharedString, Style,
+    StyleRefinement, Styled, TextAlign, WeakEntity, Window,
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -74,14 +72,25 @@ pub(crate) enum SidebarDgHitAction {
     AddTag,
     NavRow(PathBuf),
     VirtualNavRow(Location),
-    BookmarkRow { index: usize, path: PathBuf },
+    BookmarkRow {
+        index: usize,
+        path: PathBuf,
+    },
     BookmarkRemove(usize),
     TagRow(TagId),
-    TagRename { tag: TagId, name: String, color: [u8; 3], global: bool },
+    TagRename {
+        tag: TagId,
+        name: String,
+        color: [u8; 3],
+        global: bool,
+    },
     TagDelete(TagId),
     DriveRow(PathBuf),
     RemovableRow(String),
-    RemovableEject { dev: String, is_mounted: bool },
+    RemovableEject {
+        dev: String,
+        is_mounted: bool,
+    },
     CloudRemoteRow(String),
     DropzonePlace,
     DropzoneClear,
@@ -251,7 +260,14 @@ pub(crate) struct SidebarDgSectionData {
 /// Drop zone staged item data.
 #[derive(Clone)]
 pub(crate) struct SidebarDgDropZoneData {
-    pub staged: Vec<(PathBuf, String, FileKind, Option<String>, Option<Arc<gpui::RenderImage>>, Option<Arc<gpui::RenderImage>>)>,
+    pub staged: Vec<(
+        PathBuf,
+        String,
+        FileKind,
+        Option<String>,
+        Option<Arc<gpui::RenderImage>>,
+        Option<Arc<gpui::RenderImage>>,
+    )>,
     pub selected_set: HashSet<PathBuf>,
     pub can_place: bool,
     pub dest: Option<PathBuf>,
@@ -274,12 +290,20 @@ pub(crate) fn compute_sidebar_layout(
     muted: Hsla,
 ) -> SidebarDgLayout {
     let _ = profile_name;
-    let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+    let zoom = if zoom.is_finite() && zoom > 0.0 {
+        zoom
+    } else {
+        1.0
+    };
     let pad_x = SIDEBAR_PAD_X * zoom;
     let available_w = (w - pad_x * 2.0).max(10.0);
     let mut y = 4.0 * zoom;
 
-    let header_h = if windows_theme { HEADER_H_WIN } else { HEADER_H_DEF } * zoom;
+    let header_h = if windows_theme {
+        HEADER_H_WIN
+    } else {
+        HEADER_H_DEF
+    } * zoom;
     let mut header_cut = RectCut::new(pad_x, y, available_w, header_h);
 
     let (launcher_slot, collapse_btn_slot) = if sidebar_collapsed {
@@ -323,137 +347,196 @@ pub(crate) fn compute_sidebar_layout(
                     icon_sz,
                 );
 
-                let (hit_action, drop_target, icon, shell_tex, is_active, label, tag_col) = match item {
-                    SidebarDgItemData::Nav { id, label, icon, path, shell_tex, active } => {
-                        let hover_id = DragHoverId::Sidebar(format!("rail-{id}"));
-                        let target = DragHoverTarget {
-                            id: hover_id.clone(),
-                            bounds: Bounds::default(),
-                            kind: DragHoverKind::Folder,
-                            command: DragHoverCommand::NavigatePath(path.clone()),
-                            drop_command: Some(DragHoverDropCommand::TransferTo(path.clone())),
-                        };
-                        (
-                            SidebarDgHitAction::NavRow(path.clone()),
-                            Some(target),
+                let (hit_action, drop_target, icon, shell_tex, is_active, label, tag_col) =
+                    match item {
+                        SidebarDgItemData::Nav {
+                            id,
+                            label,
+                            icon,
+                            path,
+                            shell_tex,
+                            active,
+                        } => {
+                            let hover_id = DragHoverId::Sidebar(format!("rail-{id}"));
+                            let target = DragHoverTarget {
+                                id: hover_id.clone(),
+                                bounds: Bounds::default(),
+                                kind: DragHoverKind::Folder,
+                                command: DragHoverCommand::NavigatePath(path.clone()),
+                                drop_command: Some(DragHoverDropCommand::TransferTo(path.clone())),
+                            };
+                            (
+                                SidebarDgHitAction::NavRow(path.clone()),
+                                Some(target),
+                                *icon,
+                                shell_tex.clone(),
+                                *active,
+                                label.clone(),
+                                None,
+                            )
+                        }
+                        SidebarDgItemData::VirtualNav {
+                            id: _,
+                            label,
+                            icon,
+                            location,
+                            shell_tex,
+                            active,
+                        } => (
+                            SidebarDgHitAction::VirtualNavRow(location.clone()),
+                            None,
                             *icon,
                             shell_tex.clone(),
                             *active,
                             label.clone(),
                             None,
-                        )
-                    }
-                    SidebarDgItemData::VirtualNav { id: _, label, icon, location, shell_tex, active } => (
-                        SidebarDgHitAction::VirtualNavRow(location.clone()),
-                        None,
-                        *icon,
-                        shell_tex.clone(),
-                        *active,
-                        label.clone(),
-                        None,
-                    ),
-                    SidebarDgItemData::Bookmark { index, name, path, shell_tex, active } => {
-                        let hover_id = DragHoverId::Sidebar(format!("rail-bm-{}", path.display()));
-                        let target = DragHoverTarget {
-                            id: hover_id.clone(),
-                            bounds: Bounds::default(),
-                            kind: DragHoverKind::Nav,
-                            command: DragHoverCommand::NavigatePath(path.clone()),
-                            drop_command: Some(DragHoverDropCommand::AddBookmarks),
-                        };
-                        (
-                            SidebarDgHitAction::BookmarkRow { index: *index, path: path.clone() },
-                            Some(target),
+                        ),
+                        SidebarDgItemData::Bookmark {
+                            index,
+                            name,
+                            path,
+                            shell_tex,
+                            active,
+                        } => {
+                            let hover_id =
+                                DragHoverId::Sidebar(format!("rail-bm-{}", path.display()));
+                            let target = DragHoverTarget {
+                                id: hover_id.clone(),
+                                bounds: Bounds::default(),
+                                kind: DragHoverKind::Nav,
+                                command: DragHoverCommand::NavigatePath(path.clone()),
+                                drop_command: Some(DragHoverDropCommand::AddBookmarks),
+                            };
+                            (
+                                SidebarDgHitAction::BookmarkRow {
+                                    index: *index,
+                                    path: path.clone(),
+                                },
+                                Some(target),
+                                AtlasIcon::Folder,
+                                shell_tex.clone(),
+                                *active,
+                                name.clone(),
+                                None,
+                            )
+                        }
+                        SidebarDgItemData::Tag {
+                            id, name, color, ..
+                        } => {
+                            let hover_id = DragHoverId::Sidebar(format!("rail-tag-{}", id.0));
+                            let target = DragHoverTarget {
+                                id: hover_id.clone(),
+                                bounds: Bounds::default(),
+                                kind: DragHoverKind::Nav,
+                                command: DragHoverCommand::OpenTag(*id),
+                                drop_command: Some(DragHoverDropCommand::AssignTag(*id)),
+                            };
+                            (
+                                SidebarDgHitAction::TagRow(*id),
+                                Some(target),
+                                AtlasIcon::Tag,
+                                None,
+                                false,
+                                name.clone(),
+                                Some(*color),
+                            )
+                        }
+                        SidebarDgItemData::Drive {
+                            mount_point,
+                            label,
+                            icon,
+                            shell_tex,
+                            active,
+                            ..
+                        } => {
+                            let hover_id = DragHoverId::Sidebar(format!(
+                                "rail-drive-{}",
+                                mount_point.display()
+                            ));
+                            let target = DragHoverTarget {
+                                id: hover_id.clone(),
+                                bounds: Bounds::default(),
+                                kind: DragHoverKind::Folder,
+                                command: DragHoverCommand::NavigatePath(mount_point.clone()),
+                                drop_command: Some(DragHoverDropCommand::TransferTo(
+                                    mount_point.clone(),
+                                )),
+                            };
+                            (
+                                SidebarDgHitAction::DriveRow(mount_point.clone()),
+                                Some(target),
+                                *icon,
+                                shell_tex.clone(),
+                                *active,
+                                label.clone(),
+                                None,
+                            )
+                        }
+                        SidebarDgItemData::Recent {
+                            label,
+                            path,
+                            shell_tex,
+                            active,
+                        } => (
+                            SidebarDgHitAction::NavRow(path.clone()),
+                            None,
                             AtlasIcon::Folder,
                             shell_tex.clone(),
                             *active,
-                            name.clone(),
-                            None,
-                        )
-                    }
-                    SidebarDgItemData::Tag { id, name, color, .. } => {
-                        let hover_id = DragHoverId::Sidebar(format!("rail-tag-{}", id.0));
-                        let target = DragHoverTarget {
-                            id: hover_id.clone(),
-                            bounds: Bounds::default(),
-                            kind: DragHoverKind::Nav,
-                            command: DragHoverCommand::OpenTag(*id),
-                            drop_command: Some(DragHoverDropCommand::AssignTag(*id)),
-                        };
-                        (
-                            SidebarDgHitAction::TagRow(*id),
-                            Some(target),
-                            AtlasIcon::Tag,
-                            None,
-                            false,
-                            name.clone(),
-                            Some(*color),
-                        )
-                    }
-                    SidebarDgItemData::Drive { mount_point, label, icon, shell_tex, active, .. } => {
-                        let hover_id = DragHoverId::Sidebar(format!("rail-drive-{}", mount_point.display()));
-                        let target = DragHoverTarget {
-                            id: hover_id.clone(),
-                            bounds: Bounds::default(),
-                            kind: DragHoverKind::Folder,
-                            command: DragHoverCommand::NavigatePath(mount_point.clone()),
-                            drop_command: Some(DragHoverDropCommand::TransferTo(mount_point.clone())),
-                        };
-                        (
-                            SidebarDgHitAction::DriveRow(mount_point.clone()),
-                            Some(target),
-                            *icon,
-                            shell_tex.clone(),
-                            *active,
                             label.clone(),
                             None,
-                        )
-                    }
-                    SidebarDgItemData::Recent { label, path, shell_tex, active } => (
-                        SidebarDgHitAction::NavRow(path.clone()),
-                        None,
-                        AtlasIcon::Folder,
-                        shell_tex.clone(),
-                        *active,
-                        label.clone(),
-                        None,
-                    ),
-                    SidebarDgItemData::Cloud { id, name, drop_dest, is_busy, is_mounted, .. } => {
-                        let hover_id = DragHoverId::Sidebar(format!("rail-cloud-{id}"));
-                        let action = if *is_busy {
-                            None
-                        } else if *is_mounted {
-                            Some(Action::Cloud(CloudAction::OpenMount(id.clone())))
-                        } else {
-                            Some(Action::Cloud(CloudAction::OpenAccess(id.clone())))
-                        };
-                        let target = action.map(|act| DragHoverTarget {
-                            id: hover_id.clone(),
-                            bounds: Bounds::default(),
-                            kind: DragHoverKind::Nav,
-                            command: DragHoverCommand::Process(act),
-                            drop_command: drop_dest.clone().map(DragHoverDropCommand::TransferTo),
-                        });
-                        (
-                            SidebarDgHitAction::CloudRemoteRow(id.clone()),
-                            target,
-                            AtlasIcon::Cloud,
-                            None,
-                            false,
-                            name.clone(),
-                            None,
-                        )
-                    }
-                    _ => continue,
-                };
+                        ),
+                        SidebarDgItemData::Cloud {
+                            id,
+                            name,
+                            drop_dest,
+                            is_busy,
+                            is_mounted,
+                            ..
+                        } => {
+                            let hover_id = DragHoverId::Sidebar(format!("rail-cloud-{id}"));
+                            let action = if *is_busy {
+                                None
+                            } else if *is_mounted {
+                                Some(Action::Cloud(CloudAction::OpenMount(id.clone())))
+                            } else {
+                                Some(Action::Cloud(CloudAction::OpenAccess(id.clone())))
+                            };
+                            let target = action.map(|act| DragHoverTarget {
+                                id: hover_id.clone(),
+                                bounds: Bounds::default(),
+                                kind: DragHoverKind::Nav,
+                                command: DragHoverCommand::Process(act),
+                                drop_command: drop_dest
+                                    .clone()
+                                    .map(DragHoverDropCommand::TransferTo),
+                            });
+                            (
+                                SidebarDgHitAction::CloudRemoteRow(id.clone()),
+                                target,
+                                AtlasIcon::Cloud,
+                                None,
+                                false,
+                                name.clone(),
+                                None,
+                            )
+                        }
+                        _ => continue,
+                    };
 
                 let hover_id_check = drop_target.as_ref().map(|t| &t.id);
                 let is_blink = hover_id_check.is_some_and(|h| blink_id == Some(h));
                 let is_drag = hover_id_check.is_some_and(|h| drag_target == Some(h));
                 let right_click = match item {
-                    SidebarDgItemData::Nav { path, .. } => Some(SidebarDgRightClickAction::Path(path.clone())),
-                    SidebarDgItemData::Drive { mount_point, .. } => Some(SidebarDgRightClickAction::Drive(mount_point.clone())),
-                    SidebarDgItemData::Bookmark { index, .. } => Some(SidebarDgRightClickAction::Bookmark(*index)),
+                    SidebarDgItemData::Nav { path, .. } => {
+                        Some(SidebarDgRightClickAction::Path(path.clone()))
+                    }
+                    SidebarDgItemData::Drive { mount_point, .. } => {
+                        Some(SidebarDgRightClickAction::Drive(mount_point.clone()))
+                    }
+                    SidebarDgItemData::Bookmark { index, .. } => {
+                        Some(SidebarDgRightClickAction::Bookmark(*index))
+                    }
                     _ => None,
                 };
 
@@ -496,8 +579,16 @@ pub(crate) fn compute_sidebar_layout(
     } else {
         // Expanded Mode: Collapsible sections with headers, rows, meters, and actions
         let normal_row_h = if windows_theme { ROW_H_WIN } else { ROW_H_DEF } * zoom;
-        let drive_row_h = if windows_theme { DRIVE_ROW_H_WIN } else { DRIVE_ROW_H_DEF } * zoom;
-        let removable_row_h = if windows_theme { REMOVABLE_ROW_H_WIN } else { REMOVABLE_ROW_H_DEF } * zoom;
+        let drive_row_h = if windows_theme {
+            DRIVE_ROW_H_WIN
+        } else {
+            DRIVE_ROW_H_DEF
+        } * zoom;
+        let removable_row_h = if windows_theme {
+            REMOVABLE_ROW_H_WIN
+        } else {
+            REMOVABLE_ROW_H_DEF
+        } * zoom;
 
         for sec in sections {
             if sec.hidden {
@@ -535,7 +626,14 @@ pub(crate) fn compute_sidebar_layout(
             if !sec.collapsed {
                 for item in &sec.items {
                     match item {
-                        SidebarDgItemData::Nav { id, label, icon, path, shell_tex, active } => {
+                        SidebarDgItemData::Nav {
+                            id,
+                            label,
+                            icon,
+                            path,
+                            shell_tex,
+                            active,
+                        } => {
                             let mut cut = RectCut::new(pad_x, y, available_w, normal_row_h);
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = cut.cut_left(icon_sz + 4.0 * zoom);
@@ -577,7 +675,14 @@ pub(crate) fn compute_sidebar_layout(
                             });
                             y += normal_row_h + 2.0 * zoom;
                         }
-                        SidebarDgItemData::VirtualNav { id: _, label, icon, location, shell_tex, active } => {
+                        SidebarDgItemData::VirtualNav {
+                            id: _,
+                            label,
+                            icon,
+                            location,
+                            shell_tex,
+                            active,
+                        } => {
                             let mut cut = RectCut::new(pad_x, y, available_w, normal_row_h);
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = cut.cut_left(icon_sz + 4.0 * zoom);
@@ -607,7 +712,13 @@ pub(crate) fn compute_sidebar_layout(
                             });
                             y += normal_row_h + 2.0 * zoom;
                         }
-                        SidebarDgItemData::Bookmark { index, name, path, shell_tex, active } => {
+                        SidebarDgItemData::Bookmark {
+                            index,
+                            name,
+                            path,
+                            shell_tex,
+                            active,
+                        } => {
                             let mut cut = RectCut::new(pad_x, y, available_w, normal_row_h);
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = cut.cut_left(icon_sz + 4.0 * zoom);
@@ -633,8 +744,14 @@ pub(crate) fn compute_sidebar_layout(
                                 label_slot,
                                 badge_slot: None,
                                 meter_slot: None,
-                                action_slots: vec![(remove_slot, SidebarDgHitAction::BookmarkRemove(*index))],
-                                hit_action: SidebarDgHitAction::BookmarkRow { index: *index, path: path.clone() },
+                                action_slots: vec![(
+                                    remove_slot,
+                                    SidebarDgHitAction::BookmarkRemove(*index),
+                                )],
+                                hit_action: SidebarDgHitAction::BookmarkRow {
+                                    index: *index,
+                                    path: path.clone(),
+                                },
                                 right_click: Some(SidebarDgRightClickAction::Bookmark(*index)),
                                 drop_target: Some(target),
                                 is_active: *active,
@@ -650,7 +767,12 @@ pub(crate) fn compute_sidebar_layout(
                             });
                             y += normal_row_h + 2.0 * zoom;
                         }
-                        SidebarDgItemData::Tag { id, name, color, global } => {
+                        SidebarDgItemData::Tag {
+                            id,
+                            name,
+                            color,
+                            global,
+                        } => {
                             let mut cut = RectCut::new(pad_x, y, available_w, normal_row_h);
                             let dot_sz = 11.0 * zoom;
                             let icon_slot = cut.cut_left(dot_sz + 8.0 * zoom);
@@ -714,11 +836,24 @@ pub(crate) fn compute_sidebar_layout(
                             });
                             y += normal_row_h + 2.0 * zoom;
                         }
-                        SidebarDgItemData::Drive { mount_point, label, free_label, fraction, icon, shell_tex, active } => {
+                        SidebarDgItemData::Drive {
+                            mount_point,
+                            label,
+                            free_label,
+                            fraction,
+                            icon,
+                            shell_tex,
+                            active,
+                        } => {
                             let mut row_cut = RectCut::new(pad_x, y, available_w, drive_row_h);
                             let top_h = (drive_row_h - 10.0 * zoom).max(18.0 * zoom);
                             let top_strip_slot = row_cut.cut_top(top_h);
-                            let mut top_strip = RectCut::new(top_strip_slot.x, top_strip_slot.y, top_strip_slot.w, top_strip_slot.h);
+                            let mut top_strip = RectCut::new(
+                                top_strip_slot.x,
+                                top_strip_slot.y,
+                                top_strip_slot.w,
+                                top_strip_slot.h,
+                            );
 
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = top_strip.cut_left(icon_sz + 4.0 * zoom);
@@ -739,13 +874,16 @@ pub(crate) fn compute_sidebar_layout(
                                 accent
                             };
 
-                            let hover_id = DragHoverId::Sidebar(format!("drive-{}", mount_point.display()));
+                            let hover_id =
+                                DragHoverId::Sidebar(format!("drive-{}", mount_point.display()));
                             let target = DragHoverTarget {
                                 id: hover_id.clone(),
                                 bounds: Bounds::default(),
                                 kind: DragHoverKind::Folder,
                                 command: DragHoverCommand::NavigatePath(mount_point.clone()),
-                                drop_command: Some(DragHoverDropCommand::TransferTo(mount_point.clone())),
+                                drop_command: Some(DragHoverDropCommand::TransferTo(
+                                    mount_point.clone(),
+                                )),
                             };
 
                             let is_blink = blink_id == Some(&hover_id);
@@ -759,7 +897,9 @@ pub(crate) fn compute_sidebar_layout(
                                 meter_slot: Some((track_slot, *fraction, bar_color)),
                                 action_slots: Vec::new(),
                                 hit_action: SidebarDgHitAction::DriveRow(mount_point.clone()),
-                                right_click: Some(SidebarDgRightClickAction::Drive(mount_point.clone())),
+                                right_click: Some(SidebarDgRightClickAction::Drive(
+                                    mount_point.clone(),
+                                )),
                                 drop_target: Some(target),
                                 is_active: *active,
                                 is_blinking: is_blink,
@@ -768,13 +908,23 @@ pub(crate) fn compute_sidebar_layout(
                                 icon_color: if *active { accent } else { fg.opacity(0.85) },
                                 shell_tex: shell_tex.clone(),
                                 label: label.clone(),
-                                badge_text: if free_label.is_empty() { None } else { Some(free_label.clone()) },
+                                badge_text: if free_label.is_empty() {
+                                    None
+                                } else {
+                                    Some(free_label.clone())
+                                },
                                 badge_color: Some(muted),
                                 tag_color: None,
                             });
                             y += drive_row_h + 3.0 * zoom;
                         }
-                        SidebarDgItemData::Removable { dev, label, subtitle, is_mounted, active } => {
+                        SidebarDgItemData::Removable {
+                            dev,
+                            label,
+                            subtitle,
+                            is_mounted,
+                            active,
+                        } => {
                             let mut row_cut = RectCut::new(pad_x, y, available_w, removable_row_h);
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = row_cut.cut_left(icon_sz + 4.0 * zoom);
@@ -806,13 +956,22 @@ pub(crate) fn compute_sidebar_layout(
                                 icon_color: if *active { accent } else { fg.opacity(0.85) },
                                 shell_tex: None,
                                 label: label.clone(),
-                                badge_text: if subtitle.is_empty() { None } else { Some(subtitle.clone()) },
+                                badge_text: if subtitle.is_empty() {
+                                    None
+                                } else {
+                                    Some(subtitle.clone())
+                                },
                                 badge_color: Some(muted),
                                 tag_color: None,
                             });
                             y += removable_row_h + 2.0 * zoom;
                         }
-                        SidebarDgItemData::Recent { label, path, shell_tex, active } => {
+                        SidebarDgItemData::Recent {
+                            label,
+                            path,
+                            shell_tex,
+                            active,
+                        } => {
                             let mut cut = RectCut::new(pad_x, y, available_w, normal_row_h);
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = cut.cut_left(icon_sz + 4.0 * zoom);
@@ -842,13 +1001,22 @@ pub(crate) fn compute_sidebar_layout(
                             });
                             y += normal_row_h + 2.0 * zoom;
                         }
-                        SidebarDgItemData::Cloud { id, name, status_label, status_color, is_mounted, is_busy, drop_dest } => {
+                        SidebarDgItemData::Cloud {
+                            id,
+                            name,
+                            status_label,
+                            status_color,
+                            is_mounted,
+                            is_busy,
+                            drop_dest,
+                        } => {
                             let mut cut = RectCut::new(pad_x, y, available_w, normal_row_h);
                             let icon_sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
                             let icon_slot = cut.cut_left(icon_sz + 4.0 * zoom);
                             let _ = cut.cut_left(4.0 * zoom);
 
-                            let badge_slot = status_label.as_ref().map(|_| cut.cut_right(60.0 * zoom));
+                            let badge_slot =
+                                status_label.as_ref().map(|_| cut.cut_right(60.0 * zoom));
                             let label_slot = cut.remaining();
 
                             let hover_id = DragHoverId::Sidebar(format!("cloud-remote-{id}"));
@@ -865,7 +1033,9 @@ pub(crate) fn compute_sidebar_layout(
                                 bounds: Bounds::default(),
                                 kind: DragHoverKind::Nav,
                                 command: DragHoverCommand::Process(act),
-                                drop_command: drop_dest.clone().map(DragHoverDropCommand::TransferTo),
+                                drop_command: drop_dest
+                                    .clone()
+                                    .map(DragHoverDropCommand::TransferTo),
                             });
 
                             let is_blink = blink_id == Some(&hover_id);
@@ -895,7 +1065,12 @@ pub(crate) fn compute_sidebar_layout(
                             y += normal_row_h + 2.0 * zoom;
                         }
                         SidebarDgItemData::Empty { message } => {
-                            let slot = Slot::new(pad_x + 8.0 * zoom, y, available_w - 16.0 * zoom, normal_row_h);
+                            let slot = Slot::new(
+                                pad_x + 8.0 * zoom,
+                                y,
+                                available_w - 16.0 * zoom,
+                                normal_row_h,
+                            );
                             rows.push(SidebarRowGeom {
                                 row_slot: slot,
                                 icon_slot: Slot::default(),
@@ -949,13 +1124,27 @@ pub(crate) fn compute_sidebar_layout(
     if !sidebar_collapsed {
         if let Some(dz) = drop_zone {
             y += 8.0 * zoom;
-            let dz_h = if dz.staged.is_empty() { DROPZONE_H_EMPTY } else { DROPZONE_H_ITEMS } * zoom;
+            let dz_h = if dz.staged.is_empty() {
+                DROPZONE_H_EMPTY
+            } else {
+                DROPZONE_H_ITEMS
+            } * zoom;
             let dz_slot = Slot::new(pad_x, y, available_w, dz_h);
             dropzone_slot = Some(dz_slot);
 
-            let mut dz_cut = RectCut::new(pad_x + 6.0 * zoom, y + 6.0 * zoom, available_w - 12.0 * zoom, dz_h - 12.0 * zoom);
+            let mut dz_cut = RectCut::new(
+                pad_x + 6.0 * zoom,
+                y + 6.0 * zoom,
+                available_w - 12.0 * zoom,
+                dz_h - 12.0 * zoom,
+            );
             let top_strip_slot = dz_cut.cut_top(24.0 * zoom);
-            let mut top_strip = RectCut::new(top_strip_slot.x, top_strip_slot.y, top_strip_slot.w, top_strip_slot.h);
+            let mut top_strip = RectCut::new(
+                top_strip_slot.x,
+                top_strip_slot.y,
+                top_strip_slot.w,
+                top_strip_slot.h,
+            );
 
             let clear_btn = top_strip.cut_right(20.0 * zoom);
             dropzone_clear_btn_slot = Some(clear_btn);
@@ -973,9 +1162,24 @@ pub(crate) fn compute_sidebar_layout(
 
                 for (path, name, kind, ext, thumb, icon) in &dz.staged {
                     let item_slot = Slot::new(item_x, item_y, item_w, item_h);
-                    let preview_slot = Slot::new(item_x + 6.0 * zoom, item_y + 4.0 * zoom, 72.0 * zoom, 44.0 * zoom);
-                    let name_slot = Slot::new(item_x + 2.0 * zoom, item_y + 52.0 * zoom, item_w - 4.0 * zoom, 18.0 * zoom);
-                    let remove_btn_slot = Slot::new(item_x + item_w - 18.0 * zoom, item_y + 2.0 * zoom, 16.0 * zoom, 16.0 * zoom);
+                    let preview_slot = Slot::new(
+                        item_x + 6.0 * zoom,
+                        item_y + 4.0 * zoom,
+                        72.0 * zoom,
+                        44.0 * zoom,
+                    );
+                    let name_slot = Slot::new(
+                        item_x + 2.0 * zoom,
+                        item_y + 52.0 * zoom,
+                        item_w - 4.0 * zoom,
+                        18.0 * zoom,
+                    );
+                    let remove_btn_slot = Slot::new(
+                        item_x + item_w - 18.0 * zoom,
+                        item_y + 2.0 * zoom,
+                        16.0 * zoom,
+                        16.0 * zoom,
+                    );
 
                     dropzone_items.push(SidebarDropZoneItemGeom {
                         slot: item_slot,
@@ -1113,7 +1317,8 @@ impl Element for SidebarDgElement {
 
         let mut style = Style::default();
         style.refine(&self.element_style);
-        style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Relative(gpui::relative(1.0)));
+        style.size.width =
+            gpui::Length::Definite(gpui::DefiniteLength::Relative(gpui::relative(1.0)));
 
         // Precompute height for scroll container tracking
         let layout = compute_sidebar_layout(
@@ -1130,7 +1335,9 @@ impl Element for SidebarDgElement {
             self.style.fg,
             self.style.muted,
         );
-        style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(gpui::AbsoluteLength::Pixels(px(layout.total_h))));
+        style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
+            gpui::AbsoluteLength::Pixels(px(layout.total_h)),
+        ));
 
         (window.request_layout(style.clone(), [], cx), style)
     }
@@ -1174,9 +1381,10 @@ impl Element for SidebarDgElement {
         let origin = bounds.origin;
         let total_w = f32::from(bounds.size.width);
 
-        let blink_id = self.app.upgrade().and_then(|app| {
-            app.read(cx).drag_hover.blink_id.clone()
-        });
+        let blink_id = self
+            .app
+            .upgrade()
+            .and_then(|app| app.read(cx).drag_hover.blink_id.clone());
 
         let mut layout = compute_sidebar_layout(
             total_w,
@@ -1206,7 +1414,10 @@ impl Element for SidebarDgElement {
         // 2. Sections hits & drop targets
         for sec in &mut layout.sections {
             all_hits.push((sec.header_slot, SidebarDgHitAction::SectionHeader(sec.idx)));
-            right_clicks.push((sec.header_slot, SidebarDgRightClickAction::SectionHeader(sec.idx)));
+            right_clicks.push((
+                sec.header_slot,
+                SidebarDgRightClickAction::SectionHeader(sec.idx),
+            ));
 
             for (act_slot, act) in &sec.header_actions {
                 all_hits.push((*act_slot, act.clone()));
@@ -1243,8 +1454,14 @@ impl Element for SidebarDgElement {
                 all_hits.push((clear_slot, SidebarDgHitAction::DropzoneClear));
             }
             for item in &layout.dropzone_items {
-                all_hits.push((item.slot, SidebarDgHitAction::DropzoneItem(item.path.clone())));
-                all_hits.push((item.remove_btn_slot, SidebarDgHitAction::DropzoneItemRemove(item.path.clone())));
+                all_hits.push((
+                    item.slot,
+                    SidebarDgHitAction::DropzoneItem(item.path.clone()),
+                ));
+                all_hits.push((
+                    item.remove_btn_slot,
+                    SidebarDgHitAction::DropzoneItemRemove(item.path.clone()),
+                ));
             }
 
             if let Some(ref mut dt) = layout.dropzone_target {
@@ -1260,16 +1477,14 @@ impl Element for SidebarDgElement {
             app.update(cx, |this, _| {
                 let is_drag_active = this.is_drag_active(has_gpui_drag);
                 if is_drag_active {
-                    this.pending_drag_hover_targets.retain(|t| {
-                        !matches!(t.id, DragHoverId::Sidebar(_))
-                    });
+                    this.pending_drag_hover_targets
+                        .retain(|t| !matches!(t.id, DragHoverId::Sidebar(_)));
                     for t in pending_targets {
                         this.register_drag_hover_target(t);
                     }
                 } else if !this.pending_drag_hover_targets.is_empty() {
-                    this.pending_drag_hover_targets.retain(|t| {
-                        !matches!(t.id, DragHoverId::Sidebar(_))
-                    });
+                    this.pending_drag_hover_targets
+                        .retain(|t| !matches!(t.id, DragHoverId::Sidebar(_)));
                 }
                 this.dropzone_bounds = dz_b;
             });
@@ -1311,7 +1526,11 @@ impl Element for SidebarDgElement {
         let ly = f32::from(mouse_pos.y - origin.y);
 
         let active_hit = if is_over {
-            prepaint.all_hits.iter().find(|(slot, _)| slot.contains(lx, ly)).map(|(_, act)| act)
+            prepaint
+                .all_hits
+                .iter()
+                .find(|(slot, _)| slot.contains(lx, ly))
+                .map(|(_, act)| act)
         } else {
             None
         };
@@ -1381,9 +1600,19 @@ impl Element for SidebarDgElement {
                     muted.opacity(0.8),
                 );
 
-                let line = shape_text_truncated(&self.active_profile_name, &font, font_size, fg, name_slot.w, window);
+                let line = shape_text_truncated(
+                    &self.active_profile_name,
+                    &font,
+                    font_size,
+                    fg,
+                    name_slot.w,
+                    window,
+                );
                 let _ = line.paint(
-                    point(origin.x + px(name_slot.x), origin.y + px(text_origin_y(name_slot.y, zoom))),
+                    point(
+                        origin.x + px(name_slot.x),
+                        origin.y + px(text_origin_y(name_slot.y, zoom)),
+                    ),
                     px(name_slot.h),
                     TextAlign::Left,
                     None,
@@ -1421,9 +1650,19 @@ impl Element for SidebarDgElement {
 
                     // Section title
                     let title_str = sidebar_label(&sec.kind);
-                    let title_line = shape_text_truncated(&title_str, &font, px(11.0 * zoom), muted, sec.title_slot.w, window);
+                    let title_line = shape_text_truncated(
+                        &title_str,
+                        &font,
+                        px(11.0 * zoom),
+                        muted,
+                        sec.title_slot.w,
+                        window,
+                    );
                     let _ = title_line.paint(
-                        point(origin.x + px(sec.title_slot.x), origin.y + px(text_origin_y(sec.title_slot.y, zoom))),
+                        point(
+                            origin.x + px(sec.title_slot.x),
+                            origin.y + px(text_origin_y(sec.title_slot.y, zoom)),
+                        ),
                         px(sec.title_slot.h),
                         TextAlign::Left,
                         None,
@@ -1432,7 +1671,11 @@ impl Element for SidebarDgElement {
                     );
 
                     // Chevron
-                    let ch_icon = if sec.collapsed { AtlasIcon::CaretRight } else { AtlasIcon::CaretDown };
+                    let ch_icon = if sec.collapsed {
+                        AtlasIcon::CaretRight
+                    } else {
+                        AtlasIcon::CaretDown
+                    };
                     paint_theme_icon(
                         window,
                         cx,
@@ -1499,7 +1742,11 @@ impl Element for SidebarDgElement {
                             ),
                             size: size(px(dot_sz), px(dot_sz)),
                         };
-                        let dot_hsla = gpui::rgb_to_hsla(gpui::rgb((u32::from(col[0]) << 16) | (u32::from(col[1]) << 8) | u32::from(col[2])));
+                        let dot_hsla = gpui::rgb_to_hsla(gpui::rgb(
+                            (u32::from(col[0]) << 16)
+                                | (u32::from(col[1]) << 8)
+                                | u32::from(col[2]),
+                        ));
                         paint_rounded(window, dot_b, dot_sz * 0.5, dot_hsla);
                     } else if let Some(tex) = &row.shell_tex {
                         let sz = if windows_theme { 18.0 } else { 16.0 } * zoom;
@@ -1511,7 +1758,14 @@ impl Element for SidebarDgElement {
                             size: size(px(sz), px(sz)),
                         };
                         let img_b = crate::ui::thumbs::contain_bounds(tex, img_b);
-                        let _ = window.paint_image(img_b, img_b, Corners::all(px(0.0)), tex.clone(), 0, false);
+                        let _ = window.paint_image(
+                            img_b,
+                            img_b,
+                            Corners::all(px(0.0)),
+                            tex.clone(),
+                            0,
+                            false,
+                        );
                     } else {
                         paint_theme_icon(
                             window,
@@ -1528,9 +1782,19 @@ impl Element for SidebarDgElement {
                     if !self.sidebar_collapsed {
                         // Row Label
                         let text_color = if row.is_active { accent } else { fg };
-                        let line = shape_text_truncated(&row.label, &font, font_size, text_color, row.label_slot.w, window);
+                        let line = shape_text_truncated(
+                            &row.label,
+                            &font,
+                            font_size,
+                            text_color,
+                            row.label_slot.w,
+                            window,
+                        );
                         let _ = line.paint(
-                            point(origin.x + px(row.label_slot.x), origin.y + px(text_origin_y(row.label_slot.y, zoom))),
+                            point(
+                                origin.x + px(row.label_slot.x),
+                                origin.y + px(text_origin_y(row.label_slot.y, zoom)),
+                            ),
                             px(row.label_slot.h),
                             TextAlign::Left,
                             None,
@@ -1541,9 +1805,19 @@ impl Element for SidebarDgElement {
                         // Row Badge (e.g. Free Space or Cloud status)
                         if let (Some(b_slot), Some(b_text)) = (row.badge_slot, &row.badge_text) {
                             let b_color = row.badge_color.unwrap_or(muted);
-                            let b_line = shape_text_truncated(b_text, &font, px(11.0 * zoom), b_color, b_slot.w, window);
+                            let b_line = shape_text_truncated(
+                                b_text,
+                                &font,
+                                px(11.0 * zoom),
+                                b_color,
+                                b_slot.w,
+                                window,
+                            );
                             let _ = b_line.paint(
-                                point(origin.x + px(b_slot.x), origin.y + px(text_origin_y(b_slot.y, zoom))),
+                                point(
+                                    origin.x + px(b_slot.x),
+                                    origin.y + px(text_origin_y(b_slot.y, zoom)),
+                                ),
                                 px(b_slot.h),
                                 TextAlign::Right,
                                 None,
@@ -1573,10 +1847,15 @@ impl Element for SidebarDgElement {
                                 paint_rounded(window, act_b, radius, hover_bg);
                             }
                             let act_icon = match act {
-                                SidebarDgHitAction::BookmarkRemove(_) | SidebarDgHitAction::TagDelete(_) => AtlasIcon::X,
+                                SidebarDgHitAction::BookmarkRemove(_)
+                                | SidebarDgHitAction::TagDelete(_) => AtlasIcon::X,
                                 SidebarDgHitAction::TagRename { .. } => AtlasIcon::PencilSimple,
                                 SidebarDgHitAction::RemovableEject { is_mounted, .. } => {
-                                    if *is_mounted { AtlasIcon::Minus } else { AtlasIcon::Plus }
+                                    if *is_mounted {
+                                        AtlasIcon::Minus
+                                    } else {
+                                        AtlasIcon::Plus
+                                    }
                                 }
                                 _ => AtlasIcon::X,
                             };
@@ -1603,9 +1882,19 @@ impl Element for SidebarDgElement {
 
                 // Header
                 if let Some(h_slot) = prepaint.layout.dropzone_header_slot {
-                    let title_line = shape_text_truncated("Dropzone", &font, px(12.0 * zoom), muted, h_slot.w, window);
+                    let title_line = shape_text_truncated(
+                        "Dropzone",
+                        &font,
+                        px(12.0 * zoom),
+                        muted,
+                        h_slot.w,
+                        window,
+                    );
                     let _ = title_line.paint(
-                        point(origin.x + px(h_slot.x), origin.y + px(text_origin_y(h_slot.y, zoom))),
+                        point(
+                            origin.x + px(h_slot.x),
+                            origin.y + px(text_origin_y(h_slot.y, zoom)),
+                        ),
                         px(h_slot.h),
                         TextAlign::Left,
                         None,
@@ -1619,7 +1908,16 @@ impl Element for SidebarDgElement {
                     if active_hit == Some(&SidebarDgHitAction::DropzonePlace) {
                         paint_rounded(window, place_b, radius, hover_bg);
                     }
-                    paint_theme_icon(window, cx, origin, place_slot, AtlasIcon::ArrowUp, windows_theme, 13.0 * zoom, muted);
+                    paint_theme_icon(
+                        window,
+                        cx,
+                        origin,
+                        place_slot,
+                        AtlasIcon::ArrowUp,
+                        windows_theme,
+                        13.0 * zoom,
+                        muted,
+                    );
                 }
 
                 if let Some(clear_slot) = prepaint.layout.dropzone_clear_btn_slot {
@@ -1627,7 +1925,16 @@ impl Element for SidebarDgElement {
                     if active_hit == Some(&SidebarDgHitAction::DropzoneClear) {
                         paint_rounded(window, clear_b, radius, hover_bg);
                     }
-                    paint_theme_icon(window, cx, origin, clear_slot, AtlasIcon::X, windows_theme, 12.0 * zoom, muted);
+                    paint_theme_icon(
+                        window,
+                        cx,
+                        origin,
+                        clear_slot,
+                        AtlasIcon::X,
+                        windows_theme,
+                        12.0 * zoom,
+                        muted,
+                    );
                 }
 
                 // Empty hint or items
@@ -1637,12 +1944,25 @@ impl Element for SidebarDgElement {
                     // the block is centered in the slot.
                     let line_h = 15.0 * zoom;
                     let max_lines = ((hint_slot.h / line_h).floor() as usize).max(1);
-                    let hint_lines = wrap_text_lines(&hint_text, &font, px(11.0 * zoom), muted.opacity(0.8), hint_slot.w, max_lines, window);
-                    let top = hint_slot.y + (hint_slot.h - line_h * hint_lines.len() as f32).max(0.0) * 0.5;
+                    let hint_lines = wrap_text_lines(
+                        &hint_text,
+                        &font,
+                        px(11.0 * zoom),
+                        muted.opacity(0.8),
+                        hint_slot.w,
+                        max_lines,
+                        window,
+                    );
+                    let top = hint_slot.y
+                        + (hint_slot.h - line_h * hint_lines.len() as f32).max(0.0) * 0.5;
                     for (i, hint_line) in hint_lines.iter().enumerate() {
-                        let h_x = hint_slot.x + (hint_slot.w - line_width(hint_line)).max(0.0) * 0.5;
+                        let h_x =
+                            hint_slot.x + (hint_slot.w - line_width(hint_line)).max(0.0) * 0.5;
                         let _ = hint_line.paint(
-                            point(origin.x + px(h_x), origin.y + px(text_origin_y(top + line_h * i as f32, zoom))),
+                            point(
+                                origin.x + px(h_x),
+                                origin.y + px(text_origin_y(top + line_h * i as f32, zoom)),
+                            ),
                             px(line_h),
                             TextAlign::Left,
                             None,
@@ -1655,24 +1975,52 @@ impl Element for SidebarDgElement {
                         let it_b = item.slot.to_bounds(origin);
                         if item.selected {
                             paint_rounded(window, it_b, radius, accent.opacity(0.18));
-                        } else if active_hit == Some(&SidebarDgHitAction::DropzoneItem(item.path.clone())) {
+                        } else if active_hit
+                            == Some(&SidebarDgHitAction::DropzoneItem(item.path.clone()))
+                        {
                             paint_rounded(window, it_b, radius, hover_bg);
                         }
 
                         // Preview thumbnail/icon
                         let prev_b = item.preview_slot.to_bounds(origin);
                         if let Some(thumb) = &item.thumb_tex {
-                            let _ = window.paint_image(prev_b, prev_b, Corners::all(px(4.0 * zoom)), thumb.clone(), 0, false);
+                            let _ = window.paint_image(
+                                prev_b,
+                                prev_b,
+                                Corners::all(px(4.0 * zoom)),
+                                thumb.clone(),
+                                0,
+                                false,
+                            );
                         } else {
-                            paint_theme_icon(window, cx, origin, item.preview_slot, AtlasIcon::File, windows_theme, 24.0 * zoom, muted);
+                            paint_theme_icon(
+                                window,
+                                cx,
+                                origin,
+                                item.preview_slot,
+                                AtlasIcon::File,
+                                windows_theme,
+                                24.0 * zoom,
+                                muted,
+                            );
                         }
 
                         // Name
-                        let name_line = shape_text_truncated(&item.name, &font, px(10.0 * zoom), fg, item.name_slot.w, window);
+                        let name_line = shape_text_truncated(
+                            &item.name,
+                            &font,
+                            px(10.0 * zoom),
+                            fg,
+                            item.name_slot.w,
+                            window,
+                        );
                         let name_w = line_width(&name_line);
                         let nx = item.name_slot.x + (item.name_slot.w - name_w) * 0.5;
                         let _ = name_line.paint(
-                            point(origin.x + px(nx), origin.y + px(text_origin_y(item.name_slot.y, zoom))),
+                            point(
+                                origin.x + px(nx),
+                                origin.y + px(text_origin_y(item.name_slot.y, zoom)),
+                            ),
                             px(item.name_slot.h),
                             TextAlign::Left,
                             None,
@@ -1681,7 +2029,16 @@ impl Element for SidebarDgElement {
                         );
 
                         // Remove button
-                        paint_theme_icon(window, cx, origin, item.remove_btn_slot, AtlasIcon::X, windows_theme, 10.0 * zoom, muted);
+                        paint_theme_icon(
+                            window,
+                            cx,
+                            origin,
+                            item.remove_btn_slot,
+                            AtlasIcon::X,
+                            windows_theme,
+                            10.0 * zoom,
+                            muted,
+                        );
                     }
                 }
             }
@@ -1722,7 +2079,9 @@ impl Element for SidebarDgElement {
                                         this.process_actions(vec![Action::ToggleSidebarCollapsed]);
                                     }
                                     SidebarDgHitAction::SectionHeader(idx) => {
-                                        this.process_actions(vec![Action::ToggleSidebarSection(idx)]);
+                                        this.process_actions(vec![Action::ToggleSidebarSection(
+                                            idx,
+                                        )]);
                                     }
                                     SidebarDgHitAction::AddBookmark => {
                                         if let Some(dest) = &current_path {
@@ -1756,7 +2115,12 @@ impl Element for SidebarDgElement {
                                     SidebarDgHitAction::TagRow(id) => {
                                         this.open_tag_results(pane, id);
                                     }
-                                    SidebarDgHitAction::TagRename { tag, name, color, global } => {
+                                    SidebarDgHitAction::TagRename {
+                                        tag,
+                                        name,
+                                        color,
+                                        global,
+                                    } => {
                                         this.process_actions(vec![Action::OpenRenameTagOverlay {
                                             tag,
                                             name,
@@ -1808,7 +2172,12 @@ impl Element for SidebarDgElement {
                                         }
                                     }
                                     SidebarDgHitAction::DropzoneItemRemove(path) => {
-                                        if let Some(pos) = this.state.sidebar_drop_zone.iter().position(|it| it.path == path) {
+                                        if let Some(pos) = this
+                                            .state
+                                            .sidebar_drop_zone
+                                            .iter()
+                                            .position(|it| it.path == path)
+                                        {
                                             this.state.sidebar_drop_zone.remove(pos);
                                             this.dropzone_selection.selected.remove(&path);
                                         }
@@ -1833,7 +2202,9 @@ impl Element for SidebarDgElement {
                                         this.open_ctx_menu(vec![path], pos, window, cx);
                                     }
                                     SidebarDgRightClickAction::SectionHeader(idx) => {
-                                        this.process_actions(vec![Action::ToggleSidebarSection(idx)]);
+                                        this.process_actions(vec![Action::ToggleSidebarSection(
+                                            idx,
+                                        )]);
                                     }
                                     SidebarDgRightClickAction::Bookmark(idx) => {
                                         this.process_actions(vec![Action::RemoveBookmark(idx)]);
@@ -1934,15 +2305,13 @@ mod tests {
                 title: "Bookmarks".to_string(),
                 collapsed: true,
                 hidden: false,
-                items: vec![
-                    SidebarDgItemData::Bookmark {
-                        index: 0,
-                        name: "Rust".to_string(),
-                        path: PathBuf::from("/rust"),
-                        shell_tex: None,
-                        active: false,
-                    },
-                ],
+                items: vec![SidebarDgItemData::Bookmark {
+                    index: 0,
+                    name: "Rust".to_string(),
+                    path: PathBuf::from("/rust"),
+                    shell_tex: None,
+                    active: false,
+                }],
             },
             SidebarDgSectionData {
                 idx: 2,
@@ -1984,26 +2353,22 @@ mod tests {
 
     #[test]
     fn test_drive_row_meter_layout() {
-        let sections = vec![
-            SidebarDgSectionData {
-                idx: 0,
-                kind: SectionKind::Drives,
-                title: "Drives".to_string(),
-                collapsed: false,
-                hidden: false,
-                items: vec![
-                    SidebarDgItemData::Drive {
-                        mount_point: PathBuf::from("C:\\"),
-                        label: "Local Disk (C:)".to_string(),
-                        free_label: "50 GB free".to_string(),
-                        fraction: 0.85,
-                        icon: AtlasIcon::HardDrive,
-                        shell_tex: None,
-                        active: false,
-                    },
-                ],
-            },
-        ];
+        let sections = vec![SidebarDgSectionData {
+            idx: 0,
+            kind: SectionKind::Drives,
+            title: "Drives".to_string(),
+            collapsed: false,
+            hidden: false,
+            items: vec![SidebarDgItemData::Drive {
+                mount_point: PathBuf::from("C:\\"),
+                label: "Local Disk (C:)".to_string(),
+                free_label: "50 GB free".to_string(),
+                fraction: 0.85,
+                icon: AtlasIcon::HardDrive,
+                shell_tex: None,
+                active: false,
+            }],
+        }];
 
         let layout = compute_sidebar_layout(
             240.0,
@@ -2032,25 +2397,21 @@ mod tests {
 
     #[test]
     fn test_drop_targets_geometry() {
-        let sections = vec![
-            SidebarDgSectionData {
-                idx: 0,
-                kind: SectionKind::Places,
-                title: "Places".to_string(),
-                collapsed: false,
-                hidden: false,
-                items: vec![
-                    SidebarDgItemData::Nav {
-                        id: "place-home".to_string(),
-                        label: "Home".to_string(),
-                        icon: AtlasIcon::House,
-                        path: PathBuf::from("/home/user"),
-                        shell_tex: None,
-                        active: false,
-                    },
-                ],
-            },
-        ];
+        let sections = vec![SidebarDgSectionData {
+            idx: 0,
+            kind: SectionKind::Places,
+            title: "Places".to_string(),
+            collapsed: false,
+            hidden: false,
+            items: vec![SidebarDgItemData::Nav {
+                id: "place-home".to_string(),
+                label: "Home".to_string(),
+                icon: AtlasIcon::House,
+                path: PathBuf::from("/home/user"),
+                shell_tex: None,
+                active: false,
+            }],
+        }];
 
         let layout = compute_sidebar_layout(
             220.0,
@@ -2071,7 +2432,9 @@ mod tests {
         assert!(target.is_some());
         let t = target.as_ref().unwrap();
         assert_eq!(t.id, DragHoverId::Sidebar("place-home".to_string()));
-        assert!(matches!(t.command, DragHoverCommand::NavigatePath(ref p) if p == &PathBuf::from("/home/user")));
+        assert!(
+            matches!(t.command, DragHoverCommand::NavigatePath(ref p) if p == &PathBuf::from("/home/user"))
+        );
         assert!(matches!(
             t.drop_command,
             Some(DragHoverDropCommand::TransferTo(ref p)) if p == &PathBuf::from("/home/user")
@@ -2080,25 +2443,21 @@ mod tests {
 
     #[test]
     fn test_collapsed_rail_layout() {
-        let sections = vec![
-            SidebarDgSectionData {
-                idx: 0,
-                kind: SectionKind::Places,
-                title: "Places".to_string(),
-                collapsed: false,
-                hidden: false,
-                items: vec![
-                    SidebarDgItemData::Nav {
-                        id: "home".to_string(),
-                        label: "Home".to_string(),
-                        icon: AtlasIcon::House,
-                        path: PathBuf::from("/home"),
-                        shell_tex: None,
-                        active: false,
-                    },
-                ],
-            },
-        ];
+        let sections = vec![SidebarDgSectionData {
+            idx: 0,
+            kind: SectionKind::Places,
+            title: "Places".to_string(),
+            collapsed: false,
+            hidden: false,
+            items: vec![SidebarDgItemData::Nav {
+                id: "home".to_string(),
+                label: "Home".to_string(),
+                icon: AtlasIcon::House,
+                path: PathBuf::from("/home"),
+                shell_tex: None,
+                active: false,
+            }],
+        }];
 
         let layout = compute_sidebar_layout(
             48.0,

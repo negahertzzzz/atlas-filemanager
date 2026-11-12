@@ -60,7 +60,11 @@ impl App {
                 Action::NavigateForward(tab_id) => self.navigate_forward(tab_id),
                 Action::NavigateUp(tab_id) => self.navigate_up(tab_id),
                 Action::EditLocation(tab_id) => {
-                    if self.tab_data_for(tab_id).and_then(|pane| pane.location.fs_dir()).is_some() {
+                    if self
+                        .tab_data_for(tab_id)
+                        .and_then(|pane| pane.location.fs_dir())
+                        .is_some()
+                    {
                         self.activate_tab(tab_id);
                         self.open_location_finder_or_editor();
                         continue;
@@ -157,12 +161,15 @@ impl App {
                     // legacy per-tab flag made it vanish when focus moved.
                     let show = !self.preview_visible_for_focused();
                     self.state.settings.show_inspector = show;
-                    self.state.for_each_tab_data_mut(|tab| tab.preview_enabled = false);
+                    self.state
+                        .for_each_tab_data_mut(|tab| tab.preview_enabled = false);
                     if !show {
                         self.collapse_preview_expanded();
                         #[cfg(feature = "provider-host")]
                         for tile in self.state.all_pane_tile_ids() {
-                            let _ = self.cloud_tx.send(atlas_core::cloud::CloudCmd::CancelPreview { tab: tile });
+                            let _ = self
+                                .cloud_tx
+                                .send(atlas_core::cloud::CloudCmd::CancelPreview { tab: tile });
                             self.state.clear_preview(tile);
                         }
                     }
@@ -274,7 +281,9 @@ impl App {
                             continue;
                         };
                         if std::mem::replace(&mut self.crash_report_sent, true) {
-                            self.toast_info(rust_i18n::t!("crash_report_already_sent").into_owned());
+                            self.toast_info(
+                                rust_i18n::t!("crash_report_already_sent").into_owned(),
+                            );
                             continue;
                         }
                         self.toast_info(rust_i18n::t!("crash_report_sending").into_owned());
@@ -291,7 +300,8 @@ impl App {
                                 tracing::warn!(%error, "crash report upload failed");
                                 rust_i18n::t!("crash_report_failed").into_owned()
                             });
-                            let _ = tx.send(atlas_model::app_state::BgResult::CrashReportSent(result));
+                            let _ =
+                                tx.send(atlas_model::app_state::BgResult::CrashReportSent(result));
                         });
                     }
                 }
@@ -319,8 +329,11 @@ impl App {
                 }
                 Action::StartGuideCoach(topic) => {
                     self.state.overlay.show_guide = false;
-                    self.state.overlay.guide_coach =
-                        Some(atlas_model::overlay::GuideCoach { topic, step: 0, base: u64::MAX });
+                    self.state.overlay.guide_coach = Some(atlas_model::overlay::GuideCoach {
+                        topic,
+                        step: 0,
+                        base: u64::MAX,
+                    });
                 }
                 Action::StopGuideCoach => {
                     self.state.overlay.guide_coach = None;
@@ -476,7 +489,11 @@ impl App {
                             self.nucleo.reset();
                             let injector = self.nucleo.injector();
                             let extended = self.goto_extended_index();
-                            atlas_core::fs::index::build_goto_index(root.clone(), injector, extended);
+                            atlas_core::fs::index::build_goto_index(
+                                root.clone(),
+                                injector,
+                                extended,
+                            );
                             self.goto_index_root = Some((root, false));
                         }
                     }
@@ -527,7 +544,10 @@ impl App {
                 }
                 Action::ToggleFoldersFirst(tile) => {
                     if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get(tile) {
-                        self.process_actions([Action::SetFolderOrder(tile, pane.folder_order.next())]);
+                        self.process_actions([Action::SetFolderOrder(
+                            tile,
+                            pane.folder_order.next(),
+                        )]);
                     }
                 }
                 Action::SetFolderOrder(tile, order) => {
@@ -709,8 +729,7 @@ impl App {
                                 .iter()
                                 .filter_map(|&idx| {
                                     ts.entries.get(idx).and_then(|entry| {
-                                        matches!(entry.kind(), FileKind::Dir)
-                                            .then(|| entry.path())
+                                        matches!(entry.kind(), FileKind::Dir).then(|| entry.path())
                                     })
                                 })
                                 .collect()
@@ -753,8 +772,7 @@ impl App {
                             let visible = ts.miller_visible_indices(ts.miller.focused);
                             if let Some(col) = ts.miller.columns.get_mut(ts.miller.focused) {
                                 col.selection.selected = visible.iter().copied().collect();
-                                col.selection.keyboard_cursor =
-                                    visible.first().copied();
+                                col.selection.keyboard_cursor = visible.first().copied();
                             }
                             continue;
                         }
@@ -767,7 +785,12 @@ impl App {
                     if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tile) {
                         pane.group_by = mode;
                         pane.collapsed_groups.clear();
-                        if mode != atlas_model::tab::GroupBy::None && !matches!(pane.view_mode, ViewMode::Details | ViewMode::List | ViewMode::Grid) {
+                        if mode != atlas_model::tab::GroupBy::None
+                            && !matches!(
+                                pane.view_mode,
+                                ViewMode::Details | ViewMode::List | ViewMode::Grid
+                            )
+                        {
                             pane.view_mode = ViewMode::Details;
                         }
                     }
@@ -778,12 +801,15 @@ impl App {
                     self.dirty_panes.insert(tile);
                 }
                 Action::ToggleGroup { tab, id } => {
-                    let grouping = if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tab) {
-                        if !pane.collapsed_groups.remove(&id) {
-                            pane.collapsed_groups.insert(id);
-                        }
-                        Some((pane.group_by, pane.collapsed_groups.clone()))
-                    } else { None };
+                    let grouping =
+                        if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tab) {
+                            if !pane.collapsed_groups.remove(&id) {
+                                pane.collapsed_groups.insert(id);
+                            }
+                            Some((pane.group_by, pane.collapsed_groups.clone()))
+                        } else {
+                            None
+                        };
                     if let Some((mode, collapsed)) = grouping {
                         if let Some(ts) = self.state.tab_states.get_mut(&tab) {
                             ts.set_grouping(mode, collapsed);
@@ -796,19 +822,30 @@ impl App {
                 Action::SetAllGroupsCollapsed(collapse) => {
                     let tile = self.state.focused_tile;
                     let ids: std::collections::BTreeSet<String> = if collapse {
-                        self.state.tab_states.get_mut(&tile).map_or_else(Default::default, |ts| {
-                            ts.grouped_rows_shared().iter().filter_map(|row| match row {
-                                atlas_model::tab::GroupRow::Header { id, .. } => Some(id.clone()),
-                                _ => None,
-                            }).collect()
-                        })
+                        self.state
+                            .tab_states
+                            .get_mut(&tile)
+                            .map_or_else(Default::default, |ts| {
+                                ts.grouped_rows_shared()
+                                    .iter()
+                                    .filter_map(|row| match row {
+                                        atlas_model::tab::GroupRow::Header { id, .. } => {
+                                            Some(id.clone())
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect()
+                            })
                     } else {
                         Default::default()
                     };
-                    let mode = if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tile) {
-                        pane.collapsed_groups = ids.clone();
-                        pane.group_by
-                    } else { atlas_model::tab::GroupBy::None };
+                    let mode =
+                        if let Some(Tile::Pane(pane)) = self.state.pane_tree.tiles.get_mut(tile) {
+                            pane.collapsed_groups = ids.clone();
+                            pane.group_by
+                        } else {
+                            atlas_model::tab::GroupBy::None
+                        };
                     if let Some(ts) = self.state.tab_states.get_mut(&tile) {
                         ts.set_grouping(mode, ids);
                         let visible = ts.visible_indices_shared();
@@ -830,8 +867,8 @@ impl App {
                             folder_pref_write = Some((
                                 path.clone(),
                                 atlas_model::profiles::FolderViewPref {
-                        recursive: false,
-                        columns: None,
+                                    recursive: false,
+                                    columns: None,
                                     view_mode: pane.view_mode.clone(),
                                     sort_col: sort_col.clone(),
                                     sort_dir: sort_dir.clone(),
@@ -843,11 +880,17 @@ impl App {
                     self.save_folder_view_pref(folder_pref_write);
                 }
                 Action::Open(paths) => {
-                    if paths.iter().any(|path| atlas_core::vault::live::is_private(path) && !self.owns_native_vault_path(path)) {
-                        self.toast_error(rust_i18n::t!("vault_access_denied").to_string()); continue;
+                    if paths.iter().any(|path| {
+                        atlas_core::vault::live::is_private(path)
+                            && !self.owns_native_vault_path(path)
+                    }) {
+                        self.toast_error(rust_i18n::t!("vault_access_denied").to_string());
+                        continue;
                     }
                     if paths.iter().any(|p| atlas_core::vault::is_private_path(p)) {
-                        for path in &paths { self.try_open_vault(path); }
+                        for path in &paths {
+                            self.try_open_vault(path);
+                        }
                         continue;
                     }
                     #[cfg(feature = "provider-host")]
@@ -1051,13 +1094,15 @@ impl App {
                             name
                         ));
                         let _ = std::fs::write(&tmp, b"");
-                        let _ = self.cloud_tx.send(atlas_core::cloud::CloudCmd::EnqueueUpload {
-                            id: remote_id,
-                            local_path: tmp,
-                            remote_path: file_path,
-                            label: name,
-                            delete_source: true,
-                        });
+                        let _ = self
+                            .cloud_tx
+                            .send(atlas_core::cloud::CloudCmd::EnqueueUpload {
+                                id: remote_id,
+                                local_path: tmp,
+                                remote_path: file_path,
+                                label: name,
+                                delete_source: true,
+                            });
                         continue;
                     }
                     let path = parent.join(&name);
@@ -1181,7 +1226,9 @@ impl App {
                 }
                 Action::OpenDirInRightSplit { pane, path } => {
                     let dir = if path.is_file() {
-                        path.parent().map(std::path::Path::to_path_buf).unwrap_or(path)
+                        path.parent()
+                            .map(std::path::Path::to_path_buf)
+                            .unwrap_or(path)
                     } else {
                         path
                     };
@@ -1196,7 +1243,9 @@ impl App {
                 }
                 Action::OpenDirInBottomSplit { pane, path } => {
                     let dir = if path.is_file() {
-                        path.parent().map(std::path::Path::to_path_buf).unwrap_or(path)
+                        path.parent()
+                            .map(std::path::Path::to_path_buf)
+                            .unwrap_or(path)
                     } else {
                         path
                     };
@@ -1317,7 +1366,11 @@ impl App {
                                 continue;
                             }
                             (Some((destination_id, destination_path)), Some(source_id)) => {
-                                self.paste_remote_within(source_id.clone(), destination_id.clone(), destination_path.clone());
+                                self.paste_remote_within(
+                                    source_id.clone(),
+                                    destination_id.clone(),
+                                    destination_path.clone(),
+                                );
                                 continue;
                             }
                             // Both local.
@@ -1442,7 +1495,10 @@ impl App {
                         .and_then(|c| c.entries.get(idx))
                         .map(|e| (e.path(), e.kind().clone(), e.archive_root()));
                     if let Some((path, kind, archive_root)) = info {
-                        if kind == FileKind::Dir || (archive_root.is_none() && atlas_core::fs::archive::is_archive_path(&path)) {
+                        if kind == FileKind::Dir
+                            || (archive_root.is_none()
+                                && atlas_core::fs::archive::is_archive_path(&path))
+                        {
                             self.miller_select(tile, column, idx, false, false);
                         } else {
                             self.activate_file_path(tile, path, archive_root);
@@ -1453,8 +1509,16 @@ impl App {
                     self.miller_select(tile, column, idx, false, true);
                 }
                 Action::FocusNextPane => {
-                    let panes: Vec<_> = self.state.pane_tree.visible_panes().into_iter()
-                        .filter(|id| !self.pane_closing.contains_key(id) && !self.tab_closing.contains_key(id)).collect();
+                    let panes: Vec<_> = self
+                        .state
+                        .pane_tree
+                        .visible_panes()
+                        .into_iter()
+                        .filter(|id| {
+                            !self.pane_closing.contains_key(id)
+                                && !self.tab_closing.contains_key(id)
+                        })
+                        .collect();
                     if panes.len() > 1 {
                         let cur = self.state.focused_tile;
                         let next = panes
@@ -1466,10 +1530,18 @@ impl App {
                         self.activate_tab(next);
                     }
                 }
-                Action::SelectLeftPanel => self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Left),
-                Action::SelectRightPanel => self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Right),
-                Action::SelectPanelAbove => self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Above),
-                Action::SelectPanelBelow => self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Below),
+                Action::SelectLeftPanel => {
+                    self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Left)
+                }
+                Action::SelectRightPanel => {
+                    self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Right)
+                }
+                Action::SelectPanelAbove => {
+                    self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Above)
+                }
+                Action::SelectPanelBelow => {
+                    self.select_spatial_panel(crate::ui::tab_reorder::PanelDirection::Below)
+                }
                 Action::EvenPanelSiblings => self.even_panels(false),
                 Action::EvenAllPanes => self.even_panels(true),
                 Action::MoveTabToPanel(direction) => self.move_tab_to_spatial_panel(direction),
@@ -1664,9 +1736,16 @@ impl App {
                     self.operation_feedback.borrow_mut().begin_tag(tag, &paths);
                     if self
                         .tag_db_tx
-                        .send(atlas_core::fs::tag_db::TagDbCmd::AssignTag { tag, paths: paths.clone() }).is_err() {
+                        .send(atlas_core::fs::tag_db::TagDbCmd::AssignTag {
+                            tag,
+                            paths: paths.clone(),
+                        })
+                        .is_err()
+                    {
                         self.operation_feedback.borrow_mut().finish_tag(tag, &paths);
-                        for path in &paths { self.dropzone_pending_tags.remove(path); }
+                        for path in &paths {
+                            self.dropzone_pending_tags.remove(path);
+                        }
                         self.toast_error(rust_i18n::t!("tags_assignment_failed").into_owned());
                     }
                     let _ = self
@@ -1726,7 +1805,9 @@ impl App {
                 // ── Preview editor ────────────────────────────────────────────
                 Action::SavePreviewFile => {
                     if let Some(editor) = &mut self.preview_editor {
-                        if editor.path.to_string_lossy().starts_with("remote-preview:") { continue; }
+                        if editor.path.to_string_lossy().starts_with("remote-preview:") {
+                            continue;
+                        }
                         if editor.dirty {
                             // `cached_text` is kept current by the InputState Change
                             // subscription; no `cx` needed here.
@@ -1806,13 +1887,17 @@ fn unique_child_name(dir: &std::path::Path, base: &str) -> String {
 
 impl App {
     fn copy_paths_as_text(&mut self, paths: &[PathBuf]) {
-        if paths.is_empty() { return; }
+        if paths.is_empty() {
+            return;
+        }
         let text = atlas_core::util::display::clipboard_path_text(paths);
         if let Ok(mut cb) = arboard::Clipboard::new() {
             let _ = cb.set_text(text.clone());
             #[cfg(target_os = "linux")]
-            { use arboard::{LinuxClipboardKind, SetExtLinux};
-                let _ = cb.set().clipboard(LinuxClipboardKind::Primary).text(text); }
+            {
+                use arboard::{LinuxClipboardKind, SetExtLinux};
+                let _ = cb.set().clipboard(LinuxClipboardKind::Primary).text(text);
+            }
         }
     }
 
@@ -1884,29 +1969,62 @@ impl App {
         #[cfg(windows)]
         {
             let tab = self.state.focused_tile;
-            let Some(queue) = self.dnd.as_ref().map(|dnd| dnd.action_queue.clone()) else { return };
-            let token = format!("{}-{}", std::process::id(), std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+            let Some(queue) = self.dnd.as_ref().map(|dnd| dnd.action_queue.clone()) else {
+                return;
+            };
+            let token = format!(
+                "{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            );
             use crate::dnd::windows::{ole_clipboard, DndEvent};
             let result = (|| -> Result<(), String> {
                 let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-                let same_location = self.tab_data_for(tab).is_some_and(|current| current.location == data.location);
+                let same_location = self
+                    .tab_data_for(tab)
+                    .is_some_and(|current| current.location == data.location);
                 let runtime = self.state.tab_states.get(&tab);
-                let offset = same_location.then(|| self.scroll_handles.get(&tab)).flatten().map(|handle| handle.0.borrow().base_handle.offset())
+                let offset = same_location
+                    .then(|| self.scroll_handles.get(&tab))
+                    .flatten()
+                    .map(|handle| handle.0.borrow().base_handle.offset())
                     .unwrap_or_else(|| gpui::point(gpui::px(0.0), gpui::px(0.0)));
-                let miller_offsets: Vec<_> = runtime.into_iter().flat_map(|state| state.miller.columns.iter().enumerate())
-                    .map(|(index, _)| self.miller_scroll_handles.get(&(tab, index))
-                        .map(|handle| { let offset = handle.0.borrow().base_handle.offset(); [f32::from(offset.x), f32::from(offset.y)] })
-                        .unwrap_or_default()).collect();
-                ole_clipboard::publish_tab_transfer(&token, &data, runtime,
-                    [f32::from(offset.x), f32::from(offset.y)], &miller_offsets, same_location,
-                    ole_clipboard::ViewFilters { types: self.type_filters.get(&tab).cloned().unwrap_or_default(),
+                let miller_offsets: Vec<_> = runtime
+                    .into_iter()
+                    .flat_map(|state| state.miller.columns.iter().enumerate())
+                    .map(|(index, _)| {
+                        self.miller_scroll_handles
+                            .get(&(tab, index))
+                            .map(|handle| {
+                                let offset = handle.0.borrow().base_handle.offset();
+                                [f32::from(offset.x), f32::from(offset.y)]
+                            })
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                ole_clipboard::publish_tab_transfer(
+                    &token,
+                    &data,
+                    runtime,
+                    [f32::from(offset.x), f32::from(offset.y)],
+                    &miller_offsets,
+                    same_location,
+                    ole_clipboard::ViewFilters {
+                        types: self.type_filters.get(&tab).cloned().unwrap_or_default(),
                         sizes: self.size_filters.get(&tab).cloned().unwrap_or_default(),
-                        show_hidden: Some(self.state.settings.show_hidden) })?;
+                        show_hidden: Some(self.state.settings.show_hidden),
+                    },
+                )?;
                 let event = ole_clipboard::prepare_transfer_ack(&token)?;
                 let mut command = std::process::Command::new(executable);
                 command.env("ATLAS_TAB_TRANSFER_TOKEN", &token);
-                command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+                command
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
                 use std::os::windows::process::CommandExt;
                 command.creation_flags(0x00000008 | 0x00000200);
                 let spawned = command.spawn().map_err(|error| error.to_string());
@@ -1914,16 +2032,23 @@ impl App {
                 std::thread::spawn(move || {
                     let accepted = ole_clipboard::wait_transfer_ack(event);
                     if launched {
-                        if let Some(mut events) = queue.lock().or_else(atlas_model::sync::recover).ok() {
-                            if accepted && close_source { events.push(DndEvent::TabTransferAccepted { tab }); }
-                            else if !accepted { events.push(DndEvent::Error("Tab transfer was not acknowledged; the original tab remains open".into())); }
+                        if let Some(mut events) =
+                            queue.lock().or_else(atlas_model::sync::recover).ok()
+                        {
+                            if accepted && close_source {
+                                events.push(DndEvent::TabTransferAccepted { tab });
+                            } else if !accepted {
+                                events.push(DndEvent::Error("Tab transfer was not acknowledged; the original tab remains open".into()));
+                            }
                         }
                         crate::ui_wake::wake();
                     }
                 });
                 spawned.map(|_| ())
             })();
-            if let Err(error) = result { self.toast_error(error); }
+            if let Err(error) = result {
+                self.toast_error(error);
+            }
         }
     }
 
@@ -1940,7 +2065,9 @@ impl App {
         #[cfg(windows)]
         {
             if let Some(mut data) = self.tab_data_for(self.state.focused_tile).cloned() {
-                if let Some(path) = target_dir { data.location = atlas_model::location::Location::Directory(path); }
+                if let Some(path) = target_dir {
+                    data.location = atlas_model::location::Location::Directory(path);
+                }
                 self.transfer_tab_to_window(data, false);
                 return;
             }
@@ -2164,7 +2291,8 @@ pub(crate) fn spawn_terminal(dir: &std::path::Path) {
         }
 
         // 2. Si no existe, intenta x-terminal-emulator
-        if is_in_path("x-terminal-emulator") && launch_emulator("x-terminal-emulator", dir).is_ok() {
+        if is_in_path("x-terminal-emulator") && launch_emulator("x-terminal-emulator", dir).is_ok()
+        {
             return;
         }
 
@@ -2187,7 +2315,8 @@ pub(crate) fn spawn_terminal(dir: &std::path::Path) {
             }
         }
 
-        let _ = launch_emulator("x-terminal-emulator", dir).or_else(|_| launch_emulator("xterm", dir));
+        let _ =
+            launch_emulator("x-terminal-emulator", dir).or_else(|_| launch_emulator("xterm", dir));
     }
     #[cfg(target_os = "windows")]
     {
@@ -2196,8 +2325,10 @@ pub(crate) fn spawn_terminal(dir: &std::path::Path) {
         // Launch the system cmd.exe by absolute path in its own console. The
         // old `cmd /c start cmd` let cmd.exe resolve "cmd" in the opened folder
         // first, so a planted cmd.bat/cmd.com there ran instead of the shell.
-        let system_root = std::env::var_os("SystemRoot")
-            .map_or_else(|| std::path::PathBuf::from(r"C:\Windows"), std::path::PathBuf::from);
+        let system_root = std::env::var_os("SystemRoot").map_or_else(
+            || std::path::PathBuf::from(r"C:\Windows"),
+            std::path::PathBuf::from,
+        );
         let _ = std::process::Command::new(system_root.join("System32").join("cmd.exe"))
             .current_dir(dir)
             .creation_flags(CREATE_NEW_CONSOLE)

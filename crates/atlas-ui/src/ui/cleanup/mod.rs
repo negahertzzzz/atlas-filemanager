@@ -66,7 +66,11 @@ impl CatState {
             .sum()
     }
     fn files(&self) -> usize {
-        self.snaps.iter().flatten().map(|s| s.reclaimable.len()).sum()
+        self.snaps
+            .iter()
+            .flatten()
+            .map(|s| s.reclaimable.len())
+            .sum()
     }
 }
 
@@ -350,7 +354,8 @@ impl CleanupPanel {
                                 panel.cats[ci].snaps[ri] = Some(Arc::new(snapshot));
                                 panel.cat_pending = panel.cat_pending.saturating_sub(1);
                                 if panel.cat_pending == 0 {
-                                    let files = panel.cats.iter().map(CatState::files).sum::<usize>();
+                                    let files =
+                                        panel.cats.iter().map(CatState::files).sum::<usize>();
                                     panel.snapshot = Arc::new(DiskSnapshot {
                                         generation,
                                         root: panel.volume.clone(),
@@ -411,7 +416,11 @@ impl CleanupPanel {
                         .filter_map(|(root, paths)| {
                             let candidates = atlas_core::cleanup::inspect_candidates(&paths);
                             (!candidates.is_empty()).then(|| {
-                                atlas_core::cleanup::prepare_plan_in(volume.clone(), root, candidates)
+                                atlas_core::cleanup::prepare_plan_in(
+                                    volume.clone(),
+                                    root,
+                                    candidates,
+                                )
                             })
                         })
                         .collect::<std::io::Result<Vec<_>>>()
@@ -456,7 +465,9 @@ impl CleanupPanel {
                         panel.completed.clear();
                         panel.enter = 0.92;
                         let current = panel.current.clone();
-                        if let Some(s) = atlas_core::cleanup::cached_snapshot(&current, panel.generation) {
+                        if let Some(s) =
+                            atlas_core::cleanup::cached_snapshot(&current, panel.generation)
+                        {
                             panel.snapshot = Arc::new(s);
                         }
                         panel.rebuild();
@@ -598,7 +609,11 @@ impl CleanupPanel {
     }
     fn navigate(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if path.starts_with(&self.volume) && self.execution.is_none() {
-            self.enter = if self.current.starts_with(&path) { 1.25 } else { 0.6 };
+            self.enter = if self.current.starts_with(&path) {
+                1.25
+            } else {
+                0.6
+            };
             if path != self.current {
                 self.back.push(std::mem::replace(&mut self.current, path));
                 self.forward.clear();
@@ -614,7 +629,11 @@ impl CleanupPanel {
         let current = self
             .selected
             .as_ref()
-            .and_then(|s| self.map_nodes.iter().position(|n| n.path.as_ref() == Some(s)))
+            .and_then(|s| {
+                self.map_nodes
+                    .iter()
+                    .position(|n| n.path.as_ref() == Some(s))
+            })
             .and_then(|i| cache.circles.iter().find(|c| c.index == i))
             .copied();
         let target = match current {
