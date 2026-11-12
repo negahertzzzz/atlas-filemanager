@@ -270,6 +270,12 @@ $redirectAgent = Stop-ExplorerRedirectAgent
 
 $log = Join-Path $repo "target\installer\AtlasSetup-$Version-install.log"
 $arguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/LOG=`"$log`"")
+# A silent install repeats the tasks chosen last time. When the search service
+# is registered but its task is remembered as off, setup would replace the
+# binary without ever re-registering or starting the service: keep it in sync.
+if (Get-Service -Name AtlasSearchService -ErrorAction SilentlyContinue) {
+    $arguments += "/MERGETASKS=`"searchservice`""
+}
 $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
 if ($process.ExitCode -ne 0) {
     throw "Setup exited with code $($process.ExitCode). Log: $log"

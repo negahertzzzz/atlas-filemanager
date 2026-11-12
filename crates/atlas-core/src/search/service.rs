@@ -187,8 +187,10 @@ pub fn ensure_service_started() -> bool {
             return true;
         }
 
-        // Try starting the installed Windows service first
-        let _ = std::process::Command::new("sc.exe")
+        // Try starting the installed Windows service first. Only
+        // administrators may start it, so from a normal Atlas this usually
+        // fails with "access denied"; the service starts itself at boot.
+        let start = std::process::Command::new("sc.exe")
             .args(["start", "AtlasSearchService"])
             .creation_flags(CREATE_NO_WINDOW)
             .status();
@@ -200,7 +202,18 @@ pub fn ensure_service_started() -> bool {
             }
         }
 
-        // If not running, find the binary and spawn it with --console in the background
+        // An installed service owns the index. A `--console` copy would hold
+        // its single-instance mutex and pipe, so the service quits as soon as
+        // it starts, and without elevation the copy cannot read the MFT
+        // either. Only run one when no service is installed (portable use).
+        const ERROR_SERVICE_DOES_NOT_EXIST: i32 = 1060;
+        let service_installed =
+            matches!(&start, Ok(status) if status.code() != Some(ERROR_SERVICE_DOES_NOT_EXIST));
+        if service_installed {
+            return is_service_available();
+        }
+
+        // No service: find the binary and spawn it with --console in the background
         if let Some(exe_path) = find_search_service_exe() {
             let _ = std::process::Command::new(exe_path)
                 .arg("--console")

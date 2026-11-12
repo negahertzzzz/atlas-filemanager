@@ -68,6 +68,16 @@ mod windows_impl {
 
     const SERVICE_NAME: &str = "AtlasSearchService";
 
+    /// Another copy (the service or a `--console` one) holds the index.
+    #[derive(Debug)]
+    struct AlreadyRunning;
+    impl std::fmt::Display for AlreadyRunning {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("Atlas Search Service is already running")
+        }
+    }
+    impl std::error::Error for AlreadyRunning {}
+
     struct State {
         volumes: RwLock<Vec<(char, MappedVolume)>>,
         progress: RwLock<Vec<SearchProgress>>,
@@ -295,12 +305,20 @@ mod windows_impl {
             wait_hint: Duration::ZERO,
             process_id: None,
         });
-        let _ = run(stop);
+        // A failed start used to report success, which hid why the service
+        // stopped right away; the service manager now logs the reason.
+        let exit_code = match run(stop) {
+            Ok(()) => ServiceExitCode::Win32(0),
+            Err(error) if error.is::<AlreadyRunning>() => ServiceExitCode::Win32(
+                windows_sys::Win32::Foundation::ERROR_SERVICE_ALREADY_RUNNING,
+            ),
+            Err(_) => ServiceExitCode::ServiceSpecific(1),
+        };
         let _ = handle.set_service_status(ServiceStatus {
             service_type: ServiceType::OWN_PROCESS,
             current_state: ServiceState::Stopped,
             controls_accepted: ServiceControlAccept::empty(),
-            exit_code: ServiceExitCode::Win32(0),
+            exit_code,
             checkpoint: 0,
             wait_hint: Duration::ZERO,
             process_id: None,
@@ -317,8 +335,10 @@ mod windows_impl {
             .collect();
         let mutex = unsafe { CreateMutexW(null_mut(), 1, mutex_name.as_ptr()) };
         if unsafe { windows_sys::Win32::Foundation::GetLastError() } == ERROR_ALREADY_EXISTS {
-            eprintln!("Atlas Search Service is already running.");
-            return Ok(());
+            if !mutex.is_null() {
+                unsafe { CloseHandle(mutex) };
+            }
+            return Err(AlreadyRunning.into());
         }
 
         eprintln!("Atlas Search Service {}", env!("CARGO_PKG_VERSION"));
