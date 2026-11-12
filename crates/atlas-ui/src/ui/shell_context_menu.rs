@@ -42,6 +42,10 @@ pub(crate) struct UiNativeItem {
     pub is_default: bool,
 }
 
+/// Canonical verb of Windows' "Open file location" (shortcuts).
+#[cfg(windows)]
+const OPEN_CONTAINING_VERB: &str = "opencontaining";
+
 // Shell command ids are bounded; reserve one local id for the combined group.
 const OPEN_WITH_GROUP: u32 = u32::MAX;
 const VIEW_GROUP: u32 = u32::MAX - 1;
@@ -133,8 +137,8 @@ pub(crate) struct CtxMenuState {
     pub anchor: Point<Pixels>,
     /// Physical screen pixels for the native `InvokeCommand` (`ptInvoke`).
     pub screen_pt: (i32, i32),
-    // reason: retained for a future "rebuild menu" path; not read yet.
-    #[allow(dead_code)]
+    // reason: only Windows reads it ("Open file location" stays in Atlas).
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub paths: Vec<PathBuf>,
     pub native: Vec<UiNativeItem>,
     /// True until the worker's `Built` event arrives (shows a skeleton row).
@@ -1870,6 +1874,53 @@ impl App {
         cx.notify();
     }
 
+    /// Windows' "Open file location": show the shortcut's target, selected,
+    /// in this pane rather than in a new File Explorer window. Shortcuts to
+    /// shell places (no file-system target) keep the native command.
+    #[cfg(windows)]
+    fn open_containing_in_atlas(&mut self, id: u32, cx: &mut Context<Self>) -> bool {
+        let Some(menu) = self.ctx_menu.as_ref() else {
+            return false;
+        };
+        let open_containing = !menu.background
+            && menu.native.iter().any(|item| {
+                item.id == id
+                    && matches!(item.kind, UiItemKind::Normal)
+                    && item
+                        .verb
+                        .as_deref()
+                        .is_some_and(|verb| verb.eq_ignore_ascii_case(OPEN_CONTAINING_VERB))
+            });
+        if !open_containing {
+            return false;
+        }
+        let target = menu.paths.first().and_then(|path| {
+            let shortcut = path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"));
+            if shortcut {
+                crate::shell_file_operation::shortcut_target(path)
+            } else {
+                Some(path.clone())
+            }
+        });
+        let Some(target) = target else {
+            return false;
+        };
+        self.close_ctx_menu(cx);
+        let tile = self.state.focused_tile;
+        match target.parent().map(std::path::Path::to_path_buf) {
+            Some(folder) => {
+                self.pending_select = Some((tile, target));
+                self.navigate(tile, folder);
+            }
+            // A drive root has no parent: open it.
+            None => self.navigate(tile, target),
+        }
+        cx.notify();
+        true
+    }
+
     /// Native row: a submenu toggles inline expansion; a leaf invokes the verb.
     fn activate_ctx_native(
         &mut self,
@@ -1932,6 +1983,10 @@ impl App {
                 }
             }
             cx.notify();
+            return;
+        }
+        #[cfg(windows)]
+        if self.open_containing_in_atlas(id, cx) {
             return;
         }
         // Leaf: invoke through the worker, close the overlay immediately.

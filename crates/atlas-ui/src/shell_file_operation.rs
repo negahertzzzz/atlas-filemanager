@@ -18,6 +18,34 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::UI::Shell::*;
 
+/// File-system target stored in a Windows shortcut. Never calls
+/// `IShellLink::Resolve`, which may search drives and the network for a moved
+/// target. `None` for links to shell places such as Control Panel.
+pub(crate) fn shortcut_target(link: &Path) -> Option<PathBuf> {
+    let link = link.to_path_buf();
+    std::thread::spawn(move || unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().ok()?;
+        let _apartment = Apartment;
+        let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_ALL).ok()?;
+        let persistence: windows::Win32::System::Com::IPersistFile = shell_link.cast().ok()?;
+        persistence
+            .Load(
+                PCWSTR(wide(link.as_os_str()).as_ptr()),
+                windows::Win32::System::Com::STGM_READ,
+            )
+            .ok()?;
+        let mut buffer = vec![0u16; 32768];
+        shell_link
+            .GetPath(&mut buffer, std::ptr::null_mut(), 0)
+            .ok()?;
+        let length = buffer.iter().position(|&unit| unit == 0)?;
+        (length > 0).then(|| PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length])))
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
 /// Create a real Shell link without replacing a pre-existing destination.
 pub(crate) fn create_shortcut(source: PathBuf, destination: PathBuf) -> Result<PathBuf, OpError> {
     let error_path = source.clone();
@@ -742,7 +770,7 @@ mod tests {
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().unwrap();
             let _apartment = Apartment;
-            for path in [first, second] {
+            for path in [first, second.clone()] {
                 let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_ALL).unwrap();
                 let persistence: windows::Win32::System::Com::IPersistFile = link.cast().unwrap();
                 persistence
@@ -759,6 +787,8 @@ mod tests {
                 assert_eq!(resolved, source);
             }
         }
+        assert_eq!(shortcut_target(&second), Some(source));
+        assert_eq!(shortcut_target(&fixture.0.join("missing.lnk")), None);
     }
     struct Fixture(PathBuf);
     impl Fixture {

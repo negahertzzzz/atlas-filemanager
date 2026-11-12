@@ -793,9 +793,9 @@ impl App {
                             {
                                 if let Some((_, pending_path)) = self.pending_select.as_ref() {
                                     let after = ts.selection_paths(is_tree);
-                                    if let Some(idx) =
-                                        after.iter().position(|path| path == pending_path)
-                                    {
+                                    if let Some(idx) = after.iter().position(|path| {
+                                        atlas_core::fs::transfer::paths_equal_ci(path, pending_path)
+                                    }) {
                                         self.pending_select = None;
                                         ts.selection.selected.clear();
                                         ts.selection.selected.insert(idx);
@@ -887,7 +887,12 @@ impl App {
                                 .as_ref()
                                 .filter(|(pane, _)| *pane == tab)
                                 .and_then(|(_, path)| {
-                                    c.entries.iter().position(|entry| &entry.path() == path)
+                                    c.entries.iter().position(|entry| {
+                                        atlas_core::fs::transfer::paths_equal_ci(
+                                            &entry.path(),
+                                            path,
+                                        )
+                                    })
                                 })
                             {
                                 c.selection.clear();
